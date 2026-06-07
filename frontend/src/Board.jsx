@@ -44,22 +44,47 @@ function positionMarks() {
 const MARKS = positionMarks();
 
 // 点击式走子：先点起点，再点终点，回调 onMove(uciMove)。
-export default function Board({ fen, onMove, lastMove, disabled }) {
+// 传入 legalMoves（UCI 数组）时，限制只能走合法着法并提示落点。
+export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   const board = parseFen(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
+
+  const restrict = Array.isArray(legalMoves);
+  // 当前选中起点的合法落点集合
+  const targets = React.useMemo(() => {
+    if (!restrict || !from) return null;
+    const fromSq = toSquare(from.row, from.col);
+    const set = new Set();
+    for (const mv of legalMoves) {
+      if (mv.slice(0, 2) === fromSq) set.add(mv.slice(2, 4));
+    }
+    return set;
+  }, [restrict, legalMoves, from]);
 
   function handleClick(row, col) {
     if (disabled) return;
     const cell = board[row][col];
+    const sq = toSquare(row, col);
     if (!from) {
-      if (cell) setFrom({ row, col }); // 必须先点有子的格
+      if (!cell) return; // 必须先点有子的格
+      if (restrict && !legalMoves.some((m) => m.slice(0, 2) === sq)) return; // 该子无合法着法
+      setFrom({ row, col });
       return;
     }
     if (from.row === row && from.col === col) {
       setFrom(null); // 再点一次取消
       return;
     }
-    const move = toSquare(from.row, from.col) + toSquare(row, col);
+    // 改选己方另一子
+    if (cell && restrict && legalMoves.some((m) => m.slice(0, 2) === sq)) {
+      setFrom({ row, col });
+      return;
+    }
+    const move = toSquare(from.row, from.col) + sq;
+    if (restrict && !legalMoves.includes(move)) {
+      setFrom(null); // 非法着法，取消选择
+      return;
+    }
     setFrom(null);
     onMove(move);
   }
@@ -108,6 +133,7 @@ export default function Board({ fen, onMove, lastMove, disabled }) {
             const sq = toSquare(row, col);
             const selected = from && from.row === row && from.col === col;
             const highlight = sq === lastFrom || sq === lastTo;
+            const isTarget = targets && targets.has(sq);
             return (
               <div
                 key={`${row}-${col}`}
@@ -116,6 +142,7 @@ export default function Board({ fen, onMove, lastMove, disabled }) {
                 onClick={() => handleClick(row, col)}
               >
                 {highlight && <span className="xq-mark-last" />}
+                {isTarget && <span className={"xq-dot" + (cell ? " capture" : "")} />}
                 {cell && (
                   <span
                     className={

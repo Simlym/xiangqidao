@@ -97,6 +97,40 @@ nav button.active { background: #8a5a2b; color: #fff; }
 .xq-piece.selected {
   box-shadow: 0 0 0 3px rgba(255, 200, 0, .9), 0 1px 3px rgba(0, 0, 0, .35);
 }
+/* 合法落点提示 */
+.xq-dot {
+  position: absolute;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: rgba(80, 160, 80, .55);
+  pointer-events: none;
+}
+.xq-dot.capture {
+  width: 40px; height: 40px; background: transparent;
+  border: 3px solid rgba(192, 57, 43, .6);
+  box-sizing: border-box;
+}
+
+/* 人机对弈 */
+.play-setup h2 { margin: 0 0 6px; color: #8a5a2b; }
+.play-setup-row { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
+.play-setup-label { width: 56px; color: #666; font-size: 14px; }
+.seg { display: inline-flex; border: 1px solid #d9ccb5; border-radius: 8px; overflow: hidden; }
+.seg-btn {
+  border: none; background: #fff; padding: 8px 16px; cursor: pointer;
+  font-size: 14px; color: #555; border-right: 1px solid #eadfca;
+}
+.seg-btn:last-child { border-right: none; }
+.seg-btn.active { background: #8a5a2b; color: #fff; }
+.btn-start {
+  margin-top: 8px; padding: 10px 24px; border: none; border-radius: 8px;
+  background: #8a5a2b; color: #fff; font-size: 16px; cursor: pointer;
+}
+.play-status-bar { display: flex; align-items: center; gap: 8px; }
+.play-turn { flex: 1; font-size: 15px; font-weight: 600; color: #2b2b2b; }
+.btn-newgame {
+  border: 1px solid #8a5a2b; background: #fff; color: #8a5a2b;
+  border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 14px;
+}
 
 /* 结果面板 */
 .result.ok h3 { color: #2e7d32; margin: 0 0 8px; }

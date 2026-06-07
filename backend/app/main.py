@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models import init_db
-from .routes import analysis, games, stats, training
+from .routes import analysis, games, play, stats, training
 
 app = FastAPI(title="象棋道 Xiangqidao", version="0.1.0")
 
@@ -17,6 +17,7 @@ app.add_middleware(
 
 app.include_router(training.router)
 app.include_router(stats.router)
+app.include_router(play.router)
 # analysis 必须在 games 前注册：/games/{id}/analyze 否则被 games 的 DELETE /{id} 拦截
 app.include_router(analysis.router)
 app.include_router(games.router)

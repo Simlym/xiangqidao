@@ -68,3 +68,22 @@ export async function analyzeGame(gameId) {
 export async function getAnalysis(gameId) {
   return (await fetch(`${base}/games/${gameId}/analysis`)).json();
 }
+
+export async function newPlayGame(payload) {
+  const r = await fetch(`${base}/play/new`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return r.json();
+}
+
+export async function playMove(payload) {
+  const r = await fetch(`${base}/play/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error("illegal");
+  return r.json();
+}
