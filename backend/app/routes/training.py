@@ -7,14 +7,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..auth import current_user_id
 from ..deps import get_db
 from ..models import Attempt, Puzzle, Review
 from ..srs import SrsState, review as srs_review
 from ..xiangqi_utils import apply_move
 
 router = APIRouter(prefix="/api/training", tags=["training"])
-
-USER = "default"
 
 QUALITY_MAP = {"again": 1, "hard": 3, "good": 4, "easy": 5}
 
@@ -65,24 +64,24 @@ class SubmitResponse(BaseModel):
 # ── 接口 ───────────────────────────────────────────────────────
 
 @router.get("/next", response_model=NextResponse)
-def next_puzzle(db: Session = Depends(get_db)):
+def next_puzzle(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """返回到期题或新题。"""
     today = date.today()
     due_count = db.scalar(
         select(func.count())
         .select_from(Review)
-        .where(Review.user_id == USER, Review.next_review <= today)
+        .where(Review.user_id == user, Review.next_review <= today)
     ) or 0
 
     puzzle = db.scalar(
         select(Puzzle)
         .join(Review, Review.puzzle_id == Puzzle.id)
-        .where(Review.user_id == USER, Review.next_review <= today)
+        .where(Review.user_id == user, Review.next_review <= today)
         .order_by(Review.next_review)
         .limit(1)
     )
     if puzzle is None:
-        learned = select(Review.puzzle_id).where(Review.user_id == USER)
+        learned = select(Review.puzzle_id).where(Review.user_id == user)
         puzzle = db.scalar(
             select(Puzzle).where(Puzzle.id.not_in(learned)).order_by(Puzzle.difficulty).limit(1)
         )
@@ -132,7 +131,7 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/submit", response_model=SubmitResponse)
-def submit(req: SubmitRequest, db: Session = Depends(get_db)):
+def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """记录本次作答结果（含自评），更新 SM-2。"""
     puzzle = db.get(Puzzle, req.puzzle_id)
     if puzzle is None:
@@ -141,10 +140,10 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db)):
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
 
     rev = db.scalar(
-        select(Review).where(Review.puzzle_id == puzzle.id, Review.user_id == USER)
+        select(Review).where(Review.puzzle_id == puzzle.id, Review.user_id == user)
     )
     if rev is None:
-        rev = Review(puzzle_id=puzzle.id, user_id=USER)
+        rev = Review(puzzle_id=puzzle.id, user_id=user)
         db.add(rev)
 
     # 答错放弃强制 again；答对但中途重试则自评最多降到 hard
@@ -170,7 +169,7 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db)):
     db.add(
         Attempt(
             puzzle_id=puzzle.id,
-            user_id=USER,
+            user_id=user,
             correct=req.correct,
             time_spent_ms=req.time_spent_ms,
         )

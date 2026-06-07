@@ -20,6 +20,18 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    """用户。role: 'user' 普通用户 / 'admin' 管理员。"""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
+    role: Mapped[str] = mapped_column(String(10), default="user")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class Puzzle(Base):
     """战术题。solution 为正解着法序列，UCI 坐标制，逗号分隔，如 'h2e2,a9a8'。"""
 

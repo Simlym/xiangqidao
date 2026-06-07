@@ -1,70 +1,75 @@
 const base = "/api";
 
-export async function getNext() {
-  const r = await fetch(`${base}/training/next`);
+const TOKEN_KEY = "xq_token";
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function setToken(t) {
+  if (t) localStorage.setItem(TOKEN_KEY, t);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+function authHeaders(extra = {}) {
+  const t = getToken();
+  return t ? { ...extra, Authorization: `Bearer ${t}` } : extra;
+}
+
+async function req(path, { method = "GET", body } = {}) {
+  const opts = { method, headers: authHeaders() };
+  if (body !== undefined) {
+    opts.headers = authHeaders({ "Content-Type": "application/json" });
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(`${base}${path}`, opts);
+  if (!r.ok) {
+    let detail = "请求失败";
+    try {
+      detail = (await r.json()).detail || detail;
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(detail);
+    err.status = r.status;
+    throw err;
+  }
   return r.json();
 }
 
-export async function checkMove(payload) {
-  const r = await fetch(`${base}/training/check_move`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return r.json();
-}
+// ── 鉴权 ────────────────────────────────────────────────
+export const register = (username, password) =>
+  req("/auth/register", { method: "POST", body: { username, password } });
+export const login = (username, password) =>
+  req("/auth/login", { method: "POST", body: { username, password } });
+export const fetchMe = () => req("/auth/me");
 
-export async function submitRating(payload) {
-  const r = await fetch(`${base}/training/submit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return r.json();
-}
+// ── 训练 ────────────────────────────────────────────────
+export const getNext = () => req("/training/next");
+export const checkMove = (payload) => req("/training/check_move", { method: "POST", body: payload });
+export const submitRating = (payload) => req("/training/submit", { method: "POST", body: payload });
 
-export async function getOverview() {
-  return (await fetch(`${base}/stats/overview`)).json();
-}
+// ── 统计 ────────────────────────────────────────────────
+export const getOverview = () => req("/stats/overview");
+export const getByCategory = () => req("/stats/by_category");
+export const getWeekly = () => req("/stats/weekly");
 
-export async function getByCategory() {
-  return (await fetch(`${base}/stats/by_category`)).json();
-}
+// ── 复盘 ────────────────────────────────────────────────
+export const getGames = (limit = 20, offset = 0) => req(`/games?limit=${limit}&offset=${offset}`);
+export const importGame = (payload) => req("/games/import", { method: "POST", body: payload });
+export const getGamePositions = (gameId) => req(`/games/${gameId}`);
+export const deleteGame = (gameId) => req(`/games/${gameId}`, { method: "DELETE" });
+export const analyzeGame = (gameId) => req(`/games/${gameId}/analyze`, { method: "POST", body: {} });
+export const getAnalysis = (gameId) => req(`/games/${gameId}/analysis`);
 
-export async function getWeekly() {
-  return (await fetch(`${base}/stats/weekly`)).json();
-}
+// ── 对弈 ────────────────────────────────────────────────
+export const newPlayGame = (payload) => req("/play/new", { method: "POST", body: payload });
+export const playMove = (payload) => req("/play/move", { method: "POST", body: payload });
 
-export async function getGames(limit = 20, offset = 0) {
-  return (await fetch(`${base}/games?limit=${limit}&offset=${offset}`)).json();
-}
-
-export async function importGame(payload) {
-  const r = await fetch(`${base}/games/import`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return r.json();
-}
-
-export async function getGamePositions(gameId) {
-  return (await fetch(`${base}/games/${gameId}`)).json();
-}
-
-export async function deleteGame(gameId) {
-  const r = await fetch(`${base}/games/${gameId}`, { method: "DELETE" });
-  return r.json();
-}
-
-export async function analyzeGame(gameId) {
-  const r = await fetch(`${base}/games/${gameId}/analyze`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-  return r.json();
-}
-
-export async function getAnalysis(gameId) {
-  return (await fetch(`${base}/games/${gameId}/analysis`)).json();
-}
+// ── 后台 ────────────────────────────────────────────────
+export const adminOverview = () => req("/admin/overview");
+export const adminUsers = () => req("/admin/users");
+export const adminDeleteUser = (id) => req(`/admin/users/${id}`, { method: "DELETE" });
+export const adminPuzzles = (limit = 100, offset = 0) =>
+  req(`/admin/puzzles?limit=${limit}&offset=${offset}`);
+export const adminCreatePuzzle = (payload) => req("/admin/puzzles", { method: "POST", body: payload });
+export const adminDeletePuzzle = (id) => req(`/admin/puzzles/${id}`, { method: "DELETE" });

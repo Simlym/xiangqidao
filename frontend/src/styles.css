@@ -6,8 +6,43 @@ body {
   color: #2b2b2b;
 }
 .app { max-width: 720px; margin: 0 auto; padding: 16px; }
-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
 header h1 { font-size: 24px; margin: 0; color: #8a5a2b; }
+.user-box { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.user-name { font-size: 14px; color: #555; font-weight: 600; }
+.btn-link {
+  border: 1px solid #8a5a2b; background: #fff; color: #8a5a2b;
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 14px;
+}
+.btn-link:hover { background: #f6efe3; }
+
+/* 弹窗 */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+}
+.modal {
+  background: #fff; border-radius: 14px; padding: 20px; width: 320px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.25);
+}
+.auth-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.auth-tabs button {
+  flex: 1; padding: 8px; border: none; background: #f0ebe3; color: #777;
+  border-radius: 8px; cursor: pointer; font-size: 15px;
+}
+.auth-tabs button.active { background: #8a5a2b; color: #fff; }
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.auth-form .import-input { padding: 9px 10px; font-size: 14px; }
+
+/* 后台表格 */
+.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.admin-table th, .admin-table td {
+  text-align: left; padding: 7px 8px; border-bottom: 1px solid #f0ebe3;
+}
+.admin-table th { color: #999; font-weight: 600; font-size: 13px; }
+.admin-table code { font-size: 12px; }
+.admin-form { display: flex; flex-direction: column; gap: 10px; }
+.admin h3 { margin: 0 0 12px; color: #8a5a2b; }
 nav button {
   border: none; background: transparent; font-size: 16px; padding: 8px 12px;
   cursor: pointer; border-radius: 8px; color: #555;
@@ -47,29 +82,90 @@ nav button.active { background: #8a5a2b; color: #fff; }
   color: #27ae60; font-weight: 600; font-size: 15px; margin: 6px 0 0;
 }
 
-/* 棋盘 */
-.board {
-  background: #e8c887; padding: 8px; border-radius: 8px;
-  width: fit-content; margin: 0 auto; border: 2px solid #8a5a2b;
+/* 棋盘（交叉点制） */
+.xq-board {
+  position: relative;
+  margin: 0 auto;
+  background:
+    radial-gradient(circle at 30% 20%, #f0d9a8, #e3bd7e 70%);
+  border: 3px solid #5a3d22;
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .18), inset 0 0 0 2px #c9a36a;
 }
-.board-row { display: flex; }
-.cell {
+.xq-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
+.xq-lines line { stroke: #5a3d22; stroke-width: 1.4; stroke-linecap: round; }
+.xq-river {
+  fill: #6b4a2b; font-size: 22px; font-weight: 600;
+  letter-spacing: 4px; text-anchor: middle; dominant-baseline: middle;
+  font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
+  opacity: .7; user-select: none;
+}
+
+.xq-points { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.xq-point {
+  position: absolute;
   width: 42px; height: 42px;
+  transform: translate(-50%, -50%);
   display: flex; align-items: center; justify-content: center;
-  border: 1px solid rgba(138,90,43,.35);
-  cursor: pointer; position: relative;
+  cursor: pointer;
 }
-.cell.selected  { background: rgba(255,215,0,.45); }
-.cell.highlight { background: rgba(80,160,80,.25); }
-.piece {
-  width: 36px; height: 36px; border-radius: 50%;
+.xq-mark-last {
+  position: absolute;
+  width: 38px; height: 38px;
+  border: 2px solid rgba(80, 160, 80, .8);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.xq-piece {
+  position: relative;
+  width: 38px; height: 38px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 700;
-  background: #fdf6e3; border: 2px solid #333;
+  font-size: 24px; font-weight: 700;
+  background: radial-gradient(circle at 35% 30%, #fffdf5, #f0e2c0);
+  border: 1.5px solid #8a6a3a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35), inset 0 0 0 2px #e9d3a3;
   user-select: none;
+  font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
 }
-.piece.red   { color: #c0392b; border-color: #c0392b; }
-.piece.black { color: #222;    border-color: #222; }
+.xq-piece.red   { color: #c0392b; }
+.xq-piece.black { color: #1a1a1a; }
+.xq-piece.selected {
+  box-shadow: 0 0 0 3px rgba(255, 200, 0, .9), 0 1px 3px rgba(0, 0, 0, .35);
+}
+/* 合法落点提示 */
+.xq-dot {
+  position: absolute;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: rgba(80, 160, 80, .55);
+  pointer-events: none;
+}
+.xq-dot.capture {
+  width: 40px; height: 40px; background: transparent;
+  border: 3px solid rgba(192, 57, 43, .6);
+  box-sizing: border-box;
+}
+
+/* 人机对弈 */
+.play-setup h2 { margin: 0 0 6px; color: #8a5a2b; }
+.play-setup-row { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
+.play-setup-label { width: 56px; color: #666; font-size: 14px; }
+.seg { display: inline-flex; border: 1px solid #d9ccb5; border-radius: 8px; overflow: hidden; }
+.seg-btn {
+  border: none; background: #fff; padding: 8px 16px; cursor: pointer;
+  font-size: 14px; color: #555; border-right: 1px solid #eadfca;
+}
+.seg-btn:last-child { border-right: none; }
+.seg-btn.active { background: #8a5a2b; color: #fff; }
+.btn-start {
+  margin-top: 8px; padding: 10px 24px; border: none; border-radius: 8px;
+  background: #8a5a2b; color: #fff; font-size: 16px; cursor: pointer;
+}
+.play-status-bar { display: flex; align-items: center; gap: 8px; }
+.play-turn { flex: 1; font-size: 15px; font-weight: 600; color: #2b2b2b; }
+.btn-newgame {
+  border: 1px solid #8a5a2b; background: #fff; color: #8a5a2b;
+  border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 14px;
+}
 
 /* 结果面板 */
 .result.ok h3 { color: #2e7d32; margin: 0 0 8px; }
@@ -131,9 +227,8 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 
 @media (max-width: 520px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
-  .cell  { width: 34px; height: 34px; }
-  .piece { width: 28px; height: 28px; font-size: 18px; }
   .rating-btns { grid-template-columns: repeat(2, 1fr); }
+  .xq-board { transform: scale(.82); transform-origin: top center; }
 }
 
 /* ===== 棋局复盘 ===== */
