@@ -1,6 +1,7 @@
 import React from "react";
 import Trainer from "./Trainer";
 import Stats from "./Stats";
+import Games from "./Games";
 
 export default function App() {
   const [tab, setTab] = React.useState("train");
@@ -21,9 +22,19 @@ export default function App() {
           >
             进度统计
           </button>
+          <button
+            className={tab === "games" ? "active" : ""}
+            onClick={() => setTab("games")}
+          >
+            棋局复盘
+          </button>
         </nav>
       </header>
-      <main>{tab === "train" ? <Trainer /> : <Stats />}</main>
+      <main>
+        {tab === "train" && <Trainer />}
+        {tab === "stats" && <Stats />}
+        {tab === "games" && <Games />}
+      </main>
     </div>
   );
 }

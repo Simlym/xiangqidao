@@ -68,6 +68,22 @@ class Attempt(Base):
     wrong_move: Mapped[str] = mapped_column(String(10), default="")
 
 
+class Game(Base):
+    """棋局复盘记录。"""
+
+    __tablename__ = "games"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    played_on: Mapped[str] = mapped_column(String(20), nullable=True)
+    red_player: Mapped[str] = mapped_column(String(80), default="")
+    black_player: Mapped[str] = mapped_column(String(80), default="")
+    result: Mapped[str] = mapped_column(String(10), default="未知")
+    moves: Mapped[str] = mapped_column(Text, default="")
+    opening: Mapped[str] = mapped_column(String(80), default="")
+    source: Mapped[str] = mapped_column(String(80), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
 DB_URL = "sqlite:///./data/puzzles.db"
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
