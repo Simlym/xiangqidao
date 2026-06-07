@@ -6,8 +6,43 @@ body {
   color: #2b2b2b;
 }
 .app { max-width: 720px; margin: 0 auto; padding: 16px; }
-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
 header h1 { font-size: 24px; margin: 0; color: #8a5a2b; }
+.user-box { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.user-name { font-size: 14px; color: #555; font-weight: 600; }
+.btn-link {
+  border: 1px solid #8a5a2b; background: #fff; color: #8a5a2b;
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 14px;
+}
+.btn-link:hover { background: #f6efe3; }
+
+/* 弹窗 */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+}
+.modal {
+  background: #fff; border-radius: 14px; padding: 20px; width: 320px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.25);
+}
+.auth-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.auth-tabs button {
+  flex: 1; padding: 8px; border: none; background: #f0ebe3; color: #777;
+  border-radius: 8px; cursor: pointer; font-size: 15px;
+}
+.auth-tabs button.active { background: #8a5a2b; color: #fff; }
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.auth-form .import-input { padding: 9px 10px; font-size: 14px; }
+
+/* 后台表格 */
+.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.admin-table th, .admin-table td {
+  text-align: left; padding: 7px 8px; border-bottom: 1px solid #f0ebe3;
+}
+.admin-table th { color: #999; font-weight: 600; font-size: 13px; }
+.admin-table code { font-size: 12px; }
+.admin-form { display: flex; flex-direction: column; gap: 10px; }
+.admin h3 { margin: 0 0 12px; color: #8a5a2b; }
 nav button {
   border: none; background: transparent; font-size: 16px; padding: 8px 12px;
   cursor: pointer; border-radius: 8px; color: #555;

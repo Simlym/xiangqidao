@@ -7,12 +7,11 @@ from pydantic import BaseModel
 from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session
 
+from ..auth import current_user_id
 from ..deps import get_db
 from ..models import Attempt, Puzzle, Review
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
-
-USER = "default"
 
 
 class Overview(BaseModel):
@@ -36,32 +35,32 @@ class WeeklyPoint(BaseModel):
 
 
 @router.get("/overview", response_model=Overview)
-def overview(db: Session = Depends(get_db)):
+def overview(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     today = date.today()
     total = db.scalar(select(func.count()).select_from(Puzzle)) or 0
     learned = db.scalar(
-        select(func.count()).select_from(Review).where(Review.user_id == USER)
+        select(func.count()).select_from(Review).where(Review.user_id == user)
     ) or 0
     due = db.scalar(
         select(func.count())
         .select_from(Review)
-        .where(Review.user_id == USER, Review.next_review <= today)
+        .where(Review.user_id == user, Review.next_review <= today)
     ) or 0
 
     total_att = db.scalar(
-        select(func.count()).select_from(Attempt).where(Attempt.user_id == USER)
+        select(func.count()).select_from(Attempt).where(Attempt.user_id == user)
     ) or 0
     correct_att = db.scalar(
         select(func.count())
         .select_from(Attempt)
-        .where(Attempt.user_id == USER, Attempt.correct.is_(True))
+        .where(Attempt.user_id == user, Attempt.correct.is_(True))
     ) or 0
     acc = round(correct_att / total_att, 3) if total_att else 0.0
 
     # 连续打卡：从今天往前逐日检查是否有作答
     days = {
         d for (d,) in db.execute(
-            select(func.date(Attempt.ts)).where(Attempt.user_id == USER).distinct()
+            select(func.date(Attempt.ts)).where(Attempt.user_id == user).distinct()
         )
     }
     streak = 0
@@ -80,7 +79,7 @@ def overview(db: Session = Depends(get_db)):
 
 
 @router.get("/by_category", response_model=list[CategoryStat])
-def by_category(db: Session = Depends(get_db)):
+def by_category(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """各杀法类型正确率 —— 一眼看出弱点（前端画雷达图）。"""
     rows = db.execute(
         select(
@@ -89,7 +88,7 @@ def by_category(db: Session = Depends(get_db)):
             func.sum(func.cast(Attempt.correct, Integer)),
         )
         .join(Attempt, Attempt.puzzle_id == Puzzle.id)
-        .where(Attempt.user_id == USER)
+        .where(Attempt.user_id == user)
         .group_by(Puzzle.category)
     ).all()
     out = []
@@ -100,12 +99,12 @@ def by_category(db: Session = Depends(get_db)):
 
 
 @router.get("/weekly", response_model=list[WeeklyPoint])
-def weekly(db: Session = Depends(get_db)):
+def weekly(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """按周的正确率趋势（最近 8 周）。"""
     since = date.today() - timedelta(weeks=8)
     rows = db.execute(
         select(Attempt.ts, Attempt.correct)
-        .where(Attempt.user_id == USER, func.date(Attempt.ts) >= since.isoformat())
+        .where(Attempt.user_id == user, func.date(Attempt.ts) >= since.isoformat())
     ).all()
 
     buckets: dict[date, list[int]] = {}
