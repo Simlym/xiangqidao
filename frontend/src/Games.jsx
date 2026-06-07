@@ -1,6 +1,6 @@
 import React from "react";
 import Board from "./Board";
-import { getGames, importGame, getGamePositions, deleteGame } from "./api";
+import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis } from "./api";
 
 const RESULT_LABELS = {
   "1-0": { text: "红胜", color: "#c0392b" },
@@ -22,7 +22,15 @@ const EMPTY_FORM = {
   opening: "",
 };
 
-export default function Games() {
+function getMoveQuality(moveData) {
+  if (!moveData) return null;
+  if (moveData.is_blunder) return "blunder";
+  if (moveData.is_mistake) return "mistake";
+  if (moveData.move_played !== moveData.best_move) return "inaccuracy";
+  return "best";
+}
+
+export default function Games({ onNavigateToTrain }) {
   const [games, setGames] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState(null);
@@ -34,6 +42,11 @@ export default function Games() {
   const [importing, setImporting] = React.useState(false);
   const [importError, setImportError] = React.useState("");
   const moveListRef = React.useRef(null);
+
+  // Analysis state
+  const [analyzeStatus, setAnalyzeStatus] = React.useState("idle"); // idle | analyzing | done
+  const [analysisData, setAnalysisData] = React.useState(null); // null or {moves, blunder_count, mistake_count}
+  const pollRef = React.useRef(null);
 
   // Load games list
   const loadGames = React.useCallback(() => {
@@ -66,6 +79,23 @@ export default function Games() {
       .catch(() => setPositions(null))
       .finally(() => setPosLoading(false));
   }, [selectedId]);
+
+  // Reset analysis when game changes
+  React.useEffect(() => {
+    setAnalyzeStatus("idle");
+    setAnalysisData(null);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, [selectedId]);
+
+  // Cleanup polling on unmount
+  React.useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   // Keyboard navigation
   React.useEffect(() => {
@@ -102,6 +132,19 @@ export default function Games() {
   for (let i = 0; i < movesList.length; i += 2) {
     rounds.push({ round: Math.floor(i / 2) + 1, red: i, black: i + 1 });
   }
+
+  // Build analysis map: move_index -> move data
+  const analysisMap = React.useMemo(() => {
+    if (!analysisData || !analysisData.moves) return {};
+    const map = {};
+    for (const m of analysisData.moves) {
+      map[m.move_index] = m;
+    }
+    return map;
+  }, [analysisData]);
+
+  // Current analysis detail: stepIndex corresponds to move at index stepIndex-1
+  const currentMoveAnalysis = stepIndex > 0 ? analysisMap[stepIndex - 1] : null;
 
   function handleSelectGame(id) {
     setSelectedId(id === selectedId ? null : id);
@@ -145,6 +188,30 @@ export default function Games() {
     await deleteGame(id);
     if (selectedId === id) setSelectedId(null);
     loadGames();
+  }
+
+  async function handleAnalyze() {
+    if (!selectedId || analyzeStatus === "analyzing") return;
+    setAnalyzeStatus("analyzing");
+    try {
+      await analyzeGame(selectedId);
+    } catch {
+      // ignore, still start polling
+    }
+    // Start polling
+    pollRef.current = setInterval(async () => {
+      try {
+        const result = await getAnalysis(selectedId);
+        if (result.status === "done") {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          setAnalyzeStatus("done");
+          setAnalysisData(result);
+        }
+      } catch {
+        // keep polling
+      }
+    }, 2000);
   }
 
   return (
@@ -310,6 +377,21 @@ export default function Games() {
           <div className="review-content">
             {/* Board */}
             <div className="review-board-wrap">
+              {/* Analyze button row */}
+              <div className="review-meta-row">
+                <button
+                  className={"btn-analyze" + (analyzeStatus === "analyzing" ? " analyzing" : "")}
+                  onClick={handleAnalyze}
+                  disabled={analyzeStatus === "analyzing" || analyzeStatus === "done"}
+                >
+                  {analyzeStatus === "analyzing"
+                    ? "分析中…"
+                    : analyzeStatus === "done"
+                    ? "已分析"
+                    : "分析此局"}
+                </button>
+              </div>
+
               {currentFen ? (
                 <Board
                   fen={currentFen}
@@ -353,33 +435,132 @@ export default function Games() {
                 {rounds.map(({ round, red, black }) => (
                   <div key={round} className="move-round">
                     <span className="move-round-num">{round}.</span>
-                    <span
-                      className={
-                        "move-item" +
-                        (stepIndex === red + 1 ? " active" : "")
-                      }
+                    <MoveItem
+                      moveIndex={red}
+                      moveText={movesList[red] || ""}
+                      isActive={stepIndex === red + 1}
+                      analysisEntry={analysisMap[red]}
                       onClick={() => setStepIndex(red + 1)}
-                    >
-                      {movesList[red] || ""}
-                    </span>
+                    />
                     {movesList[black] !== undefined && (
-                      <span
-                        className={
-                          "move-item" +
-                          (stepIndex === black + 1 ? " active" : "")
-                        }
+                      <MoveItem
+                        moveIndex={black}
+                        moveText={movesList[black]}
+                        isActive={stepIndex === black + 1}
+                        analysisEntry={analysisMap[black]}
                         onClick={() => setStepIndex(black + 1)}
-                      >
-                        {movesList[black]}
-                      </span>
+                      />
                     )}
                   </div>
                 ))}
               </div>
+
+              {/* Analysis detail panel */}
+              {analyzeStatus === "done" && analysisData && (
+                <AnalysisPanel
+                  summary={{ blunder_count: analysisData.blunder_count, mistake_count: analysisData.mistake_count }}
+                  moveAnalysis={currentMoveAnalysis}
+                  stepIndex={stepIndex}
+                  onNavigateToTrain={onNavigateToTrain}
+                />
+              )}
             </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function MoveItem({ moveIndex, moveText, isActive, analysisEntry, onClick }) {
+  const quality = getMoveQuality(analysisEntry);
+  let extraClass = "";
+  if (quality === "blunder") extraClass = " move-blunder";
+  else if (quality === "mistake") extraClass = " move-mistake";
+  else if (quality === "inaccuracy") extraClass = " move-inaccuracy";
+
+  return (
+    <span
+      className={"move-item" + (isActive ? " active" : "") + extraClass}
+      onClick={onClick}
+    >
+      {moveText}
+    </span>
+  );
+}
+
+function AnalysisPanel({ summary, moveAnalysis, stepIndex, onNavigateToTrain }) {
+  const badgeInfo = moveAnalysis
+    ? moveAnalysis.is_blunder
+      ? { text: "严重失误", color: "#c0392b", bg: "#ffebee" }
+      : moveAnalysis.is_mistake
+      ? { text: "失误", color: "#e67e22", bg: "#fff3e0" }
+      : moveAnalysis.move_played !== moveAnalysis.best_move
+      ? { text: "可改进", color: "#b8860b", bg: "#fffde7" }
+      : null
+    : null;
+
+  const evalDrop = moveAnalysis && moveAnalysis.eval_drop != null
+    ? (moveAnalysis.eval_drop / 100).toFixed(1)
+    : null;
+
+  return (
+    <div className="analysis-panel">
+      {/* Summary */}
+      <div className="analysis-summary">
+        <span style={{ color: "#c0392b", fontWeight: 600 }}>
+          {summary.blunder_count} 处严重失误
+        </span>
+        <span style={{ color: "#888", margin: "0 6px" }}>，</span>
+        <span style={{ color: "#e67e22", fontWeight: 600 }}>
+          {summary.mistake_count} 处失误
+        </span>
+      </div>
+
+      {/* Move detail */}
+      {moveAnalysis && stepIndex > 0 ? (
+        <div className="analysis-detail">
+          <div className="analysis-detail-header">
+            <span className="analysis-move-label">第 {stepIndex} 步</span>
+            {badgeInfo && (
+              <span
+                className="analysis-badge"
+                style={{ color: badgeInfo.color, background: badgeInfo.bg }}
+              >
+                {badgeInfo.text}
+              </span>
+            )}
+          </div>
+          <div className="analysis-moves-row">
+            <span>实际走法：<strong>{moveAnalysis.move_played}</strong></span>
+            <span className="analysis-arrow">→</span>
+            <span>最优走法：<strong>{moveAnalysis.best_move}</strong></span>
+          </div>
+          {evalDrop !== null && (
+            <div className="analysis-eval-drop muted">
+              失分：约 {evalDrop} 个子
+            </div>
+          )}
+          {moveAnalysis.explanation && (
+            <div className="analysis-explanation">
+              {moveAnalysis.explanation}
+            </div>
+          )}
+          {moveAnalysis.puzzle_id && (
+            <button
+              className="btn-analyze"
+              style={{ marginTop: 8 }}
+              onClick={() => onNavigateToTrain && onNavigateToTrain(moveAnalysis.puzzle_id)}
+            >
+              去练习这道题
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>
+          点击某步棋查看分析详情
+        </div>
+      )}
     </div>
   );
 }

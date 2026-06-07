@@ -84,6 +84,26 @@ class Game(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
 
 
+class GameAnalysis(Base):
+    """棋局逐步引擎分析结果。"""
+
+    __tablename__ = "game_analysis"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id"), index=True)
+    move_index: Mapped[int] = mapped_column(Integer)          # 0-based，第几步
+    fen_before: Mapped[str] = mapped_column(Text)              # 走这步前的局面
+    move_played: Mapped[str] = mapped_column(String(10))       # 实际走法 UCI
+    best_move: Mapped[str] = mapped_column(String(10), default="")  # 引擎最优
+    score_cp: Mapped[int | None] = mapped_column(Integer, nullable=True)   # 走这步前评分（当前方视角）
+    score_mate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    eval_drop: Mapped[int] = mapped_column(Integer, default=0)  # 失分（正=失误）
+    is_blunder: Mapped[bool] = mapped_column(Boolean, default=False)  # eval_drop > 200
+    is_mistake: Mapped[bool] = mapped_column(Boolean, default=False)  # eval_drop > 80
+    explanation: Mapped[str] = mapped_column(Text, default="")        # DeepSeek 解释
+    puzzle_id: Mapped[int | None] = mapped_column(ForeignKey("puzzles.id"), nullable=True)
+
+
 DB_URL = "sqlite:///./data/puzzles.db"
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False)

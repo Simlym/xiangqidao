@@ -5,6 +5,7 @@ import Games from "./Games";
 
 export default function App() {
   const [tab, setTab] = React.useState("train");
+  const [pendingPuzzleId, setPendingPuzzleId] = React.useState(null);
   return (
     <div className="app">
       <header>
@@ -33,7 +34,14 @@ export default function App() {
       <main>
         {tab === "train" && <Trainer />}
         {tab === "stats" && <Stats />}
-        {tab === "games" && <Games />}
+        {tab === "games" && (
+          <Games
+            onNavigateToTrain={(puzzleId) => {
+              setPendingPuzzleId(puzzleId);
+              setTab("train");
+            }}
+          />
+        )}
       </main>
     </div>
   );

@@ -56,3 +56,15 @@ export async function deleteGame(gameId) {
   const r = await fetch(`${base}/games/${gameId}`, { method: "DELETE" });
   return r.json();
 }
+
+export async function analyzeGame(gameId) {
+  const r = await fetch(`${base}/games/${gameId}/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  return r.json();
+}
+
+export async function getAnalysis(gameId) {
+  return (await fetch(`${base}/games/${gameId}/analysis`)).json();
+}

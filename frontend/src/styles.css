@@ -413,3 +413,56 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   .review-content { flex-direction: column; }
   .review-moves-list { max-height: 200px; }
 }
+
+/* 着法质量颜色 */
+.move-blunder { background: #ffebee !important; }
+.move-mistake { background: #fff3e0 !important; }
+.move-inaccuracy { background: #fffde7 !important; }
+.move-item.active.move-blunder,
+.move-item.active.move-mistake,
+.move-item.active.move-inaccuracy { background: #8a5a2b !important; color: #fff; }
+
+/* 分析按钮 */
+.btn-analyze {
+  border: none; background: #8a5a2b; color: #fff;
+  border-radius: 8px; padding: 6px 14px; cursor: pointer;
+  font-size: 14px; font-weight: 600; transition: opacity .2s;
+}
+.btn-analyze:hover { opacity: 0.85; }
+.btn-analyze.analyzing { opacity: 0.6; cursor: not-allowed; }
+.btn-analyze:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* 分析摘要 */
+.review-meta-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 8px;
+}
+
+/* 分析详情面板 */
+.analysis-panel {
+  background: #fff; border-radius: 10px; padding: 12px;
+  margin-top: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07);
+  border: 1px solid #ede8df;
+}
+.analysis-summary {
+  font-size: 13px; margin-bottom: 10px;
+  padding-bottom: 8px; border-bottom: 1px solid #f0ece4;
+}
+.analysis-detail-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.analysis-move-label { font-weight: 600; font-size: 14px; }
+.analysis-badge {
+  display: inline-block; border-radius: 6px;
+  padding: 1px 8px; font-size: 12px; font-weight: 600;
+}
+.analysis-moves-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; margin-bottom: 6px; flex-wrap: wrap;
+}
+.analysis-arrow { color: #aaa; }
+.analysis-eval-drop { font-size: 13px; margin-bottom: 6px; }
+.analysis-explanation {
+  font-size: 13px; background: #fafaf7; border-left: 3px solid #d4b896;
+  padding: 6px 10px; border-radius: 4px; margin-top: 6px; line-height: 1.6;
+}
