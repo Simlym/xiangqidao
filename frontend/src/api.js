@@ -5,7 +5,16 @@ export async function getNext() {
   return r.json();
 }
 
-export async function submit(payload) {
+export async function checkMove(payload) {
+  const r = await fetch(`${base}/training/check_move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return r.json();
+}
+
+export async function submitRating(payload) {
   const r = await fetch(`${base}/training/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
