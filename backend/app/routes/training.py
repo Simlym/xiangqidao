@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import current_user_id
 from ..deps import get_db
+from ..importer.verify_mate import FILES, parse_fen
 from ..models import Attempt, Puzzle, Review
 from ..play_engine import game_status, legal_moves_uci
 from ..srs import SrsState, review as srs_review
@@ -43,6 +44,7 @@ class CheckMoveRequest(BaseModel):
     puzzle_id: int
     step: int        # 0-based，第几步
     move: str        # 用户走的着法，UCI 坐标制
+    attempt: int = 0  # 本步已错次数，用于分级提示（越大透露越多）
 
 
 class CheckMoveResponse(BaseModel):
@@ -64,6 +66,37 @@ class SubmitRequest(BaseModel):
 class SubmitResponse(BaseModel):
     next_review: date
     solution: list[str]    # 完整正解，供答错后展示讲解
+
+
+PIECE_NAMES = {
+    "K": "帅", "A": "仕", "B": "相", "N": "马", "R": "车", "C": "炮", "P": "兵",
+    "k": "将", "a": "士", "b": "象", "n": "马", "r": "车", "c": "炮", "p": "卒",
+}
+
+
+def _piece_name_at(fen: str, sq: str) -> str:
+    """返回 UCI 方格 sq 处棋子的中文名，空格返回'棋子'。"""
+    try:
+        board = parse_fen(fen)
+        col = FILES.index(sq[0])
+        row = 9 - int(sq[1])  # verify_mate 内部 row0=rank9
+        p = board[row][col]
+        return PIECE_NAMES.get(p, "棋子") if p else "棋子"
+    except Exception:
+        return "棋子"
+
+
+def _graded_hint(fen_now: str, expected: str, attempt: int) -> str:
+    """分级提示：错得越多透露越多。
+    1 次错→起点格；2 次错→起点棋子名；3 次及以上→完整正解。
+    """
+    start, target = expected[:2], expected[2:]
+    if attempt <= 0:
+        return f"该走的棋子在 {start}"
+    name = _piece_name_at(fen_now, start)
+    if attempt == 1:
+        return f"动用 {start} 的{name}"
+    return f"正解：{name} {start} → {target}"
 
 
 # ── 接口 ───────────────────────────────────────────────────────
@@ -158,8 +191,8 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
             pass
 
     if not correct:
-        # 给起点提示（透露棋子所在文件+行，不透露目标）
-        hint = expected[:2]
+        # 分级提示：随重试次数逐步透露更多
+        hint = _graded_hint(fen_now, expected, req.attempt)
         return CheckMoveResponse(correct=False, done=False, fen_after=None, hint=hint)
 
     # 接受的着法即用户所走（非末步时它必等于录入正解；末步可能是等效变着）

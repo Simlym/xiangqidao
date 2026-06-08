@@ -49,6 +49,19 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   const board = parseFen(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
 
+  // 移动端自适应：按容器宽度等比缩放整块棋盘（保留内部固定像素坐标）
+  const wrapRef = React.useRef(null);
+  const [scale, setScale] = React.useState(1);
+  React.useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => setScale(Math.min(1, el.clientWidth / SW));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const restrict = Array.isArray(legalMoves);
   // 当前选中起点的合法落点集合
   const targets = React.useMemo(() => {
@@ -94,7 +107,12 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   const lastTo = lastMove ? lastMove.slice(2, 4) : null;
 
   return (
-    <div className="xq-board" style={{ width: SW, height: SH }}>
+    <div className="xq-board-measure" ref={wrapRef}>
+    <div className="xq-board-wrap" style={{ width: SW * scale, height: SH * scale }}>
+    <div
+      className="xq-board"
+      style={{ width: SW, height: SH, transform: `scale(${scale})`, transformOrigin: "top left" }}
+    >
       <svg className="xq-lines" width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`}>
         {/* 横线 */}
         {Array.from({ length: ROWS }, (_, r) => (
@@ -159,6 +177,8 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
           })
         )}
       </div>
+    </div>
+    </div>
     </div>
   );
 }

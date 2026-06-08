@@ -23,7 +23,8 @@ export default function Trainer() {
   const [currentFen, setCurrentFen] = React.useState("");
   const [lastMove, setLastMove]   = React.useState(null);
   const [hadRetry, setHadRetry]   = React.useState(false);
-  const [hint, setHint]           = React.useState(null);    // 起点提示
+  const [wrongCount, setWrongCount] = React.useState(0);     // 本步已错次数，驱动分级提示
+  const [hint, setHint]           = React.useState(null);    // 分级提示文案
   const [stepMsg, setStepMsg]     = React.useState("");      // 中间步骤反馈
 
   // 最终结果
@@ -36,6 +37,7 @@ export default function Trainer() {
     setStep(0);
     setLastMove(null);
     setHadRetry(false);
+    setWrongCount(0);
     setHint(null);
     setStepMsg("");
     setSolution([]);
@@ -57,11 +59,12 @@ export default function Trainer() {
     setLastMove(move);
     setHint(null);
 
-    const res = await checkMove({ puzzle_id: puzzle.id, step, move });
+    const res = await checkMove({ puzzle_id: puzzle.id, step, move, attempt: wrongCount });
 
     if (!res.correct) {
       setHadRetry(true);
-      setHint(res.hint);   // 起点提示
+      setWrongCount((n) => n + 1);
+      setHint(res.hint);   // 分级提示
       setPhase("wrong");
       return;
     }
@@ -73,6 +76,7 @@ export default function Trainer() {
       // 中间步骤正确：短暂提示后继续
       const nextStep = step + 1;
       setStep(nextStep);
+      setWrongCount(0);    // 进入下一步，重置该步错误计数
       setCurrentFen(res.fen_after);
       setStepMsg(`第 ${step + 1} 步正确，继续！`);
       setPhase("step_ok");
@@ -164,7 +168,7 @@ export default function Trainer() {
           {totalSteps > 1 ? `（第 ${step + 1} / ${totalSteps} 步）` : ""}。
         </p>
         {hint && (
-          <p className="hint">提示：从 <code>{hint}</code> 开始的棋子</p>
+          <p className="hint">提示：{hint}</p>
         )}
         {stepMsg && <p className="step-msg">{stepMsg}</p>}
       </div>

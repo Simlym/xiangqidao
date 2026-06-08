@@ -81,11 +81,26 @@ def test_non_mating_move_rejected():
     client, pid = _client_with_puzzle("h7f7")
     try:
         r = client.post("/api/training/check_move",
-                        json={"puzzle_id": pid, "step": 0, "move": "h7h8"})
+                        json={"puzzle_id": pid, "step": 0, "move": "h7h8", "attempt": 0})
         assert r.status_code == 200
         data = r.json()
         assert data["correct"] is False
-        assert data["hint"] == "h7"
+        assert "h7" in data["hint"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_graded_hint_escalates():
+    """错的次数越多，提示透露越多：起点 → 棋子名 → 完整正解。"""
+    client, pid = _client_with_puzzle("h7f7")
+    try:
+        def hint(attempt):
+            return client.post("/api/training/check_move",
+                               json={"puzzle_id": pid, "step": 0, "move": "h7h8",
+                                     "attempt": attempt}).json()["hint"]
+        assert "h7" in hint(0)
+        assert "车" in hint(1)            # h7 处是白车
+        assert "f7" in hint(2) and "h7" in hint(2)  # 完整正解含起点与终点
     finally:
         app.dependency_overrides.clear()
 
