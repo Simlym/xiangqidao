@@ -52,6 +52,7 @@ export const submitRating = (payload) => req("/training/submit", { method: "POST
 export const getOverview = () => req("/stats/overview");
 export const getByCategory = () => req("/stats/by_category");
 export const getWeekly = () => req("/stats/weekly");
+export const getForecast = (days = 14) => req(`/stats/forecast?days=${days}`);
 
 // ── 复盘 ────────────────────────────────────────────────
 export const getGames = (limit = 20, offset = 0) => req(`/games?limit=${limit}&offset=${offset}`);

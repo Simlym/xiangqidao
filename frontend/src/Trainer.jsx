@@ -16,13 +16,15 @@ export default function Trainer() {
   const [puzzle, setPuzzle]       = React.useState(null);
   const [dueCount, setDueCount]   = React.useState(0);
   const [phase, setPhase]         = React.useState("loading");
+  const [newCapped, setNewCapped] = React.useState(false);
 
   // 多步追踪
   const [step, setStep]           = React.useState(0);
   const [currentFen, setCurrentFen] = React.useState("");
   const [lastMove, setLastMove]   = React.useState(null);
   const [hadRetry, setHadRetry]   = React.useState(false);
-  const [hint, setHint]           = React.useState(null);    // 起点提示
+  const [wrongCount, setWrongCount] = React.useState(0);     // 本步已错次数，驱动分级提示
+  const [hint, setHint]           = React.useState(null);    // 分级提示文案
   const [stepMsg, setStepMsg]     = React.useState("");      // 中间步骤反馈
 
   // 最终结果
@@ -30,18 +32,35 @@ export default function Trainer() {
   const [nextReview, setNextReview] = React.useState(null);
   const startedAt                 = React.useRef(0);
 
+  // 计时训练
+  const [timed, setTimed]   = React.useState(true);
+  const [elapsed, setElapsed] = React.useState(0);  // 秒
+  const solveMs               = React.useRef(0);     // 完成时定格的用时
+
+  // 解题进行中实时计时；完成/答错面板出现后停表
+  React.useEffect(() => {
+    if (!timed || !["thinking", "step_ok"].includes(phase)) return;
+    const id = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)),
+      250,
+    );
+    return () => clearInterval(id);
+  }, [timed, phase]);
+
   const load = React.useCallback(async () => {
     setPhase("loading");
     setStep(0);
     setLastMove(null);
     setHadRetry(false);
+    setWrongCount(0);
     setHint(null);
     setStepMsg("");
     setSolution([]);
+    setElapsed(0);
 
     const d = await getNext();
     setDueCount(d.due_count);
-    if (!d.puzzle) { setPhase("empty"); return; }
+    if (!d.puzzle) { setNewCapped(!!d.new_limit_reached); setPhase("empty"); return; }
 
     setPuzzle(d.puzzle);
     setCurrentFen(d.puzzle.fen);
@@ -56,11 +75,12 @@ export default function Trainer() {
     setLastMove(move);
     setHint(null);
 
-    const res = await checkMove({ puzzle_id: puzzle.id, step, move });
+    const res = await checkMove({ puzzle_id: puzzle.id, step, move, attempt: wrongCount });
 
     if (!res.correct) {
       setHadRetry(true);
-      setHint(res.hint);   // 起点提示
+      setWrongCount((n) => n + 1);
+      setHint(res.hint);   // 分级提示
       setPhase("wrong");
       return;
     }
@@ -69,17 +89,24 @@ export default function Trainer() {
       setCurrentFen(res.fen_after);
       setPhase("rating");
     } else {
-      // 中间步骤正确：短暂提示后继续
+      // 中间步骤正确：展示对方应着后继续
       const nextStep = step + 1;
       setStep(nextStep);
+      setWrongCount(0);    // 进入下一步，重置该步错误计数
       setCurrentFen(res.fen_after);
-      setStepMsg(`第 ${step + 1} 步正确，继续！`);
+      // fen_after 已含对方应着，高亮其落子让玩家看清对方回应
+      if (res.opponent_move) setLastMove(res.opponent_move);
+      setStepMsg(
+        res.opponent_move
+          ? `第 ${step + 1} 步正确！对方应：${res.opponent_move}`
+          : `第 ${step + 1} 步正确，继续！`
+      );
       setPhase("step_ok");
       setTimeout(() => {
         setStepMsg("");
         setLastMove(null);
         setPhase("thinking");
-      }, 900);
+      }, 1100);
     }
   }
 
@@ -91,12 +118,13 @@ export default function Trainer() {
 
   async function onGiveUp() {
     // 放弃：直接提交 again，拿到正解
+    solveMs.current = Date.now() - startedAt.current;
     const res = await submitRating({
       puzzle_id: puzzle.id,
       self_rating: "again",
       had_retry: true,
       correct: false,
-      time_spent_ms: Date.now() - startedAt.current,
+      time_spent_ms: solveMs.current,
     });
     setSolution(res.solution);
     setNextReview(res.next_review);
@@ -104,17 +132,20 @@ export default function Trainer() {
   }
 
   async function onRate(rating) {
+    solveMs.current = Date.now() - startedAt.current;
     const res = await submitRating({
       puzzle_id: puzzle.id,
       self_rating: rating,
       had_retry: hadRetry,
       correct: true,
-      time_spent_ms: Date.now() - startedAt.current,
+      time_spent_ms: solveMs.current,
     });
     setSolution(res.solution);
     setNextReview(res.next_review);
     setPhase("done");
   }
+
+  const fmtSec = (ms) => `${(ms / 1000).toFixed(1)} 秒`;
 
   // ── 渲染 ──────────────────────────────────────────────────────
 
@@ -122,8 +153,12 @@ export default function Trainer() {
   if (phase === "empty")
     return (
       <div className="panel">
-        <h2>今日到期题已清空</h2>
-        <p>没有新题可练了。导入更多题库后再来，或明天复习。</p>
+        <h2>今日训练已完成 🎉</h2>
+        {newCapped ? (
+          <p>已达今日新题上限，明天再来学新题；也可随时复习到期题，劳逸结合更高效。</p>
+        ) : (
+          <p>没有到期或新题了。导入更多题库后再来，或明天复习。</p>
+        )}
       </div>
     );
 
@@ -141,6 +176,14 @@ export default function Trainer() {
           {totalSteps > 1 && (
             <span className="tag">共 {totalSteps} 步</span>
           )}
+          {timed && <span className="tag timer">⏱ {elapsed}s</span>}
+          <span
+            className="tag clickable"
+            onClick={() => setTimed((v) => !v)}
+            title="切换计时模式"
+          >
+            计时{timed ? "开" : "关"}
+          </span>
           <span className="due-badge">到期 {dueCount} 题</span>
         </div>
         {/* 多步进度条 */}
@@ -159,7 +202,7 @@ export default function Trainer() {
           {totalSteps > 1 ? `（第 ${step + 1} / ${totalSteps} 步）` : ""}。
         </p>
         {hint && (
-          <p className="hint">提示：从 <code>{hint}</code> 开始的棋子</p>
+          <p className="hint">提示：{hint}</p>
         )}
         {stepMsg && <p className="step-msg">{stepMsg}</p>}
       </div>
@@ -210,6 +253,7 @@ export default function Trainer() {
       {phase === "done" && (
         <div className="panel result ok">
           <p>正解：<code>{solution.join(" → ")}</code></p>
+          {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
           <p className="muted">下次复习：{nextReview}</p>
           <button onClick={load}>下一题 →</button>
         </div>

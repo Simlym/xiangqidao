@@ -1,6 +1,6 @@
 import React from "react";
 import Board from "./Board";
-import { newPlayGame, playMove } from "./api";
+import { newPlayGame, playMove, importGame } from "./api";
 
 const LEVELS = [
   { key: "easy", label: "入门" },
@@ -23,43 +23,102 @@ export default function Play() {
   const [level, setLevel] = React.useState("medium");
   const [humanSide, setHumanSide] = React.useState("w");
   const [status, setStatus] = React.useState("ongoing");
+  const [saved, setSaved] = React.useState(false);   // 对局是否已存入复盘
+  const [canUndo, setCanUndo] = React.useState(false);
+  const moves = React.useRef([]);                     // 累计着法（红黑交替）
+  const history = React.useRef([]);                   // 悔棋快照栈
 
   async function start(side, lvl) {
     setThinking(true);
     setOver(null);
     setLastMove(null);
+    setSaved(false);
+    setCanUndo(false);
+    moves.current = [];
+    history.current = [];
     const d = await newPlayGame({ human_side: side, level: lvl });
     setFen(d.fen);
     setLegalMoves(d.legal_moves || []);
     setLastMove(d.engine_move || null);
+    if (d.engine_move) moves.current.push(d.engine_move);  // 人执黑时引擎先手
     setStatus(d.status);
     setYourTurn(true);
     setThinking(false);
   }
 
+  // 对局结束：存入复盘棋谱，形成「对弈→复盘→分析」闭环
+  async function recordGame(winner) {
+    if (saved || moves.current.length === 0) return;
+    const result =
+      winner === "draw"
+        ? "和棋"
+        : (winner === "human") === (humanSide === "w")
+        ? "红胜"
+        : "黑胜";
+    const me = humanSide === "w" ? "red_player" : "black_player";
+    const foe = humanSide === "w" ? "black_player" : "red_player";
+    const lvlLabel = LEVELS.find((l) => l.key === level)?.label || level;
+    try {
+      await importGame({
+        moves: moves.current.join(" "),
+        result,
+        source: "人机对弈",
+        [me]: "我",
+        [foe]: `引擎·${lvlLabel}`,
+        played_on: new Date().toISOString().slice(0, 10),
+      });
+      setSaved(true);
+    } catch {
+      /* 存盘失败不影响对弈本身 */
+    }
+  }
+
   async function onMove(move) {
     if (!yourTurn || thinking || over) return;
+    // 走子前快照当前“轮到你”的局面，供悔棋还原（连人带机回退一个回合）
+    history.current.push({
+      fen, legalMoves, lastMove, status, movesLen: moves.current.length,
+    });
     setYourTurn(false);
     setThinking(true);
     setLastMove(move);
     try {
       const d = await playMove({ fen, move, level });
+      moves.current.push(move);                          // 记录人走的着法
+      if (d.engine_move) moves.current.push(d.engine_move); // 记录引擎应着
       setFen(d.fen);
       setLastMove(d.engine_move || move);
       setStatus(d.status);
       if (d.game_over) {
         setOver({ winner: d.winner, status: d.status });
         setLegalMoves([]);
+        recordGame(d.winner);
       } else {
         setLegalMoves(d.legal_moves || []);
         setYourTurn(true);
       }
+      setCanUndo(true);
     } catch {
       // 理论上前端已限制为合法着法，兜底恢复
+      history.current.pop();
       setYourTurn(true);
     } finally {
       setThinking(false);
     }
+  }
+
+  function undo() {
+    if (thinking || history.current.length === 0) return;
+    const snap = history.current.pop();
+    moves.current = moves.current.slice(0, snap.movesLen);
+    setFen(snap.fen);
+    setLegalMoves(snap.legalMoves);
+    setLastMove(snap.lastMove);
+    setStatus(snap.status);
+    setOver(null);
+    setSaved(false);
+    setYourTurn(true);
+    setCanUndo(history.current.length > 0);
   }
 
   // 初始进入选择界面
@@ -125,6 +184,14 @@ export default function Play() {
             ? "将军！轮到你"
             : "轮到你走"}
         </span>
+        <button
+          className="btn-newgame"
+          onClick={undo}
+          disabled={!canUndo || thinking}
+          style={{ opacity: !canUndo || thinking ? 0.5 : 1 }}
+        >
+          悔棋
+        </button>
         <button className="btn-newgame" onClick={() => setFen(null)}>
           重开
         </button>
@@ -141,6 +208,7 @@ export default function Play() {
       {over && (
         <div className="panel result ok" style={{ textAlign: "center" }}>
           <h3>{winnerText}</h3>
+          <p className="muted">{saved ? "已存入「复盘」，可前往分析本局得失。" : "本局未保存。"}</p>
           <button onClick={() => start(humanSide, level)}>再来一盘</button>
         </div>
       )}

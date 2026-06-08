@@ -49,6 +49,19 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   const board = parseFen(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
 
+  // 移动端自适应：按容器宽度等比缩放整块棋盘（保留内部固定像素坐标）
+  const wrapRef = React.useRef(null);
+  const [scale, setScale] = React.useState(1);
+  React.useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => setScale(Math.min(1, el.clientWidth / SW));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const restrict = Array.isArray(legalMoves);
   // 当前选中起点的合法落点集合
   const targets = React.useMemo(() => {
@@ -93,8 +106,22 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   const lastFrom = lastMove ? lastMove.slice(0, 2) : null;
   const lastTo = lastMove ? lastMove.slice(2, 4) : null;
 
+  // 走子动画：落点棋子从起点滑入。计算起点相对终点的像素偏移。
+  const sqToRC = (sq) => ({ col: "abcdefghi".indexOf(sq[0]), row: 9 - Number(sq[1]) });
+  let slide = null;
+  if (lastFrom && lastTo) {
+    const f = sqToRC(lastFrom);
+    const t = sqToRC(lastTo);
+    slide = { dx: px(f.col) - px(t.col), dy: py(f.row) - py(t.row) };
+  }
+
   return (
-    <div className="xq-board" style={{ width: SW, height: SH }}>
+    <div className="xq-board-measure" ref={wrapRef}>
+    <div className="xq-board-wrap" style={{ width: SW * scale, height: SH * scale }}>
+    <div
+      className="xq-board"
+      style={{ width: SW, height: SH, transform: `scale(${scale})`, transformOrigin: "top left" }}
+    >
       <svg className="xq-lines" width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`}>
         {/* 横线 */}
         {Array.from({ length: ROWS }, (_, r) => (
@@ -145,10 +172,17 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
                 {isTarget && <span className={"xq-dot" + (cell ? " capture" : "")} />}
                 {cell && (
                   <span
+                    key={sq === lastTo && slide ? `mv-${lastMove}` : sq}
                     className={
                       "xq-piece " +
                       (cell.red ? "red" : "black") +
-                      (selected ? " selected" : "")
+                      (selected ? " selected" : "") +
+                      (sq === lastTo && slide ? " moving" : "")
+                    }
+                    style={
+                      sq === lastTo && slide
+                        ? { "--dx": `${slide.dx}px`, "--dy": `${slide.dy}px` }
+                        : undefined
                     }
                   >
                     {cell.glyph}
@@ -159,6 +193,8 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
           })
         )}
       </div>
+    </div>
+    </div>
     </div>
   );
 }

@@ -107,12 +107,16 @@ def _negamax(board, side: str, depth: int, alpha: int, beta: int) -> int:
     return best
 
 
-def _builtin_best_move(fen: str, depth: int) -> str | None:
+def _builtin_search(fen: str, depth: int) -> tuple[str | None, int]:
+    """内置搜索：返回 (最优着 UCI, 走子方视角评分 cp)。
+
+    无合法着时返回 (None, 被将死=-MATE / 困毙=0)。
+    """
     board = parse_fen(fen)
     side = side_to_move(fen)
     moves = legal_moves(board, side)
     if not moves:
-        return None
+        return None, (-1000000 if in_check(board, side) else 0)
 
     def cap_value(m):
         tgt = board[m[2]][m[3]]
@@ -131,7 +135,16 @@ def _builtin_best_move(fen: str, depth: int) -> str | None:
             best_move = m
         if best_val > alpha:
             alpha = best_val
-    return _mv_uci(best_move)
+    return _mv_uci(best_move), best_val
+
+
+def _builtin_best_move(fen: str, depth: int) -> str | None:
+    return _builtin_search(fen, depth)[0]
+
+
+def builtin_evaluate(fen: str, depth: int = 3) -> tuple[str | None, int]:
+    """供棋局分析在未装 Pikafish 时兜底：返回 (最优着, 走子方视角 cp)。"""
+    return _builtin_search(fen, depth)
 
 
 # 难度 -> 内置搜索深度
@@ -139,10 +152,10 @@ DEPTH = {"easy": 1, "medium": 2, "hard": 3}
 
 
 def choose_move(fen: str, level: str = "medium") -> str | None:
-    """为当前走子方选择一着。优先 Pikafish，否则内置搜索。"""
-    from .engine import get_engine
+    """为当前走子方选择一着。优先 Pikafish（复用共享进程），否则内置搜索。"""
+    from .engine import get_shared_engine
 
-    engine = get_engine()
+    engine = get_shared_engine()
     if engine is not None:
         try:
             depth = {"easy": 6, "medium": 12, "hard": 18}.get(level, 12)
@@ -151,9 +164,5 @@ def choose_move(fen: str, level: str = "medium") -> str | None:
                 return ev.best_move
         except Exception:
             pass
-        finally:
-            try:
-                engine.close()
-            except Exception:
-                pass
+        # 不再 close()：共享进程跨着法/对局复用，由进程生命周期管理
     return _builtin_best_move(fen, DEPTH.get(level, 2))

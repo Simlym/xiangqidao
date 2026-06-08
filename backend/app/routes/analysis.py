@@ -4,14 +4,27 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..deps import get_db
-from ..engine import get_engine
+from ..engine import get_shared_engine
 from ..llm import explain_mistake
 from ..models import Game, GameAnalysis, Puzzle
+from ..play_engine import builtin_evaluate, game_status
 from ..xiangqi_utils import apply_move
 
 router = APIRouter(prefix="/api/games", tags=["analysis"])
 
 INITIAL_FEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+
+# 杀棋折算的等效 centipawn 基准；越快的杀分值越高。
+MATE_CP = 30000
+
+# 失误判定阈值（按象棋子力标定：车=900、炮/马≈450、过河兵≈180、兵≈100）
+BLUNDER_DROP = 300   # 漏算（丢一子或被反杀级别）
+MISTAKE_DROP = 100   # 不准（丢一兵或显著让分）
+
+
+def _mate_to_cp(mate: int) -> int:
+    """将 score mate（几步杀）折算成等效 centipawn，便于与 cp 统一比较。"""
+    return (MATE_CP - abs(mate)) * (1 if mate > 0 else -1)
 
 
 def _flip_score(score_cp: int | None) -> int | None:
@@ -19,6 +32,56 @@ def _flip_score(score_cp: int | None) -> int | None:
     if score_cp is None:
         return None
     return -score_cp
+
+
+class _Eval:
+    """统一封装一个局面的评估：best_move、存档用 cp/mate、比较用 unified cp、pv。"""
+
+    __slots__ = ("best_move", "score_cp", "score_mate", "unified", "pv")
+
+    def __init__(self, best_move, score_cp, score_mate, unified, pv=None):
+        self.best_move = best_move
+        self.score_cp = score_cp
+        self.score_mate = score_mate
+        self.unified = unified  # 走子方视角的等效 cp（mate 已折算），用于算 eval_drop
+        self.pv = pv            # 主变着法序列（己方/对方交替），用于生成多步题
+
+
+def _evaluate(fen: str, engine, builtin_depth: int = 3) -> _Eval:
+    """评估局面：有 Pikafish 用之，否则回退内置 negamax，保证分析不静默失效。"""
+    if engine is not None:
+        ev = engine.analyze(fen, depth=15)
+        if ev.score_cp is not None:
+            return _Eval(ev.best_move, ev.score_cp, None, ev.score_cp, ev.pv)
+        if ev.score_mate is not None:
+            return _Eval(ev.best_move, None, ev.score_mate, _mate_to_cp(ev.score_mate), ev.pv)
+        return _Eval(ev.best_move, None, None, None, ev.pv)
+
+    # 内置兜底：negamax 返回走子方视角 cp，极大值代表搜索内找到强制杀
+    mv, cp = builtin_evaluate(fen, depth=builtin_depth)
+    cp = max(-MATE_CP, min(MATE_CP, cp))
+    return _Eval(mv, cp, None, cp, None)
+
+
+def _trim_pv(fen: str, pv, max_plies: int = 7) -> list[str]:
+    """从 fen 起回放主变，截取一段合法着法作为多步题正解。
+
+    遇到将死即止；以“玩家着法”收尾（奇数长度），便于训练器逐步出题。
+    """
+    out: list[str] = []
+    cur = fen
+    for mv in (pv or [])[:max_plies]:
+        try:
+            nxt = apply_move(cur, mv)
+        except Exception:
+            break
+        out.append(mv)
+        cur = nxt
+        if game_status(cur) == "checkmate":
+            break
+    if len(out) % 2 == 0 and out:  # 末尾是对方应着则去掉，保证以己方着收尾
+        out = out[:-1]
+    return out
 
 
 def _run_analysis(game_id: int) -> None:
@@ -35,7 +98,9 @@ def _run_analysis(game_id: int) -> None:
         if not move_list:
             return
 
-        engine = get_engine()
+        engine = get_shared_engine()
+        if engine is not None:
+            engine.new_game()  # 每局开头清一次置换表即可，不在每个局面重复
 
         # 构建各局面 FEN
         fens: list[str] = [INITIAL_FEN]
@@ -59,35 +124,34 @@ def _run_analysis(game_id: int) -> None:
             side = "红方" if i % 2 == 0 else "黑方"
 
             best_move: str | None = None
+            best_pv: list[str] | None = None
             score_cp_before: int | None = None
             score_mate_before: int | None = None
             eval_drop = 0
 
-            if engine is not None:
-                try:
-                    # 分析走这步之前的局面，得到引擎最优着和评分
-                    eval_before = engine.analyze(fen_before, depth=15)
-                    best_move = eval_before.best_move or move
-                    score_cp_before = eval_before.score_cp
-                    score_mate_before = eval_before.score_mate
+            try:
+                # 分析走这步之前的局面，得到最优着和评分
+                eval_before = _evaluate(fen_before, engine)
+                best_move = eval_before.best_move or move
+                best_pv = eval_before.pv
+                score_cp_before = eval_before.score_cp
+                score_mate_before = eval_before.score_mate
 
-                    # 分析实际走法后的局面（从对方视角），取负得当前方的评价
-                    eval_after = engine.analyze(fen_after, depth=15)
-                    played_eval_current = _flip_score(eval_after.score_cp)
+                # 分析实际走法后的局面（对方视角），取负得当前方的评价
+                eval_after = _evaluate(fen_after, engine)
+                played_eval_current = _flip_score(eval_after.unified)
 
-                    # eval_drop = 引擎最优评分 - 实际走法评分
-                    if score_cp_before is not None and played_eval_current is not None:
-                        eval_drop = score_cp_before - played_eval_current
-                    elif score_cp_before is not None:
-                        eval_drop = 0
-                except Exception:
-                    pass
+                # eval_drop = 最优评分 - 实际走法评分（mate 已折算成 cp 参与计算）
+                if eval_before.unified is not None and played_eval_current is not None:
+                    eval_drop = eval_before.unified - played_eval_current
+            except Exception:
+                pass
 
-            is_blunder = eval_drop > 200
-            is_mistake = eval_drop > 80
+            is_blunder = eval_drop > BLUNDER_DROP
+            is_mistake = eval_drop > MISTAKE_DROP
 
             explanation = ""
-            if engine is not None and (is_blunder or is_mistake) and best_move and best_move != move:
+            if (is_blunder or is_mistake) and best_move and best_move != move:
                 explanation = explain_mistake(
                     fen=fen_before,
                     move_played=move,
@@ -99,13 +163,16 @@ def _run_analysis(game_id: int) -> None:
 
             # 对大漏着创建练习题
             puzzle_id: int | None = None
-            if engine is not None and is_blunder and best_move and best_move != move:
+            if is_blunder and best_move and best_move != move:
                 # 判断 FEN 中走方
                 fen_parts = fen_before.split()
                 side_to_move = fen_parts[1] if len(fen_parts) > 1 else "w"
+                # 用引擎主变生成多步正解（己方/对方交替），取不到则退化为单手
+                trimmed = _trim_pv(fen_before, best_pv)
+                solution = ",".join(trimmed) if len(trimmed) >= 1 else best_move
                 puzzle = Puzzle(
                     fen=fen_before,
-                    solution=best_move,
+                    solution=solution,
                     side_to_move=side_to_move,
                     category="实战漏算",
                     source=f"game_{game_id}",
@@ -129,14 +196,9 @@ def _run_analysis(game_id: int) -> None:
                 puzzle_id=puzzle_id,
             )
             db.add(record)
+            db.commit()  # 逐步提交，使前端可轮询出进度
 
-        db.commit()
-
-        if engine is not None:
-            try:
-                engine.close()
-            except Exception:
-                pass
+        # 共享引擎进程跨棋局复用，分析结束不再 close()
     except Exception:
         db.rollback()
     finally:
@@ -168,8 +230,11 @@ def get_analysis(game_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+    total = len(game.moves.split()) if game.moves and game.moves.strip() else 0
+    analyzed = len(records)
+
     if not records:
-        return {"status": "not_analyzed", "moves": []}
+        return {"status": "not_analyzed", "moves": [], "total": total, "analyzed": 0}
 
     moves = [
         {
@@ -194,8 +259,10 @@ def get_analysis(game_id: int, db: Session = Depends(get_db)):
     mistake_count = sum(1 for r in records if r.is_mistake and not r.is_blunder)
 
     return {
-        "status": "done",
+        "status": "done" if total and analyzed >= total else "analyzing",
         "moves": moves,
         "blunder_count": blunder_count,
         "mistake_count": mistake_count,
+        "total": total,
+        "analyzed": analyzed,
     }

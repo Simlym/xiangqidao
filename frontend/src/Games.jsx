@@ -46,6 +46,7 @@ export default function Games({ onNavigateToTrain }) {
   // Analysis state
   const [analyzeStatus, setAnalyzeStatus] = React.useState("idle"); // idle | analyzing | done
   const [analysisData, setAnalysisData] = React.useState(null); // null or {moves, blunder_count, mistake_count}
+  const [progress, setProgress] = React.useState({ analyzed: 0, total: 0 });
   const pollRef = React.useRef(null);
 
   // Load games list
@@ -84,6 +85,7 @@ export default function Games({ onNavigateToTrain }) {
   React.useEffect(() => {
     setAnalyzeStatus("idle");
     setAnalysisData(null);
+    setProgress({ analyzed: 0, total: 0 });
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -193,15 +195,19 @@ export default function Games({ onNavigateToTrain }) {
   async function handleAnalyze() {
     if (!selectedId || analyzeStatus === "analyzing") return;
     setAnalyzeStatus("analyzing");
+    setProgress({ analyzed: 0, total: 0 });
     try {
       await analyzeGame(selectedId);
     } catch {
       // ignore, still start polling
     }
-    // Start polling
+    // Start polling（带进度）
     pollRef.current = setInterval(async () => {
       try {
         const result = await getAnalysis(selectedId);
+        if (result.total != null) {
+          setProgress({ analyzed: result.analyzed || 0, total: result.total });
+        }
         if (result.status === "done") {
           clearInterval(pollRef.current);
           pollRef.current = null;
@@ -211,7 +217,7 @@ export default function Games({ onNavigateToTrain }) {
       } catch {
         // keep polling
       }
-    }, 2000);
+    }, 1000);
   }
 
   return (
@@ -390,6 +396,23 @@ export default function Games({ onNavigateToTrain }) {
                     ? "已分析"
                     : "分析此局"}
                 </button>
+                {analyzeStatus === "analyzing" && (
+                  <div className="analyze-progress">
+                    <div className="analyze-progress-track">
+                      <div
+                        className="analyze-progress-fill"
+                        style={{
+                          width: progress.total
+                            ? `${Math.round((progress.analyzed / progress.total) * 100)}%`
+                            : "0%",
+                        }}
+                      />
+                    </div>
+                    <span className="analyze-progress-text muted">
+                      {progress.total ? `${progress.analyzed}/${progress.total}` : "准备中…"}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {currentFen ? (

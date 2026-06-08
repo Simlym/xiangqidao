@@ -12,6 +12,27 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models import Base, GameAnalysis, Game
 from app.engine import get_engine
+from app.routes.analysis import _trim_pv
+
+
+# ── _trim_pv：从主变截取多步正解 ──────────────────────────────────────────────
+
+def test_trim_pv_stops_at_mate_and_keeps_odd_length():
+    """双步杀主变应完整保留（遇将死即止，奇数长度以己方着收尾）。"""
+    fen = "9/5k3/9/9/9/9/R8/9/6R2/5K3 w"
+    pv = ["f0e0", "f8f7", "a3f3"]
+    assert _trim_pv(fen, pv) == ["f0e0", "f8f7", "a3f3"]
+
+
+def test_trim_pv_drops_trailing_opponent_move():
+    """偶数长度（末尾是对方应着）应去掉最后一手，保证以己方着收尾。"""
+    fen = "9/5k3/9/9/9/9/R8/9/6R2/5K3 w"
+    pv = ["a3a7", "f8e8"]  # 两手合法但非杀，应被裁成 1 手
+    assert _trim_pv(fen, pv) == ["a3a7"]
+
+
+def test_trim_pv_handles_empty():
+    assert _trim_pv("9/5k3/9/9/9/9/R8/9/6R2/5K3 w", None) == []
 
 
 # ── 测试 1：GameAnalysis 表创建正常 ──────────────────────────────────────────

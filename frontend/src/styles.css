@@ -58,6 +58,8 @@ nav button.active { background: #8a5a2b; color: #fff; }
   display: inline-block; background: #efe6d6; color: #8a5a2b;
   border-radius: 6px; padding: 2px 8px; margin-right: 6px; font-size: 13px;
 }
+.tag.timer { background: #e6efe0; color: #2e7d32; font-variant-numeric: tabular-nums; }
+.tag.clickable { cursor: pointer; user-select: none; }
 .due-badge {
   float: right; font-size: 13px; color: #999;
 }
@@ -83,6 +85,8 @@ nav button.active { background: #8a5a2b; color: #fff; }
 }
 
 /* 棋盘（交叉点制） */
+.xq-board-measure { width: 100%; }
+.xq-board-wrap { margin: 0 auto; overflow: hidden; }
 .xq-board {
   position: relative;
   margin: 0 auto;
@@ -126,6 +130,11 @@ nav button.active { background: #8a5a2b; color: #fff; }
   box-shadow: 0 1px 3px rgba(0, 0, 0, .35), inset 0 0 0 2px #e9d3a3;
   user-select: none;
   font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
+}
+.xq-piece.moving { animation: xq-slide .24s ease-out; }
+@keyframes xq-slide {
+  from { transform: translate(var(--dx), var(--dy)); }
+  to   { transform: translate(0, 0); }
 }
 .xq-piece.red   { color: #c0392b; }
 .xq-piece.black { color: #1a1a1a; }
@@ -228,7 +237,7 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 @media (max-width: 520px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
   .rating-btns { grid-template-columns: repeat(2, 1fr); }
-  .xq-board { transform: scale(.82); transform-origin: top center; }
+  /* 棋盘缩放改由 Board 组件按容器宽度动态计算（见 .xq-board-wrap） */
 }
 
 /* ===== 棋局复盘 ===== */
@@ -561,3 +570,17 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   font-size: 13px; background: #fafaf7; border-left: 3px solid #d4b896;
   padding: 6px 10px; border-radius: 4px; margin-top: 6px; line-height: 1.6;
 }
+
+/* 分析进度条 */
+.analyze-progress { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.analyze-progress-track { flex: 1; height: 8px; background: #eadfca; border-radius: 4px; overflow: hidden; }
+.analyze-progress-fill { height: 100%; background: #8a5a2b; transition: width .3s ease; }
+.analyze-progress-text { font-size: 12px; white-space: nowrap; }
+
+/* 复习日程（遗忘曲线） */
+.forecast { display: flex; align-items: flex-end; gap: 6px; height: 130px; padding-top: 8px; }
+.forecast-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+.forecast-num { font-size: 11px; color: #8a5a2b; margin-bottom: 2px; }
+.forecast-bar { width: 70%; min-height: 0; background: #8a5a2b; border-radius: 4px 4px 0 0; transition: height .3s; }
+.forecast-bar.overdue { background: #c0392b; }
+.forecast-x { font-size: 10px; color: #999; margin-top: 4px; white-space: nowrap; }

@@ -1,4 +1,4 @@
-"""数据模型。单用户场景，user_id 暂以固定值占位，便于日后扩展多用户。"""
+"""数据模型。user_id 以用户名字符串标识，匿名场景回退 'default'。"""
 
 from datetime import date, datetime
 
@@ -11,13 +11,11 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    create_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-
-class Base(DeclarativeBase):
-    pass
+# 持久化配置集中在 database 模块；此处再导出以保持既有导入路径可用
+from .database import Base, SessionLocal, engine, init_db  # noqa: F401
 
 
 class User(Base):
@@ -33,7 +31,13 @@ class User(Base):
 
 
 class Puzzle(Base):
-    """战术题。solution 为正解着法序列，UCI 坐标制，逗号分隔，如 'h2e2,a9a8'。"""
+    """战术题。
+
+    solution 为正解着法序列，UCI 坐标制，逗号分隔，如 'h2e2,a9a8,...'。
+    多步题按「己方/对方交替」排列：偶数位（0,2,4…）是玩家要走的着法，
+    奇数位是对方的应着——做题时由系统自动走出，玩家只需输入己方着法。
+    一步杀题即长度为 1 的特例。
+    """
 
     __tablename__ = "puzzles"
 
@@ -62,6 +66,7 @@ class Review(Base):
     interval: Mapped[int] = mapped_column(Integer, default=0)
     ease_factor: Mapped[float] = mapped_column(Float, default=2.5)
     next_review: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    created_at: Mapped[date] = mapped_column(Date, default=date.today, index=True)  # 首次学习日，用于每日新题上限
 
     puzzle: Mapped[Puzzle] = relationship(back_populates="review")
 
@@ -78,6 +83,7 @@ class Attempt(Base):
     correct: Mapped[bool] = mapped_column(Boolean)
     time_spent_ms: Mapped[int] = mapped_column(Integer, default=0)
     wrong_move: Mapped[str] = mapped_column(String(10), default="")
+    had_retry: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否中途重试，用于首答正确率
 
 
 class Game(Base):
@@ -114,12 +120,3 @@ class GameAnalysis(Base):
     is_mistake: Mapped[bool] = mapped_column(Boolean, default=False)  # eval_drop > 80
     explanation: Mapped[str] = mapped_column(Text, default="")        # DeepSeek 解释
     puzzle_id: Mapped[int | None] = mapped_column(ForeignKey("puzzles.id"), nullable=True)
-
-
-DB_URL = "sqlite:///./data/puzzles.db"
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autoflush=False)
-
-
-def init_db() -> None:
-    Base.metadata.create_all(engine)
