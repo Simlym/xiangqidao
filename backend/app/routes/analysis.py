@@ -196,8 +196,8 @@ def _run_analysis(game_id: int) -> None:
                 puzzle_id=puzzle_id,
             )
             db.add(record)
+            db.commit()  # 逐步提交，使前端可轮询出进度
 
-        db.commit()
         # 共享引擎进程跨棋局复用，分析结束不再 close()
     except Exception:
         db.rollback()
@@ -230,8 +230,11 @@ def get_analysis(game_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+    total = len(game.moves.split()) if game.moves and game.moves.strip() else 0
+    analyzed = len(records)
+
     if not records:
-        return {"status": "not_analyzed", "moves": []}
+        return {"status": "not_analyzed", "moves": [], "total": total, "analyzed": 0}
 
     moves = [
         {
@@ -256,8 +259,10 @@ def get_analysis(game_id: int, db: Session = Depends(get_db)):
     mistake_count = sum(1 for r in records if r.is_mistake and not r.is_blunder)
 
     return {
-        "status": "done",
+        "status": "done" if total and analyzed >= total else "analyzing",
         "moves": moves,
         "blunder_count": blunder_count,
         "mistake_count": mistake_count,
+        "total": total,
+        "analyzed": analyzed,
     }

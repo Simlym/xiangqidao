@@ -570,3 +570,9 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   font-size: 13px; background: #fafaf7; border-left: 3px solid #d4b896;
   padding: 6px 10px; border-radius: 4px; margin-top: 6px; line-height: 1.6;
 }
+
+/* 分析进度条 */
+.analyze-progress { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.analyze-progress-track { flex: 1; height: 8px; background: #eadfca; border-radius: 4px; overflow: hidden; }
+.analyze-progress-fill { height: 100%; background: #8a5a2b; transition: width .3s ease; }
+.analyze-progress-text { font-size: 12px; white-space: nowrap; }
