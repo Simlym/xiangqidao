@@ -3,13 +3,14 @@
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import current_user_id
 from ..deps import get_db
 from ..models import Game
+from ..ratelimit import limiter
 from ..xiangqi_utils import apply_move
 
 router = APIRouter(prefix="/api/games", tags=["games"])
@@ -18,16 +19,19 @@ INITIAL_FEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - -
 
 UCI_RE = re.compile(r"^[a-i][0-9][a-i][0-9]$")
 
+# 一着 5 字符（4 着法 + 分隔），上限约对应数千手，足够任何真实对局
+_MOVES_MAX = 8000
+
 
 class ImportRequest(BaseModel):
-    moves: str
-    red_player: Optional[str] = ""
-    black_player: Optional[str] = ""
-    played_on: Optional[str] = None
-    result: Optional[str] = "未知"
-    opening: Optional[str] = ""
-    source: Optional[str] = ""
-    notes: Optional[str] = ""
+    moves: str = Field(max_length=_MOVES_MAX)
+    red_player: Optional[str] = Field(default="", max_length=40)
+    black_player: Optional[str] = Field(default="", max_length=40)
+    played_on: Optional[str] = Field(default=None, max_length=40)
+    result: Optional[str] = Field(default="未知", max_length=20)
+    opening: Optional[str] = Field(default="", max_length=80)
+    source: Optional[str] = Field(default="", max_length=80)
+    notes: Optional[str] = Field(default="", max_length=2000)
 
 
 class GameSummary(BaseModel):
@@ -81,7 +85,9 @@ def list_games(
 
 
 @router.post("/import")
+@limiter.limit("30/minute")
 def import_game(
+    request: Request,
     body: ImportRequest,
     db: Session = Depends(get_db),
     user: str = Depends(current_user_id),

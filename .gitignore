@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 backend/data/*.db
 
+# 引擎下载/安装产物（由管理后台一键安装，不入库）
+backend/data/engine/
+
 # Node
 frontend/node_modules/
 frontend/dist/

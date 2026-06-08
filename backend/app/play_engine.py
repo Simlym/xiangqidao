@@ -147,6 +147,37 @@ def builtin_evaluate(fen: str, depth: int = 3) -> tuple[str | None, int]:
     return _builtin_search(fen, depth)
 
 
+# 评分展示用的杀棋等效分上限，避免内置搜索的极大值溢出到前端
+_EVAL_CAP = 30000
+
+
+def evaluate_position(fen: str) -> dict:
+    """评估局面，返回**红方视角**的优劣势：{"cp": int|None, "mate": int|None}。
+
+    cp 正=红优、负=黑优；mate 正=红方可杀、负=黑方可杀。供人机对弈界面的
+    评估条使用。优先 Pikafish，未安装时回退浅层内置搜索（足够给出优劣势提示）。
+    引擎/内置搜索给的都是走子方视角，这里统一翻成红方视角。
+    """
+    from .engine import get_shared_engine
+
+    sign = 1 if side_to_move(fen) == "w" else -1  # 走子方视角 → 红方视角
+
+    engine = get_shared_engine()
+    if engine is not None:
+        try:
+            ev = engine.analyze(fen, depth=10)
+            if ev.score_mate is not None:
+                return {"cp": None, "mate": sign * ev.score_mate}
+            if ev.score_cp is not None:
+                return {"cp": sign * ev.score_cp, "mate": None}
+        except Exception:
+            pass
+
+    _, cp = _builtin_search(fen, 2)
+    cp = max(-_EVAL_CAP, min(_EVAL_CAP, cp))
+    return {"cp": sign * cp, "mate": None}
+
+
 # 难度 -> 内置搜索深度
 DEPTH = {"easy": 1, "medium": 2, "hard": 3}
 

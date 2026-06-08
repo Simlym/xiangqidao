@@ -1,5 +1,6 @@
 import React from "react";
 import Board from "./Board";
+import { uciToChinese } from "./xiangqi";
 import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis } from "./api";
 
 const RESULT_LABELS = {
@@ -161,11 +162,23 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
   }, [stepIndex]);
 
   const positionsList = positions?.positions || [];
-  const movesList = positions?.moves || [];
+  // 后端 moves 字段是空格分隔字符串；着法直接取自每一步局面（move_index≥1 带 UCI），与 fen 天然对齐
+  const movesList = positionsList.slice(1).map((p) => p.move);
   const currentPos = positionsList[stepIndex] || null;
   const currentFen = currentPos?.fen || "";
   // lastMove is the move that led to current position
   const lastMove = stepIndex > 0 ? movesList[stepIndex - 1] : null;
+
+  // 把 UCI 着法转成中文棋谱（用走子前的局面 positionsList[i] 解析）
+  const moveTexts = React.useMemo(
+    () =>
+      positionsList
+        .slice(1)
+        .map((p, i) =>
+          positionsList[i]?.fen ? uciToChinese(positionsList[i].fen, p.move) : p.move
+        ),
+    [positionsList]
+  );
 
   // Group moves into rounds (pair of moves)
   const rounds = [];
@@ -481,7 +494,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                     <span className="move-round-num">{round}.</span>
                     <MoveItem
                       moveIndex={red}
-                      moveText={movesList[red] || ""}
+                      moveText={moveTexts[red] || ""}
                       isActive={stepIndex === red + 1}
                       analysisEntry={analysisMap[red]}
                       onClick={() => setStepIndex(red + 1)}
@@ -489,7 +502,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                     {movesList[black] !== undefined && (
                       <MoveItem
                         moveIndex={black}
-                        moveText={movesList[black]}
+                        moveText={moveTexts[black]}
                         isActive={stepIndex === black + 1}
                         analysisEntry={analysisMap[black]}
                         onClick={() => setStepIndex(black + 1)}
@@ -512,12 +525,22 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                 </div>
               )}
 
+              {/* AI 复盘未启用时给出提示，避免「无报告」让人以为功能缺失 */}
+              {analyzeStatus === "done" && !analysisData?.report && analysisData?.llm_enabled === false && (
+                <div className="analysis-panel">
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    💡 已完成引擎逐步分析。开启「AI 复盘」后还能获得失误讲解与整局总评（管理员可在后台配置）。
+                  </div>
+                </div>
+              )}
+
               {/* Analysis detail panel */}
               {analyzeStatus === "done" && analysisData && (
                 <AnalysisPanel
                   summary={{ blunder_count: analysisData.blunder_count, mistake_count: analysisData.mistake_count }}
                   moveAnalysis={currentMoveAnalysis}
                   stepIndex={stepIndex}
+                  preFen={stepIndex > 0 ? positionsList[stepIndex - 1]?.fen : ""}
                   onNavigateToTrain={onNavigateToTrain}
                 />
               )}
@@ -546,7 +569,7 @@ function MoveItem({ moveIndex, moveText, isActive, analysisEntry, onClick }) {
   );
 }
 
-function AnalysisPanel({ summary, moveAnalysis, stepIndex, onNavigateToTrain }) {
+function AnalysisPanel({ summary, moveAnalysis, stepIndex, preFen, onNavigateToTrain }) {
   const badgeInfo = moveAnalysis
     ? moveAnalysis.is_blunder
       ? { text: "严重失误", color: "#c0392b", bg: "#ffebee" }
@@ -589,9 +612,9 @@ function AnalysisPanel({ summary, moveAnalysis, stepIndex, onNavigateToTrain }) 
             )}
           </div>
           <div className="analysis-moves-row">
-            <span>实际走法：<strong>{moveAnalysis.move_played}</strong></span>
+            <span>实际走法：<strong>{preFen ? uciToChinese(preFen, moveAnalysis.move_played) : moveAnalysis.move_played}</strong></span>
             <span className="analysis-arrow">→</span>
-            <span>最优走法：<strong>{moveAnalysis.best_move}</strong></span>
+            <span>最优走法：<strong>{preFen ? uciToChinese(preFen, moveAnalysis.best_move) : moveAnalysis.best_move}</strong></span>
           </div>
           {evalDrop !== null && (
             <div className="analysis-eval-drop muted">

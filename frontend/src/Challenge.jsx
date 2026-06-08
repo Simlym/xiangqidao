@@ -1,5 +1,6 @@
 import React from "react";
 import Board from "./Board";
+import { applyMove } from "./xiangqi";
 import { getLevels, getLevel, checkMove, submitChallenge } from "./api";
 
 // 闯关：关卡网格 → 选关进入解题器，依次解完本关全部题目。
@@ -126,10 +127,14 @@ function LevelSolver({ level, onExit }) {
 
   async function onMove(move) {
     if (phase !== "thinking") return;
+    const prevFen = fen;  // 走子前局面，供答错时回滚乐观更新
     setLastMove(move);
     setHint(null);
+    // 乐观更新：玩家这一手立刻落到棋盘上，不必等校验/对方应着返回。
+    setFen(applyMove(fen, move));
     const res = await checkMove({ puzzle_id: puzzle.id, step, move, attempt: wrongCount });
     if (!res.correct) {
+      setFen(prevFen);  // 走错：把棋子还原回走子前
       setHadRetry(true);
       setWrongCount((n) => n + 1);
       setHint(res.hint);

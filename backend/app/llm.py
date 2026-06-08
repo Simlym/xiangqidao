@@ -1,25 +1,26 @@
 """DeepSeek Chat API 调用。"""
-import os
 import httpx
+
+from .settings import get_deepseek_config
 
 DEEPSEEK_BASE = "https://api.deepseek.com/v1"
 
 
 def _chat(prompt: str, max_tokens: int = 200, timeout: int = 15) -> str:
-    """调用 DeepSeek Chat，失败或未配置 key 时返回空字符串。"""
-    api_key = os.getenv("DEEPSEEK_API_KEY", "")
-    if not api_key:
+    """调用 DeepSeek Chat，未启用/未配置 key 或失败时返回空字符串。"""
+    cfg = get_deepseek_config()
+    if not cfg.active:
         return ""
     try:
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(
                 f"{DEEPSEEK_BASE}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {api_key}",
+                    "Authorization": f"Bearer {cfg.api_key}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "deepseek-chat",
+                    "model": cfg.model,
                     "max_tokens": max_tokens,
                     "messages": [{"role": "user", "content": prompt}],
                 },

@@ -75,6 +75,8 @@ export const getAnalysis = (gameId) => req(`/games/${gameId}/analysis`);
 // ── 对弈 ────────────────────────────────────────────────
 export const newPlayGame = (payload) => req("/play/new", { method: "POST", body: payload });
 export const playMove = (payload) => req("/play/move", { method: "POST", body: payload });
+export const evalPosition = (fen) => req("/play/eval", { method: "POST", body: { fen } });
+export const getPlayEngine = () => req("/play/engine");
 
 // ── 后台 ────────────────────────────────────────────────
 export const adminOverview = () => req("/admin/overview");
@@ -84,3 +86,13 @@ export const adminPuzzles = (limit = 100, offset = 0) =>
   req(`/admin/puzzles?limit=${limit}&offset=${offset}`);
 export const adminCreatePuzzle = (payload) => req("/admin/puzzles", { method: "POST", body: payload });
 export const adminDeletePuzzle = (id) => req(`/admin/puzzles/${id}`, { method: "DELETE" });
+export const adminGetEngine = () => req("/admin/engine");
+export const adminInstallEngine = (variant) =>
+  req("/admin/engine/install", { method: "POST", body: { variant: variant || null } });
+export const adminRemoveEngine = () => req("/admin/engine", { method: "DELETE" });
+export const adminGetLlmSettings = () => req("/admin/settings/llm");
+export const adminUpdateLlmSettings = (payload) =>
+  req("/admin/settings/llm", { method: "PUT", body: payload });
+export const adminTestLlmSettings = () => req("/admin/settings/llm/test", { method: "POST", body: {} });
+export const adminLogs = (limit = 100, offset = 0, event = "") =>
+  req(`/admin/logs?limit=${limit}&offset=${offset}${event ? `&event=${event}` : ""}`);

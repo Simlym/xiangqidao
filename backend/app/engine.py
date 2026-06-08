@@ -1,9 +1,23 @@
 """Pikafish UCI 引擎封装。"""
+import os
 import re
 import subprocess
 import shutil
 import threading
 from dataclasses import dataclass
+
+
+def find_engine() -> str | None:
+    """定位 Pikafish 可执行文件：优先「管理后台一键安装」的受管目录，其次回退 PATH。"""
+    try:
+        from .engine_install import binary_path
+
+        p = binary_path()
+        if os.path.isfile(p):
+            return p
+    except Exception:
+        pass
+    return shutil.which("pikafish")
 
 INITIAL_FEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
 
@@ -18,22 +32,29 @@ class MoveEval:
 
 class Engine:
     def __init__(self, path=None):
-        self.path = path or shutil.which("pikafish")
+        self.path = path or find_engine()
         if not self.path:
             raise FileNotFoundError(
-                "找不到 pikafish 可执行文件，请安装后将其加入 PATH 或显式传入路径。"
+                "找不到 pikafish 可执行文件，请在管理后台一键安装，或将其加入 PATH。"
             )
+        # 以可执行文件所在目录为工作目录，便于默认加载同目录下的 pikafish.nnue
+        workdir = os.path.dirname(self.path) or None
         self.proc = subprocess.Popen(
             [self.path],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             text=True,
             bufsize=1,
+            cwd=workdir,
         )
         # UCI 是有状态的串行协议；单例复用时需保证一次只有一个调用方在收发
         self._lock = threading.Lock()
         self._cmd("uci")
         self._wait_for("uciok")
+        # 显式指定 NNUE 权重路径，避免工作目录差异导致评估网络加载失败
+        nnue = os.path.join(workdir, "pikafish.nnue") if workdir else None
+        if nnue and os.path.isfile(nnue):
+            self._cmd(f"setoption name EvalFile value {os.path.abspath(nnue)}")
         self._cmd("isready")
         self._wait_for("readyok")
 
@@ -166,3 +187,19 @@ def get_shared_engine(path=None) -> Engine | None:
         if _shared is None:
             _no_engine = True
         return _shared
+
+
+def reset_shared_engine() -> None:
+    """丢弃共享实例并清除「未安装」记忆，使下次调用重新探测引擎。
+
+    用于管理后台安装/卸载 Pikafish 后立即生效，无需重启进程。
+    """
+    global _shared, _no_engine
+    with _shared_lock:
+        if _shared is not None:
+            try:
+                _shared.close()
+            except Exception:
+                pass
+        _shared = None
+        _no_engine = False

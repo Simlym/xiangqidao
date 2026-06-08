@@ -10,9 +10,17 @@ import os
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 DB_URL = os.environ.get("XQ_DB_URL", "sqlite:///./data/puzzles.db")
+
+# sqlite 本地文件库：自动创建父目录，避免首次运行报 "unable to open database file"
+_url = make_url(DB_URL)
+if _url.drivername.startswith("sqlite") and _url.database and _url.database != ":memory:":
+    _parent = os.path.dirname(_url.database)
+    if _parent:
+        os.makedirs(_parent, exist_ok=True)
 
 # sqlite 需要 check_same_thread=False 以配合多线程（后台分析任务）
 _connect_args = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}

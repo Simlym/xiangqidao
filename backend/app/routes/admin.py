@@ -1,13 +1,21 @@
 """管理员后台接口：用户与题库管理。所有接口需管理员权限。"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin
 from ..deps import get_db
-from ..models import Attempt, Game, Puzzle, Review, User
+from ..models import Attempt, Game, Puzzle, Review, SecurityLog, User
+from ..security_log import admin_action
+from ..settings import (
+    KEY_DEEPSEEK_API_KEY,
+    KEY_DEEPSEEK_ENABLED,
+    KEY_DEEPSEEK_MODEL,
+    get_deepseek_config,
+    set_setting,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -68,7 +76,7 @@ def list_users(db: Session = Depends(get_db)):
 
 
 @router.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db),
+def delete_user(user_id: int, request: Request, db: Session = Depends(get_db),
                 admin: User = Depends(require_admin)):
     user = db.get(User, user_id)
     if not user:
@@ -80,6 +88,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db),
     db.query(Review).filter(Review.user_id == user.username).delete()
     db.delete(user)
     db.commit()
+    admin_action(request, admin.username, "delete_user", user.username, db=db)
     return {"ok": True}
 
 
@@ -126,8 +135,73 @@ def create_puzzle(body: NewPuzzle, db: Session = Depends(get_db)):
     )
 
 
+class LlmSettings(BaseModel):
+    enabled: bool
+    model: str
+    has_key: bool          # 是否已配置密钥（DB 或环境变量）
+    key_hint: str          # 密钥尾 4 位脱敏提示，如 "••••3f9a"
+    active: bool           # 当前是否真正生效（开关开 + 有密钥）
+
+
+class LlmSettingsUpdate(BaseModel):
+    enabled: bool | None = None
+    model: str | None = None
+    api_key: str | None = None   # 传入则覆盖；传空串清除（回退环境变量）；不传则保留
+
+
+def _llm_settings_view(db: Session) -> LlmSettings:
+    cfg = get_deepseek_config(db)
+    hint = ("••••" + cfg.api_key[-4:]) if cfg.api_key else ""
+    return LlmSettings(
+        enabled=cfg.enabled, model=cfg.model,
+        has_key=bool(cfg.api_key), key_hint=hint, active=cfg.active,
+    )
+
+
+@router.get("/settings/llm", response_model=LlmSettings)
+def get_llm_settings(db: Session = Depends(get_db)):
+    """读取 AI 复盘配置（密钥仅返回脱敏尾号）。"""
+    return _llm_settings_view(db)
+
+
+@router.put("/settings/llm", response_model=LlmSettings)
+def update_llm_settings(body: LlmSettingsUpdate, request: Request,
+                        db: Session = Depends(get_db),
+                        admin: User = Depends(require_admin)):
+    """更新 AI 复盘配置。api_key 传 None 保留原值、传 "" 清除、传非空覆盖。"""
+    changed = []
+    if body.enabled is not None:
+        set_setting(db, KEY_DEEPSEEK_ENABLED, "1" if body.enabled else "0")
+        changed.append(f"enabled={body.enabled}")
+    if body.model is not None:
+        set_setting(db, KEY_DEEPSEEK_MODEL, body.model.strip())
+        changed.append("model")
+    if body.api_key is not None:
+        # 只记录「改了密钥」这一事实，绝不记录密钥本身
+        set_setting(db, KEY_DEEPSEEK_API_KEY, body.api_key.strip())
+        changed.append("api_key")
+    db.commit()
+    admin_action(request, admin.username, "update_llm_settings", ",".join(changed), db=db)
+    return _llm_settings_view(db)
+
+
+@router.post("/settings/llm/test")
+def test_llm_settings(db: Session = Depends(get_db)):
+    """用当前配置发一次最小请求，验证密钥是否可用。"""
+    from ..llm import _chat
+
+    cfg = get_deepseek_config(db)
+    if not cfg.active:
+        raise HTTPException(400, "未启用或未配置密钥")
+    reply = _chat("回复\"ok\"两个字即可。", max_tokens=10, timeout=15)
+    if not reply:
+        raise HTTPException(502, "调用失败：密钥无效或网络不可达")
+    return {"ok": True, "reply": reply.strip()[:50]}
+
+
 @router.delete("/puzzles/{puzzle_id}")
-def delete_puzzle(puzzle_id: int, db: Session = Depends(get_db)):
+def delete_puzzle(puzzle_id: int, request: Request, db: Session = Depends(get_db),
+                  admin: User = Depends(require_admin)):
     p = db.get(Puzzle, puzzle_id)
     if not p:
         raise HTTPException(404, "题目不存在")
@@ -135,4 +209,34 @@ def delete_puzzle(puzzle_id: int, db: Session = Depends(get_db)):
     db.query(Attempt).filter(Attempt.puzzle_id == puzzle_id).delete()
     db.delete(p)
     db.commit()
+    admin_action(request, admin.username, "delete_puzzle", str(puzzle_id), db=db)
     return {"ok": True}
+
+
+class AdminLog(BaseModel):
+    id: int
+    ts: str
+    level: str
+    event: str
+    ip: str
+    actor: str
+    action: str
+    target: str
+
+
+@router.get("/logs", response_model=list[AdminLog])
+def list_logs(limit: int = 100, offset: int = 0, event: str | None = None,
+              db: Session = Depends(get_db)):
+    """安全审计日志，按时间倒序分页。event 可选过滤（login_failed / admin_action）。"""
+    q = select(SecurityLog).order_by(SecurityLog.id.desc())
+    if event:
+        q = q.where(SecurityLog.event == event)
+    rows = db.scalars(q.offset(max(offset, 0)).limit(min(max(limit, 1), 500))).all()
+    return [
+        AdminLog(
+            id=r.id, ts=r.ts.isoformat(sep=" ", timespec="seconds"),
+            level=r.level, event=r.event, ip=r.ip,
+            actor=r.actor, action=r.action, target=r.target,
+        )
+        for r in rows
+    ]

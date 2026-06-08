@@ -39,6 +39,17 @@ header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webk
 .auth-form { display: flex; flex-direction: column; gap: 10px; }
 .auth-form .import-input { padding: 9px 10px; font-size: 14px; }
 
+/* 后台 Tab 导航 */
+.admin-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px;
+}
+.admin-tabs button {
+  flex: 0 0 auto; padding: 8px 16px; border: none; background: #f0ebe3; color: #777;
+  border-radius: 8px; cursor: pointer; font-size: 14px; white-space: nowrap;
+}
+.admin-tabs button.active { background: #8a5a2b; color: #fff; }
+
 /* 后台表格 */
 .admin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .admin-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 480px; }
@@ -93,22 +104,52 @@ nav button.active { background: #8a5a2b; color: #fff; }
 /* 棋盘（交叉点制） */
 .xq-board-measure { width: 100%; }
 .xq-board-wrap { margin: 0 auto; overflow: hidden; }
+.xq-board-scale {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+/* 列坐标条 */
+.xq-coords {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  flex-shrink: 0;
+}
+.xq-coords span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  line-height: 22px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b4a2b;
+  font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
+  user-select: none;
+}
+.xq-coords span.red { color: #b03a2e; }
 .xq-board {
   position: relative;
-  margin: 0 auto;
+  flex-shrink: 0;
   background:
-    radial-gradient(circle at 30% 20%, #f0d9a8, #e3bd7e 70%);
-  border: 3px solid #5a3d22;
-  border-radius: 6px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, .18), inset 0 0 0 2px #c9a36a;
+    repeating-linear-gradient(90deg, rgba(120, 72, 28, .05) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(0deg, rgba(120, 72, 28, .035) 0 1px, transparent 1px 9px),
+    radial-gradient(ellipse at 50% 38%, #f6e0b0 0%, #ecca8c 60%, #e0b878 100%);
+  border: 2px solid #5a3d22;
+  border-radius: 8px;
+  box-shadow:
+    0 6px 20px rgba(60, 36, 12, .28),
+    0 1px 0 rgba(255, 255, 255, .4) inset,
+    inset 0 0 0 3px #d9b277,
+    inset 0 0 0 5px #5a3d22;
 }
 .xq-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
 .xq-lines line { stroke: #5a3d22; stroke-width: 1.4; stroke-linecap: round; }
 .xq-river {
-  fill: #6b4a2b; font-size: 22px; font-weight: 600;
-  letter-spacing: 4px; text-anchor: middle; dominant-baseline: middle;
+  fill: #6b4a2b; font-size: 24px; font-weight: 600;
+  letter-spacing: 6px; text-anchor: middle; dominant-baseline: middle;
   font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
-  opacity: .7; user-select: none;
+  opacity: .55; user-select: none;
 }
 
 .xq-points { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
@@ -119,22 +160,43 @@ nav button.active { background: #8a5a2b; color: #fff; }
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
 }
+/* 上一步落点：四角框线标记（无包裹空隙，干净利落） */
 .xq-mark-last {
   position: absolute;
-  width: 38px; height: 38px;
-  border: 2px solid rgba(80, 160, 80, .8);
-  border-radius: 50%;
+  width: 46px; height: 46px;
   pointer-events: none;
+  --c: rgba(192, 99, 27, .92); /* 默认暖琥珀色 */
+  --t: 2.5px;                  /* 线宽 */
+  --l: 10px;                   /* 角线长度 */
+  background:
+    linear-gradient(var(--c), var(--c)) 0 0 / var(--l) var(--t),
+    linear-gradient(var(--c), var(--c)) 0 0 / var(--t) var(--l),
+    linear-gradient(var(--c), var(--c)) 100% 0 / var(--l) var(--t),
+    linear-gradient(var(--c), var(--c)) 100% 0 / var(--t) var(--l),
+    linear-gradient(var(--c), var(--c)) 0 100% / var(--l) var(--t),
+    linear-gradient(var(--c), var(--c)) 0 100% / var(--t) var(--l),
+    linear-gradient(var(--c), var(--c)) 100% 100% / var(--l) var(--t),
+    linear-gradient(var(--c), var(--c)) 100% 100% / var(--t) var(--l);
+  background-repeat: no-repeat;
 }
+/* 红方走子：暖红色（起点终点同色） */
+.xq-mark-last.red   { --c: rgba(193, 57, 43, .92); }
+/* 黑方走子：靛蓝色（起点终点同色） */
+.xq-mark-last.black { --c: rgba(40, 95, 150, .9); }
 .xq-piece {
   position: relative;
-  width: 38px; height: 38px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 700;
-  background: radial-gradient(circle at 35% 30%, #fffdf5, #f0e2c0);
-  border: 1.5px solid #8a6a3a;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .35), inset 0 0 0 2px #e9d3a3;
+  font-size: 25px; font-weight: 700;
+  background: radial-gradient(circle at 35% 28%, #fffefb 0%, #f6ead0 55%, #e7d2a4 100%);
+  border: 1px solid #8a6a3a;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, .35),
+    0 1px 0 rgba(255, 255, 255, .6) inset,
+    inset 0 0 0 2px #f3e3bf,
+    inset 0 0 0 3px #b9925a;
   user-select: none;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .35);
   font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
 }
 .xq-piece.moving { animation: xq-slide .24s ease-out; }
@@ -181,6 +243,21 @@ nav button.active { background: #8a5a2b; color: #fff; }
   border: 1px solid #8a5a2b; background: #fff; color: #8a5a2b;
   border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 14px;
 }
+.btn-newgame.active { background: #8a5a2b; color: #fff; }
+
+/* 优劣势评估条 */
+.eval-bar-wrap { padding: 10px 12px; }
+.eval-bar {
+  position: relative; height: 22px; border-radius: 6px; overflow: hidden;
+  background: #3a3a3a; border: 1px solid #d9ccb5;
+}
+.eval-bar-red { height: 100%; background: #c0392b; transition: width 0.4s ease; }
+.eval-bar-value {
+  position: absolute; top: 0; left: 0; right: 0; line-height: 22px;
+  text-align: center; font-size: 13px; font-weight: 600; color: #fff;
+  text-shadow: 0 0 3px rgba(0,0,0,0.6); font-variant-numeric: tabular-nums;
+}
+.eval-bar-label { margin-top: 6px; text-align: center; font-size: 13px; }
 
 /* 结果面板 */
 .result.ok h3 { color: #2e7d32; margin: 0 0 8px; }

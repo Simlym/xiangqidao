@@ -3,14 +3,30 @@ import {
   adminCreatePuzzle,
   adminDeletePuzzle,
   adminDeleteUser,
+  adminGetEngine,
+  adminGetLlmSettings,
+  adminInstallEngine,
+  adminLogs,
   adminOverview,
   adminPuzzles,
+  adminRemoveEngine,
+  adminTestLlmSettings,
+  adminUpdateLlmSettings,
   adminUsers,
 } from "./api";
 
 const EMPTY = { fen: "", solution: "", category: "未分类", difficulty: 3, side_to_move: "w" };
 
+const TABS = [
+  { key: "overview", label: "概览" },
+  { key: "users", label: "用户" },
+  { key: "puzzles", label: "题库" },
+  { key: "settings", label: "系统设置" },
+  { key: "logs", label: "日志" },
+];
+
 export default function Admin() {
+  const [tab, setTab] = React.useState("overview");
   const [ov, setOv] = React.useState(null);
   const [users, setUsers] = React.useState([]);
   const [puzzles, setPuzzles] = React.useState([]);
@@ -62,17 +78,45 @@ export default function Admin() {
 
   return (
     <div className="admin">
+      <div className="admin-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            className={tab === t.key ? "active" : ""}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* 概览卡片 */}
-      {ov && (
-        <div className="cards">
-          <div className="card"><div className="card-value">{ov.users}</div><div className="card-label">用户</div></div>
-          <div className="card"><div className="card-value">{ov.puzzles}</div><div className="card-label">题目</div></div>
-          <div className="card"><div className="card-value">{ov.games}</div><div className="card-label">棋局</div></div>
-          <div className="card"><div className="card-value">{ov.attempts}</div><div className="card-label">作答次数</div></div>
-        </div>
+      {tab === "overview" && (
+        ov ? (
+          <div className="cards">
+            <div className="card"><div className="card-value">{ov.users}</div><div className="card-label">用户</div></div>
+            <div className="card"><div className="card-value">{ov.puzzles}</div><div className="card-label">题目</div></div>
+            <div className="card"><div className="card-value">{ov.games}</div><div className="card-label">棋局</div></div>
+            <div className="card"><div className="card-value">{ov.attempts}</div><div className="card-label">作答次数</div></div>
+          </div>
+        ) : (
+          <p className="muted">加载中…</p>
+        )
       )}
 
+      {/* 系统设置：对弈引擎 + AI 复盘 */}
+      {tab === "settings" && (
+        <>
+          <EnginePanel />
+          <LlmSettingsPanel />
+        </>
+      )}
+
+      {/* 日志 */}
+      {tab === "logs" && <LogsPanel />}
+
       {/* 用户管理 */}
+      {tab === "users" && (
       <div className="panel">
         <h3>用户管理</h3>
         <div className="admin-table-wrap"><table className="admin-table">
@@ -95,8 +139,11 @@ export default function Admin() {
           </tbody>
         </table></div>
       </div>
+      )}
 
-      {/* 新增题目 */}
+      {/* 题库：新增题目 + 题库列表 */}
+      {tab === "puzzles" && (
+      <>
       <div className="panel">
         <h3>新增战术题（单步杀法自动校验）</h3>
         <form className="admin-form" onSubmit={addPuzzle}>
@@ -143,6 +190,354 @@ export default function Admin() {
             ))}
           </tbody>
         </table></div>
+      </div>
+      </>
+      )}
+    </div>
+  );
+}
+
+const OS_LABEL = { windows: "Windows", macos: "macOS", linux: "Linux" };
+const BUSY_STATES = ["downloading", "extracting", "verifying"];
+
+function fmtMB(n) {
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+
+function EnginePanel() {
+  const [st, setSt] = React.useState(null);
+  const [variant, setVariant] = React.useState(""); // "" = 自动
+  const [err, setErr] = React.useState("");
+
+  const load = React.useCallback(() => {
+    adminGetEngine().then(setSt).catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  // 安装进行中时轮询进度
+  const busy = st && BUSY_STATES.includes(st.state);
+  React.useEffect(() => {
+    if (!busy) return;
+    const t = setInterval(load, 1500);
+    return () => clearInterval(t);
+  }, [busy, load]);
+
+  if (!st) return null;
+
+  async function install() {
+    setErr("");
+    try {
+      const r = await adminInstallEngine(variant);
+      if (r.started === false) setErr(r.reason || "无法启动安装");
+      setSt(r);
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  async function remove() {
+    if (!window.confirm("卸载已安装的 Pikafish？将回退到 PATH / 内置引擎。")) return;
+    setErr("");
+    try {
+      setSt(await adminRemoveEngine());
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  const meta = st.meta;
+  const pct = st.total > 0 ? Math.round((st.downloaded / st.total) * 100) : null;
+
+  let current;
+  if (st.installed && meta) {
+    current = `已安装 Pikafish ${meta.version}（${meta.variant}）`;
+  } else if (st.on_path) {
+    current = "检测到 PATH 中的 Pikafish";
+  } else {
+    current = "未安装，当前使用内置搜索引擎";
+  }
+
+  return (
+    <div className="panel">
+      <h3>对弈引擎（Pikafish）</h3>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+        从官方 Release 一键下载安装强力引擎，提升人机对弈棋力、局面评分与复盘分析的准确度。
+        无需配置 PATH，安装后即时生效。
+      </p>
+
+      <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
+        <span className={"tag" + (st.installed || st.on_path ? "" : " muted")}>
+          {st.installed || st.on_path ? "● " : "○ "}
+          {current}
+        </span>
+        <span className="muted" style={{ fontSize: 13 }}>
+          本机：{OS_LABEL[st.os] || st.os} / {st.arch}
+        </span>
+      </div>
+
+      {busy && (
+        <div style={{ margin: "8px 0" }}>
+          <div className="eval-bar" style={{ height: 16 }}>
+            <div className="eval-bar-red" style={{ width: `${pct ?? 30}%`, background: "#2e7d32" }} />
+            <span className="eval-bar-value">
+              {st.state === "downloading"
+                ? pct != null
+                  ? `下载中 ${pct}%（${fmtMB(st.downloaded)}/${fmtMB(st.total)}）`
+                  : `下载中 ${fmtMB(st.downloaded)}`
+                : st.message}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {!busy && st.state === "done" && (
+        <div style={{ color: "#27ae60", fontSize: 13, margin: "4px 0" }}>{st.message}</div>
+      )}
+      {!busy && st.state === "error" && (
+        <div className="import-error">{st.error || st.message}</div>
+      )}
+
+      <div className="import-row" style={{ marginTop: 8, alignItems: "center" }}>
+        <select
+          className="import-input"
+          value={variant}
+          disabled={busy}
+          onChange={(e) => setVariant(e.target.value)}
+        >
+          <option value="">自动（最兼容）</option>
+          {(st.variants || []).map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <button className="btn-import-submit" disabled={busy} onClick={install}>
+          {busy ? "安装中…" : st.installed ? "更新到最新版" : "下载并安装"}
+        </button>
+        {st.installed && (
+          <button
+            className="game-delete-btn"
+            style={{ width: "auto", padding: "0 12px" }}
+            disabled={busy}
+            onClick={remove}
+          >
+            卸载
+          </button>
+        )}
+      </div>
+
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+        若自检提示与 CPU 不兼容，请在上方下拉选择更兼容的变体（如含 <code>sse41</code> / <code>ssse3</code>）后重试。
+        变体列表在首次下载后出现。
+      </p>
+
+      {err && <div className="import-error">{err}</div>}
+    </div>
+  );
+}
+
+function LlmSettingsPanel() {
+  const [cfg, setCfg] = React.useState(null);
+  const [keyInput, setKeyInput] = React.useState(""); // 仅在用户输入新密钥时使用
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    adminGetLlmSettings().then(setCfg).catch(() => {});
+  }, []);
+
+  if (!cfg) return null;
+
+  async function save(patch) {
+    setErr("");
+    setMsg("");
+    setBusy(true);
+    try {
+      const next = await adminUpdateLlmSettings(patch);
+      setCfg(next);
+      setKeyInput("");
+      setMsg("已保存");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function test() {
+    setErr("");
+    setMsg("");
+    setBusy(true);
+    try {
+      const r = await adminTestLlmSettings();
+      setMsg(`连接正常，模型回复：${r.reply}`);
+    } catch (e) {
+      setErr(`测试失败：${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h3>AI 复盘设置（DeepSeek）</h3>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+        开启后，复盘时会调用大模型生成失误讲解与整局总评。
+        密钥也可用环境变量 <code>DEEPSEEK_API_KEY</code> 配置，此处填写优先生效。
+      </p>
+
+      <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={cfg.enabled}
+            disabled={busy}
+            onChange={(e) => save({ enabled: e.target.checked })}
+          />
+          启用 AI 复盘
+        </label>
+        <span className={"tag" + (cfg.active ? "" : " muted")}>
+          {cfg.active ? "● 已生效" : cfg.has_key ? "○ 已配置但未启用" : "○ 未配置密钥"}
+        </span>
+      </div>
+
+      <div className="import-row">
+        <input
+          className="import-input"
+          type="password"
+          placeholder={cfg.has_key ? `已配置（${cfg.key_hint}），留空则不变` : "填入 DeepSeek API Key"}
+          value={keyInput}
+          onChange={(e) => setKeyInput(e.target.value)}
+        />
+        <select
+          className="import-input"
+          value={cfg.model}
+          disabled={busy}
+          onChange={(e) => save({ model: e.target.value })}
+        >
+          <option value="deepseek-chat">deepseek-chat</option>
+          <option value="deepseek-reasoner">deepseek-reasoner</option>
+        </select>
+      </div>
+
+      <div className="import-row" style={{ marginTop: 8 }}>
+        <button
+          className="btn-import-submit"
+          disabled={busy || !keyInput.trim()}
+          onClick={() => save({ api_key: keyInput.trim() })}
+        >
+          保存密钥
+        </button>
+        {cfg.has_key && (
+          <button
+            className="game-delete-btn"
+            style={{ width: "auto", padding: "0 12px" }}
+            disabled={busy}
+            onClick={() => save({ api_key: "" })}
+          >
+            清除密钥
+          </button>
+        )}
+        <button className="btn-import-submit" disabled={busy} onClick={test}>
+          测试连接
+        </button>
+      </div>
+
+      {err && <div className="import-error">{err}</div>}
+      {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
+    </div>
+  );
+}
+
+const LOG_FILTERS = [
+  { key: "", label: "全部" },
+  { key: "login_failed", label: "登录失败" },
+  { key: "admin_action", label: "管理操作" },
+];
+const EVENT_LABEL = { login_failed: "登录失败", admin_action: "管理操作" };
+const PAGE = 50;
+
+function LogsPanel() {
+  const [rows, setRows] = React.useState([]);
+  const [filter, setFilter] = React.useState("");
+  const [offset, setOffset] = React.useState(0);
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(() => {
+    adminLogs(PAGE, offset, filter)
+      .then(setRows)
+      .catch((e) => setErr(e.message));
+  }, [filter, offset]);
+
+  const pickFilter = (key) => {
+    setFilter(key);
+    setOffset(0);
+  };
+
+  return (
+    <div className="panel">
+      <h3>安全审计日志</h3>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+        记录登录失败与管理员敏感操作（删用户、删题、改 AI 设置），不含密码、密钥等敏感值。
+      </p>
+
+      <div className="admin-tabs" style={{ marginBottom: 12 }}>
+        {LOG_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            className={filter === f.key ? "active" : ""}
+            onClick={() => pickFilter(f.key)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {err && <div className="import-error">{err}</div>}
+
+      <div className="admin-table-wrap"><table className="admin-table">
+        <thead>
+          <tr><th>时间</th><th>类型</th><th>IP</th><th>用户/操作者</th><th>动作</th><th>目标</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <td style={{ whiteSpace: "nowrap" }}>{r.ts}</td>
+              <td>
+                <span className={"tag" + (r.level === "warning" ? "" : " muted")}>
+                  {EVENT_LABEL[r.event] || r.event}
+                </span>
+              </td>
+              <td><code>{r.ip}</code></td>
+              <td>{r.actor || "—"}</td>
+              <td>{r.action || "—"}</td>
+              <td>{r.target || "—"}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr><td colSpan={6} className="muted" style={{ textAlign: "center" }}>暂无日志</td></tr>
+          )}
+        </tbody>
+      </table></div>
+
+      <div className="import-row" style={{ marginTop: 10, alignItems: "center" }}>
+        <button
+          className="btn-import-submit"
+          disabled={offset === 0}
+          onClick={() => setOffset((o) => Math.max(0, o - PAGE))}
+        >
+          上一页
+        </button>
+        <span className="muted" style={{ fontSize: 13 }}>第 {offset / PAGE + 1} 页</span>
+        <button
+          className="btn-import-submit"
+          disabled={rows.length < PAGE}
+          onClick={() => setOffset((o) => o + PAGE)}
+        >
+          下一页
+        </button>
       </div>
     </div>
   );

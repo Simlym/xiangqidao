@@ -1,14 +1,16 @@
 """棋局分析路由。"""
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..auth import current_user_id
 from ..deps import get_db
+from ..ratelimit import limiter
 from ..engine import get_shared_engine
 from ..llm import explain_mistake, summarize_game
 from ..models import Game, GameAnalysis, Puzzle
 from ..play_engine import builtin_evaluate, game_status
+from ..settings import get_deepseek_config
 from ..xiangqi_utils import apply_move
 
 router = APIRouter(prefix="/api/games", tags=["analysis"])
@@ -249,7 +251,9 @@ def _generate_report(db, game_id: int) -> None:
 
 
 @router.post("/{game_id}/analyze")
+@limiter.limit("10/minute")
 def analyze_game(
+    request: Request,
     game_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -320,4 +324,6 @@ def get_analysis(
         "analyzed": analyzed,
         # 报告在逐步分析全部完成后才生成，故仅 done 时返回
         "report": (game.report or "") if done else "",
+        # 供前端区分「无报告」是因 AI 未启用，还是本局无可点评内容
+        "llm_enabled": get_deepseek_config(db).active,
     }

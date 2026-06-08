@@ -48,6 +48,63 @@ npm install
 npm run dev      # 打开 http://localhost:5173（已代理 /api 到 8000）
 ```
 
+### 安装 Pikafish（可选，强力引擎）
+
+不装也能用：对弈与评分会自动回退到内置 negamax 搜索。装上 [Pikafish](https://github.com/official-pikafish/Pikafish)（顶尖开源象棋引擎）后，**人机对弈棋力、局面评分、复盘分析都会显著变强更准**。
+
+后端按「**受管目录 `data/engine/` 优先，其次 `PATH`**」顺序自动探测引擎（`app/engine.py:find_engine`）。
+
+#### 方式一：管理后台一键安装（推荐）
+
+登录**管理员**账号 → 「管理后台 → 对弈引擎（Pikafish）」→ 点「下载并安装」。系统会：
+
+1. 识别当前操作系统（Windows / macOS / Linux）；
+2. 从官方 Release 下载发布包，自动挑选**最兼容**的可执行文件（避免 CPU 指令集不支持而崩溃）；
+3. 连同 `pikafish.nnue` 权重装入 `data/engine/`，启动自检通过后**即时生效**（无需改 PATH、无需重启）。
+
+若自检提示与 CPU 不兼容，可在下拉里改选更兼容的变体（如含 `sse41` / `ssse3`）重试。装毕「人机对弈」页引擎标签会变为 `♟ Pikafish`。可用 `XQ_ENGINE_DIR` 自定义受管目录。
+
+> 该功能仅管理员可见、只从官方仓库 `official-pikafish/Pikafish` 拉取。
+
+#### 方式二：手动安装（自行放入 PATH）
+
+**1. 获取可执行文件**（任选其一）
+
+- **下载预编译版**：到 [Releases](https://github.com/official-pikafish/Pikafish/releases) 下载对应平台的压缩包，里面含可执行文件与权重文件 `pikafish.nnue`。
+- **从源码编译**：
+  ```bash
+  git clone https://github.com/official-pikafish/Pikafish.git
+  cd Pikafish/src && make -j build ARCH=x86-64-modern   # 按机器架构调整 ARCH
+  # 编译产物为 src/pikafish，并需配套 pikafish.nnue 权重文件
+  ```
+
+**2. 放到 PATH，并让它找得到权重文件 `pikafish.nnue`**
+
+Pikafish 启动时默认在**可执行文件同目录**加载 `pikafish.nnue`，请把两者放在一起。
+
+- **Linux / macOS**：
+  ```bash
+  sudo cp pikafish pikafish.nnue /usr/local/bin/   # 同目录放置二进制与权重
+  sudo chmod +x /usr/local/bin/pikafish
+  which pikafish                                    # 验证可被发现
+  ```
+- **Windows**（PowerShell）：把 `pikafish.exe` 与 `pikafish.nnue` 放进同一目录（如 `C:\tools\pikafish\`），再将该目录加入 PATH：
+  ```powershell
+  $env:Path += ";C:\tools\pikafish"          # 当前会话临时生效
+  # 永久生效：系统设置 → 环境变量 → 在 Path 中新增该目录
+  (Get-Command pikafish).Source              # 验证可被发现
+  ```
+
+**3. 验证**
+
+```bash
+echo "uci" | pikafish        # 应输出 id / option 列表并以 uciok 结尾
+```
+
+重启后端后，「人机对弈」页右上角的引擎标签会从 `♟ 内置引擎` 变为 `♟ Pikafish`，设置页也会提示「评分较准」。
+
+> 找不到引擎时多为：未加入 PATH、缺少 `pikafish.nnue`、或可执行权限不足。后端探测一次后会记住结果，改动后请**重启后端进程**再试。
+
 ### 导入更多题库 / 用 Pikafish 校验
 ```bash
 # JSON 格式见 app/importer/seed_puzzles.json
@@ -106,23 +163,41 @@ cd backend && python -m pytest tests/ -q
 | 变量 | 说明 | 默认 |
 |------|------|------|
 | `XQ_SECRET` | token 签名密钥；`XQ_ENV=production` 下仍为默认值会拒绝启动 | 开发占位值（仅本地）|
-| `XQ_ENV` | 设为 `production` 启用生产校验 | 空 |
-| `XQ_ADMIN` | 指定管理员用户名 | `admin` |
+| `XQ_ENV` | 设为 `production` 启用生产校验，并关闭 `/docs`、`/openapi.json` | 空 |
+| `XQ_ADMIN` | 指定管理员用户名；**留空时只有首位注册者成为管理员**（推荐公网部署留空，避免 `admin` 用户名被抢注提权）| 空 |
+| `XQ_ORIGINS` | 允许的前端来源（CORS），逗号分隔，如 `https://xq.example.com`；留空则放开（仅限本地开发）| 空（`*`）|
 | `XQ_DB_URL` | 数据库连接串 | `sqlite:///./data/puzzles.db` |
-| `DEEPSEEK_API_KEY` | 复盘逐步失误讲解 + 整局综合复盘报告（可选） | 空（不调用）|
+| `XQ_ENGINE_DIR` | 管理后台一键安装 Pikafish 的受管目录（发现引擎时优先于 PATH）| `./data/engine` |
+| `DEEPSEEK_API_KEY` | 复盘逐步失误讲解 + 整局综合复盘报告（可选）；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
+
+## 公网部署安全清单
+
+上线前请逐项确认：
+
+- **必设环境变量**：`XQ_ENV=production`、`XQ_SECRET=$(openssl rand -hex 32)`、`XQ_ORIGINS=<你的前端域名>`；`XQ_ADMIN` 留空。
+- **HTTPS**：放在 nginx / Caddy 等反向代理后并强制 TLS（Bearer token 走明文会被截获），开启 HSTS。
+- **限流取真实 IP**：登录/注册、对弈与分析接口已内置基于 IP 的限流。部署在反代后须以
+  `uvicorn app.main:app --proxy-headers --forwarded-allow-ips="<反代IP>"` 启动，否则限流会把所有人算作同一 IP。
+- **安全响应头**：在反代层补 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、合适的 CSP。
+- **审计日志**：失败登录与管理员敏感操作会写入 `xiangqidao.security` logger（继承 uvicorn 处理器），
+  确保 uvicorn 日志落盘并配置轮转；日志**不含**密码 / token / API key。
+- **数据库**：sqlite 文件权限收紧（仅运行账户可读写），备份注意 `app_settings` 中的 DeepSeek 密钥脱敏。
 
 ## 鉴权与多用户
 
 - 不登录也能用（数据归属访客 `default`），登录后训练/统计按用户隔离。
-- 首位注册用户自动成为**管理员**；也可用环境变量 `XQ_ADMIN=<用户名>` 指定。
+- 首位注册用户自动成为**管理员**；也可用环境变量 `XQ_ADMIN=<用户名>` 指定（留空时仅首位注册者为管理员）。
 - 生产部署务必设置 `XQ_SECRET` 环境变量（token 签名密钥）。
-- 管理后台（管理员可见「管理后台」页）：用户管理、题库增删、概览统计。
-  新增单步杀法题会用内置规则自动校验是否真为「一步杀」。
+- 管理后台（管理员可见「管理后台」页）：用户管理、题库增删、概览统计、AI 复盘开关与密钥配置、
+  **Pikafish 引擎一键安装/更新**。新增单步杀法题会用内置规则自动校验是否真为「一步杀」。
 
 ## 人机对弈
 
 「人机对弈」页可选先后手与三档难度，与引擎下完整一局；走子受规则约束并提示合法落点，
-支持**悔棋**与走子动画。未安装 Pikafish 时使用内置 negamax 搜索，开箱即用。
+支持**悔棋**与走子动画。未安装 Pikafish 时使用内置 negamax 搜索，开箱即用
+（状态栏会显示当前引擎 `♟ Pikafish` / `♟ 内置引擎`，见[安装 Pikafish](#安装-pikafish可选强力引擎)）。
+可一键开启**优劣势评估条**：以红方视角实时显示局面分（如 `+1.2` / `+M3`）与优劣措辞，
+评分精度取决于当前引擎。
 对局结束**自动存入「复盘」并后台触发分析**，终局面板可**一键跳转复盘本局**；
 复盘页除逐步失误外，还给出 LLM **综合复盘报告**，并把实战漏着生成专属练习题（私有），
 配合统计页「弱点专项」形成完整闭环：对弈→分析→报告→针对薄弱点再练。

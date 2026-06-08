@@ -1,6 +1,7 @@
 import React from "react";
 import Board from "./Board";
-import { newPlayGame, playMove, importGame, analyzeGame } from "./api";
+import { applyMove } from "./xiangqi";
+import { newPlayGame, playMove, importGame, analyzeGame, evalPosition, getPlayEngine } from "./api";
 
 const LEVELS = [
   { key: "easy", label: "入门" },
@@ -12,6 +13,40 @@ const SIDES = [
   { key: "w", label: "执红先手" },
   { key: "b", label: "执黑后手" },
 ];
+
+// 把红方视角的评分（cp/mate）转成评估条所需的展示信息。
+// humanSide: "w"/"b"，用于给出「你/对方」相对优劣的措辞。
+function describeEval({ cp, mate }, humanSide) {
+  // 红方占比：评估条左红右黑，50% 为均势
+  let redPct = 50;
+  let value;
+  let label;
+
+  if (mate != null) {
+    redPct = mate > 0 ? 100 : 0;
+    value = `${mate > 0 ? "+" : "-"}M${Math.abs(mate)}`;
+    const humanMate = humanSide === "w" ? mate : -mate;
+    label = humanMate > 0 ? `你 ${Math.abs(mate)} 步可杀` : `对方 ${Math.abs(mate)} 步可杀`;
+  } else if (cp != null) {
+    redPct = 50 + (Math.max(-1000, Math.min(1000, cp)) / 1000) * 50;
+    value = `${cp >= 0 ? "+" : ""}${(cp / 100).toFixed(1)}`;
+    const abs = Math.abs(cp);
+    const side = cp > 0 ? "红方" : "黑方";
+    const humanCp = humanSide === "w" ? cp : -cp;
+    if (abs < 60) {
+      label = "均势";
+    } else {
+      const deg = abs < 150 ? "略优" : abs < 400 ? "占优" : abs < 900 ? "大优" : "胜势";
+      const who = humanCp > 0 ? "你" : "对方";
+      label = `${side}${deg}（${who}${deg}）`;
+    }
+  } else {
+    value = "—";
+    label = "暂无评分";
+  }
+
+  return { redPct, value, label };
+}
 
 export default function Play({ onGoReview }) {
   const [fen, setFen] = React.useState(null);
@@ -26,8 +61,30 @@ export default function Play({ onGoReview }) {
   const [saved, setSaved] = React.useState(false);   // 对局是否已存入复盘
   const [savedGameId, setSavedGameId] = React.useState(null); // 存盘后的棋局 id
   const [canUndo, setCanUndo] = React.useState(false);
+  const [showEval, setShowEval] = React.useState(false); // 是否显示优劣势评估条
+  const [evalData, setEvalData] = React.useState(null);  // 红方视角 {cp, mate}
+  const [evalLoading, setEvalLoading] = React.useState(false);
+  const [engineInfo, setEngineInfo] = React.useState(null); // {engine,label,available}
   const moves = React.useRef([]);                     // 累计着法（红黑交替）
   const history = React.useRef([]);                   // 悔棋快照栈
+  const evalReqId = React.useRef(0);                  // 评分请求序号，丢弃过期响应
+
+  // 启动时探测当前实际使用的引擎（Pikafish / 内置搜索），用于界面提示
+  React.useEffect(() => {
+    getPlayEngine().then(setEngineInfo).catch(() => {});
+  }, []);
+
+  // 开启评分后，每当局面稳定（轮到你/对局结束、引擎不在思考）就拉取一次评估。
+  // 用序号防止旧请求覆盖新局面的评分。
+  React.useEffect(() => {
+    if (!showEval || !fen || thinking) return;
+    const id = ++evalReqId.current;
+    setEvalLoading(true);
+    evalPosition(fen)
+      .then((d) => { if (id === evalReqId.current) setEvalData(d); })
+      .catch(() => { if (id === evalReqId.current) setEvalData(null); })
+      .finally(() => { if (id === evalReqId.current) setEvalLoading(false); });
+  }, [showEval, fen, thinking]);
 
   async function start(side, lvl) {
     setThinking(true);
@@ -36,6 +93,7 @@ export default function Play({ onGoReview }) {
     setSaved(false);
     setSavedGameId(null);
     setCanUndo(false);
+    setEvalData(null);
     moves.current = [];
     history.current = [];
     const d = await newPlayGame({ human_side: side, level: lvl });
@@ -80,13 +138,18 @@ export default function Play({ onGoReview }) {
 
   async function onMove(move) {
     if (!yourTurn || thinking || over) return;
-    // 走子前快照当前“轮到你”的局面，供悔棋还原（连人带机回退一个回合）
-    history.current.push({
+    // 走子前快照当前“轮到你”的局面，供悔棋 / 出错还原（连人带机回退一个回合）
+    const snap = {
       fen, legalMoves, lastMove, status, movesLen: moves.current.length,
-    });
+    };
+    history.current.push(snap);
     setYourTurn(false);
     setThinking(true);
+    // 乐观更新：玩家这一手立刻落到棋盘上，不必等引擎思考完才有反馈。
+    // 注意：传给后端的仍是走子前的 fen（闭包捕获的旧值），由后端校验并应着。
+    setFen(applyMove(fen, move));
     setLastMove(move);
+    setLegalMoves([]); // 轮到引擎，先清空己方落点提示
     try {
       const d = await playMove({ fen, move, level });
       moves.current.push(move);                          // 记录人走的着法
@@ -104,8 +167,12 @@ export default function Play({ onGoReview }) {
       }
       setCanUndo(true);
     } catch {
-      // 理论上前端已限制为合法着法，兜底恢复
+      // 理论上前端已限制为合法着法，兜底回滚乐观更新
       history.current.pop();
+      setFen(snap.fen);
+      setLegalMoves(snap.legalMoves);
+      setLastMove(snap.lastMove);
+      setStatus(snap.status);
       setYourTurn(true);
     } finally {
       setThinking(false);
@@ -131,7 +198,16 @@ export default function Play({ onGoReview }) {
     return (
       <div className="panel play-setup">
         <h2>人机对弈</h2>
-        <p className="muted">和内置引擎下一盘完整对局（未装 Pikafish 时使用内置搜索引擎）。</p>
+        <p className="muted">
+          和引擎下一盘完整对局。
+          {engineInfo && (
+            <>
+              当前引擎：
+              <strong>{engineInfo.label}</strong>
+              {engineInfo.available ? "（评分较准）" : "（未装 Pikafish，评分仅供参考）"}
+            </>
+          )}
+        </p>
         <div className="play-setup-row">
           <span className="play-setup-label">先后手</span>
           <div className="seg">
@@ -180,6 +256,11 @@ export default function Play({ onGoReview }) {
       <div className="panel play-status-bar">
         <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
         <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
+        {engineInfo && (
+          <span className="tag" title={engineInfo.available ? "Pikafish 强力引擎" : "未装 Pikafish，使用内置搜索"}>
+            {engineInfo.available ? "♟ Pikafish" : "♟ 内置引擎"}
+          </span>
+        )}
         <span className="play-turn">
           {over
             ? winnerText
@@ -189,6 +270,12 @@ export default function Play({ onGoReview }) {
             ? "将军！轮到你"
             : "轮到你走"}
         </span>
+        <button
+          className={"btn-newgame" + (showEval ? " active" : "")}
+          onClick={() => setShowEval((v) => !v)}
+        >
+          {showEval ? "评分 开" : "评分 关"}
+        </button>
         <button
           className="btn-newgame"
           onClick={undo}
@@ -201,6 +288,21 @@ export default function Play({ onGoReview }) {
           重开
         </button>
       </div>
+
+      {showEval && (() => {
+        const info = describeEval(evalData || {}, humanSide);
+        return (
+          <div className="panel eval-bar-wrap">
+            <div className="eval-bar">
+              <div className="eval-bar-red" style={{ width: `${info.redPct}%` }} />
+              <span className="eval-bar-value">{evalLoading && !evalData ? "…" : info.value}</span>
+            </div>
+            <div className="eval-bar-label">
+              <span className="muted">{evalLoading ? "评估中…" : info.label}</span>
+            </div>
+          </div>
+        );
+      })()}
 
       <Board
         fen={fen}

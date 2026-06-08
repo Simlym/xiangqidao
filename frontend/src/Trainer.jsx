@@ -1,5 +1,6 @@
 import React from "react";
 import Board from "./Board";
+import { applyMove } from "./xiangqi";
 import { getNext, getTrainingPuzzle, checkMove, submitRating } from "./api";
 
 // 训练状态机
@@ -109,12 +110,16 @@ export default function Trainer({ target = null, onTargetConsumed }) {
 
   async function onMove(move) {
     if (!puzzle || !["thinking"].includes(phase)) return;
+    const prevFen = currentFen;  // 走子前局面，供答错时回滚乐观更新
     setLastMove(move);
     setHint(null);
+    // 乐观更新：玩家这一手立刻落到棋盘上，不必等校验/对方应着返回。
+    setCurrentFen(applyMove(currentFen, move));
 
     const res = await checkMove({ puzzle_id: puzzle.id, step, move, attempt: wrongCount });
 
     if (!res.correct) {
+      setCurrentFen(prevFen);  // 走错：把棋子还原回走子前
       setHadRetry(true);
       setWrongCount((n) => n + 1);
       setHint(res.hint);   // 分级提示

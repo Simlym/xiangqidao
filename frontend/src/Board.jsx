@@ -6,10 +6,18 @@ const COLS = 9; // 路（a-i）
 const ROWS = 10; // 线（0-9）
 const CELL = 46; // 相邻交叉点间距
 const PAD = 24; // 边距（给边线棋子留出空间）
+const COORD = 22; // 上下坐标条高度
 const W = (COLS - 1) * CELL; // 棋盘线区域宽
 const H = (ROWS - 1) * CELL; // 棋盘线区域高
 const SW = W + 2 * PAD; // SVG 总宽
 const SH = H + 2 * PAD; // SVG 总高
+const TOTAL_H = SH + 2 * COORD; // 含坐标条的整体高
+const MAX_SCALE = 1.4; // PC 端最大放大倍数（基准棋盘约 416px）
+
+// 列坐标：上方黑方用阿拉伯数字 1-9（黑视角从右到左→屏幕从左到右）；
+// 下方红方用汉字（红视角从右到左→屏幕从左到右为 九…一）。
+const TOP_LABELS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+const BOTTOM_LABELS = ["九", "八", "七", "六", "五", "四", "三", "二", "一"];
 
 const px = (col) => PAD + col * CELL;
 const py = (row) => PAD + row * CELL;
@@ -49,13 +57,15 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   const board = parseFen(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
 
-  // 移动端自适应：按容器宽度等比缩放整块棋盘（保留内部固定像素坐标）
+  // 自适应缩放：按容器宽度等比缩放整块棋盘（保留内部固定像素坐标）。
+  // 窄屏缩小、宽屏（PC）适当放大，最高 MAX_SCALE 倍。
   const wrapRef = React.useRef(null);
   const [scale, setScale] = React.useState(1);
   React.useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const update = () => setScale(Math.min(1, el.clientWidth / SW));
+    const update = () =>
+      setScale(Math.max(0.2, Math.min(MAX_SCALE, el.clientWidth / SW)));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -114,14 +124,24 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
     const t = sqToRC(lastTo);
     slide = { dx: px(f.col) - px(t.col), dy: py(f.row) - py(t.row) };
   }
+  // 上一步是谁走的：看终点格棋子颜色，红方/黑方用不同高亮色。
+  const lastToRC = lastTo ? sqToRC(lastTo) : null;
+  const lastMoverRed = lastToRC ? board[lastToRC.row]?.[lastToRC.col]?.red : null;
+  const markSide = lastMoverRed ? "red" : "black";
 
   return (
     <div className="xq-board-measure" ref={wrapRef}>
-    <div className="xq-board-wrap" style={{ width: SW * scale, height: SH * scale }}>
+    <div className="xq-board-wrap" style={{ width: SW * scale, height: TOTAL_H * scale }}>
     <div
-      className="xq-board"
-      style={{ width: SW, height: SH, transform: `scale(${scale})`, transformOrigin: "top left" }}
+      className="xq-board-scale"
+      style={{ width: SW, height: TOTAL_H, transform: `scale(${scale})`, transformOrigin: "top left" }}
     >
+      <div className="xq-coords">
+        {TOP_LABELS.map((t, c) => (
+          <span key={`tl${c}`} style={{ left: px(c) }}>{t}</span>
+        ))}
+      </div>
+    <div className="xq-board" style={{ width: SW, height: SH }}>
       <svg className="xq-lines" width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`}>
         {/* 横线 */}
         {Array.from({ length: ROWS }, (_, r) => (
@@ -168,7 +188,9 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
                 style={{ left: px(col), top: py(row) }}
                 onClick={() => handleClick(row, col)}
               >
-                {highlight && <span className="xq-mark-last" />}
+                {highlight && (
+                  <span className={"xq-mark-last " + markSide} />
+                )}
                 {isTarget && <span className={"xq-dot" + (cell ? " capture" : "")} />}
                 {cell && (
                   <span
@@ -192,6 +214,12 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
             );
           })
         )}
+      </div>
+    </div>
+      <div className="xq-coords">
+        {BOTTOM_LABELS.map((t, c) => (
+          <span key={`bl${c}`} className="red" style={{ left: px(c) }}>{t}</span>
+        ))}
       </div>
     </div>
     </div>
