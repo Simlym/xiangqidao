@@ -75,7 +75,7 @@ export default function Admin() {
       {/* 用户管理 */}
       <div className="panel">
         <h3>用户管理</h3>
-        <table className="admin-table">
+        <div className="admin-table-wrap"><table className="admin-table">
           <thead>
             <tr><th>ID</th><th>用户名</th><th>角色</th><th>作答</th><th>已学</th><th></th></tr>
           </thead>
@@ -93,7 +93,7 @@ export default function Admin() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {/* 新增题目 */}
@@ -126,7 +126,7 @@ export default function Admin() {
       {/* 题库列表 */}
       <div className="panel">
         <h3>题库（{puzzles.length}）</h3>
-        <table className="admin-table">
+        <div className="admin-table-wrap"><table className="admin-table">
           <thead>
             <tr><th>ID</th><th>分类</th><th>难度</th><th>正解</th><th>校验</th><th></th></tr>
           </thead>
@@ -142,7 +142,7 @@ export default function Admin() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );

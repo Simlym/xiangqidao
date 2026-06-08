@@ -6,10 +6,14 @@ body {
   color: #2b2b2b;
 }
 .app { max-width: 720px; margin: 0 auto; padding: 16px; }
-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
-header h1 { font-size: 24px; margin: 0; color: #8a5a2b; }
-.user-box { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+}
+header h1 { font-size: 24px; margin: 0; color: #8a5a2b; flex-shrink: 0; }
+.user-box { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .user-name { font-size: 14px; color: #555; font-weight: 600; }
+/* Header nav takes full width on second row when wrapping */
+header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webkit-overflow-scrolling: touch; }
 .btn-link {
   border: 1px solid #8a5a2b; background: #fff; color: #8a5a2b;
   border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 14px;
@@ -22,7 +26,8 @@ header h1 { font-size: 24px; margin: 0; color: #8a5a2b; }
   display: flex; align-items: center; justify-content: center; z-index: 50;
 }
 .modal {
-  background: #fff; border-radius: 14px; padding: 20px; width: 320px;
+  background: #fff; border-radius: 14px; padding: 20px;
+  width: min(320px, calc(100vw - 32px));
   box-shadow: 0 8px 30px rgba(0,0,0,.25);
 }
 .auth-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
@@ -35,7 +40,8 @@ header h1 { font-size: 24px; margin: 0; color: #8a5a2b; }
 .auth-form .import-input { padding: 9px 10px; font-size: 14px; }
 
 /* 后台表格 */
-.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.admin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 480px; }
 .admin-table th, .admin-table td {
   text-align: left; padding: 7px 8px; border-bottom: 1px solid #f0ebe3;
 }
@@ -44,8 +50,8 @@ header h1 { font-size: 24px; margin: 0; color: #8a5a2b; }
 .admin-form { display: flex; flex-direction: column; gap: 10px; }
 .admin h3 { margin: 0 0 12px; color: #8a5a2b; }
 nav button {
-  border: none; background: transparent; font-size: 16px; padding: 8px 12px;
-  cursor: pointer; border-radius: 8px; color: #555;
+  border: none; background: transparent; font-size: 15px; padding: 7px 10px;
+  cursor: pointer; border-radius: 8px; color: #555; white-space: nowrap; flex-shrink: 0;
 }
 nav button.active { background: #8a5a2b; color: #fff; }
 
@@ -169,7 +175,7 @@ nav button.active { background: #8a5a2b; color: #fff; }
   margin-top: 8px; padding: 10px 24px; border: none; border-radius: 8px;
   background: #8a5a2b; color: #fff; font-size: 16px; cursor: pointer;
 }
-.play-status-bar { display: flex; align-items: center; gap: 8px; }
+.play-status-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .play-turn { flex: 1; font-size: 15px; font-weight: 600; color: #2b2b2b; }
 .btn-newgame {
   border: 1px solid #8a5a2b; background: #fff; color: #8a5a2b;
@@ -235,13 +241,22 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .spark-x   { font-size: 11px; color: #999; margin-top: 4px; }
 
 @media (max-width: 520px) {
+  .app { padding: 10px; }
+  header { gap: 6px; margin-bottom: 10px; }
+  header h1 { font-size: 20px; }
+  header nav { width: 100%; order: 3; }
+  .user-box { order: 2; }
   .cards { grid-template-columns: repeat(2, 1fr); }
   .rating-btns { grid-template-columns: repeat(2, 1fr); }
-  /* 棋盘缩放改由 Board 组件按容器宽度动态计算（见 .xq-board-wrap） */
+  .panel { padding: 12px; }
+  .play-setup-row { gap: 8px; }
+  .seg-btn { padding: 7px 10px; font-size: 13px; }
+  .bar-label { width: 60px; font-size: 13px; }
+  .bar-val { width: 70px; font-size: 12px; }
 }
 
 /* ===== 棋局复盘 ===== */
-.app { max-width: 960px; }
+.app { max-width: 960px; padding-left: 16px; padding-right: 16px; }
 
 .games-layout {
   display: flex;
