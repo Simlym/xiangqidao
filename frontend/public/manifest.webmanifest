@@ -1,0 +1,17 @@
+{
+  "name": "象棋道 Xiangqidao",
+  "short_name": "象棋道",
+  "description": "循序渐进的中国象棋战术训练：战术题 + 间隔重复 + 闯关 + ELO 评分。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4ece0",
+  "theme_color": "#8a5a2b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

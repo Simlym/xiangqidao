@@ -1,23 +1,49 @@
 import React from "react";
-import { getOverview, getByCategory, getWeekly, getForecast } from "./api";
+import {
+  getOverview,
+  getByCategory,
+  getWeekly,
+  getForecast,
+  getRating,
+  getLeaderboard,
+} from "./api";
 
 export default function Stats({ onPractice }) {
   const [ov, setOv] = React.useState(null);
   const [cats, setCats] = React.useState([]);
   const [weekly, setWeekly] = React.useState([]);
   const [forecast, setForecast] = React.useState([]);
+  const [rating, setRating] = React.useState(null);
+  const [board, setBoard] = React.useState([]);
 
   React.useEffect(() => {
     getOverview().then(setOv);
     getByCategory().then(setCats);
     getWeekly().then(setWeekly);
     getForecast(14).then(setForecast);
+    getRating().then(setRating).catch(() => {});
+    getLeaderboard(10).then(setBoard).catch(() => {});
   }, []);
 
   if (!ov) return <div className="panel">加载中…</div>;
 
   return (
     <div className="stats">
+      {rating && (
+        <div className="panel rating-panel">
+          <div className="rating-main">
+            <div className="rating-num">{rating.rating}</div>
+            <div className="rating-meta">
+              <span className="rating-title">{rating.title}</span>
+              <span className="muted">历史最高 {rating.peak} · 已评级 {rating.solved} 题</span>
+            </div>
+          </div>
+          {rating.solved === 0 && (
+            <p className="muted">登录后做题即可获得 ELO 评分，做对强题涨分更多。</p>
+          )}
+        </div>
+      )}
+
       <div className="cards">
         <Card label="连续打卡" value={`${ov.streak_days} 天`} />
         <Card label="今日到期" value={`${ov.due_today} 题`} />
@@ -79,6 +105,22 @@ export default function Stats({ onPractice }) {
           </div>
         )}
       </div>
+
+      {board.length > 0 && (
+        <div className="panel">
+          <h3>评分排行榜</h3>
+          <ol className="leaderboard">
+            {board.map((r, i) => (
+              <li key={r.username} className={r.is_me ? "me" : ""}>
+                <span className="lb-rank">{i + 1}</span>
+                <span className="lb-name">{r.username}</span>
+                <span className="lb-title muted">{r.title}</span>
+                <span className="lb-rating">{r.rating}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       <div className="panel">
         <h3>每周正确率趋势</h3>

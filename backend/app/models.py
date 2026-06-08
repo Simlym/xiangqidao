@@ -47,6 +47,8 @@ class Puzzle(Base):
     side_to_move: Mapped[str] = mapped_column(String(1), default="w")  # w=红 b=黑
     category: Mapped[str] = mapped_column(String(40), default="未分类")  # 杀法类型
     difficulty: Mapped[int] = mapped_column(Integer, default=3)         # 1-5
+    # 题目 ELO：随作答动态收敛到「真实难度」；空表示尚未初始化（按难度回填）
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(80), default="")
     verified: Mapped[bool] = mapped_column(Boolean, default=False)      # 是否经引擎校验
     # 归属：'default' 表示公共题库（所有人可练）；其他值为某用户的私有题
@@ -125,3 +127,19 @@ class GameAnalysis(Base):
     is_mistake: Mapped[bool] = mapped_column(Boolean, default=False)  # eval_drop > 80
     explanation: Mapped[str] = mapped_column(Text, default="")        # DeepSeek 解释
     puzzle_id: Mapped[int | None] = mapped_column(ForeignKey("puzzles.id"), nullable=True)
+
+
+class UserStat(Base):
+    """用户评分档案（每用户一行，按 user_id 字符串归属，含匿名 default）。
+
+    与 User 表解耦：匿名访客也能有评分，且评分逻辑不依赖账号体系。
+    """
+
+    __tablename__ = "user_stats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, default=1200)   # 当前 ELO
+    peak: Mapped[int] = mapped_column(Integer, default=1200)     # 历史最高
+    solved: Mapped[int] = mapped_column(Integer, default=0)      # 已结算评分的题数
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

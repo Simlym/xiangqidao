@@ -584,3 +584,60 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .forecast-bar { width: 70%; min-height: 0; background: #8a5a2b; border-radius: 4px 4px 0 0; transition: height .3s; }
 .forecast-bar.overdue { background: #c0392b; }
 .forecast-x { font-size: 10px; color: #999; margin-top: 4px; white-space: nowrap; }
+
+/* ── 到期提醒横幅 ─────────────────────────────────────────── */
+.reminder-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: #fff8e1; border: 1px solid #f0d089; color: #8a6d2b;
+  border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 14px;
+}
+.reminder-banner .reminder-x {
+  margin-left: auto; border: none; background: transparent; cursor: pointer;
+  color: #b89b5a; font-size: 18px; line-height: 1; padding: 0 4px;
+}
+
+/* ── ELO 评分面板 ─────────────────────────────────────────── */
+.rating-panel { background: linear-gradient(135deg, #fff, #f7f0e3); }
+.rating-main { display: flex; align-items: center; gap: 16px; }
+.rating-num {
+  font-size: 40px; font-weight: 800; color: #8a5a2b;
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.rating-meta { display: flex; flex-direction: column; gap: 4px; }
+.rating-title {
+  font-size: 16px; font-weight: 700; color: #c0392b;
+}
+.delta-up { color: #27ae60; font-weight: 700; }
+.delta-down { color: #c0392b; font-weight: 700; }
+
+/* ── 排行榜 ───────────────────────────────────────────────── */
+.leaderboard { list-style: none; margin: 0; padding: 0; }
+.leaderboard li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 8px; border-bottom: 1px solid #f0ebe3; font-size: 14px;
+}
+.leaderboard li.me { background: #f6efe3; border-radius: 8px; font-weight: 700; }
+.lb-rank { width: 22px; color: #999; text-align: center; }
+.lb-name { flex: 1; font-weight: 600; }
+.lb-title { font-size: 12px; }
+.lb-rating { font-variant-numeric: tabular-nums; font-weight: 700; color: #8a5a2b; }
+
+/* ── 闯关 ─────────────────────────────────────────────────── */
+.level-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px; margin: 12px 0;
+}
+.level-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: #fff; border: 1px solid #e7ddc9; border-radius: 12px;
+  padding: 14px 8px; cursor: pointer; transition: transform .1s, box-shadow .1s;
+}
+.level-card:not(.locked):hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.level-card.locked { background: #f3f0ea; color: #bbb; cursor: not-allowed; }
+.level-card.cleared { border-color: #27ae60; background: #f3fbf4; }
+.level-no { font-weight: 700; color: #8a5a2b; }
+.level-card.locked .level-no { color: #bbb; }
+.level-diff { font-size: 12px; color: #e6a817; letter-spacing: 1px; }
+.level-stars .star { color: #ddd; font-size: 14px; }
+.level-stars .star.on { color: #f5b301; }
+.level-prog { font-size: 12px; color: #999; font-variant-numeric: tabular-nums; }

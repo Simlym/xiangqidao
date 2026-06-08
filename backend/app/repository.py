@@ -12,7 +12,7 @@ from datetime import date
 from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session
 
-from .models import Attempt, Puzzle, Review
+from .models import Attempt, Puzzle, Review, UserStat
 
 # ── 题目 / 复习 ──────────────────────────────────────────────────
 
@@ -180,3 +180,78 @@ def count_reviews(db: Session, user: str) -> int:
     return db.scalar(
         select(func.count()).select_from(Review).where(Review.user_id == user)
     ) or 0
+
+
+# ── 评分（ELO） ─────────────────────────────────────────────────
+
+
+def get_user_stat(db: Session, user: str) -> UserStat | None:
+    return db.scalar(select(UserStat).where(UserStat.user_id == user))
+
+
+def get_or_create_user_stat(db: Session, user: str) -> UserStat:
+    stat = get_user_stat(db, user)
+    if stat is None:
+        stat = UserStat(user_id=user)
+        db.add(stat)
+        db.flush()
+    return stat
+
+
+def has_attempt(db: Session, user: str, puzzle_id: int) -> bool:
+    """该用户是否已作答过此题（用于评分只结算首次遇题）。"""
+    return db.scalar(
+        select(Attempt.id).where(Attempt.user_id == user, Attempt.puzzle_id == puzzle_id).limit(1)
+    ) is not None
+
+
+def leaderboard(db: Session, limit: int = 20) -> list[UserStat]:
+    """评分排行榜（排除匿名访客 default）。"""
+    return list(
+        db.scalars(
+            select(UserStat)
+            .where(UserStat.user_id != PUBLIC_OWNER, UserStat.solved > 0)
+            .order_by(UserStat.rating.desc())
+            .limit(limit)
+        )
+    )
+
+
+# ── 闯关（关卡由公共题库按难度切分而成） ─────────────────────────
+
+
+def public_puzzles_ordered(db: Session) -> list[Puzzle]:
+    """公共题库按 (难度, id) 稳定排序，用于切分关卡。"""
+    return list(
+        db.scalars(
+            select(Puzzle)
+            .where(Puzzle.user_id == PUBLIC_OWNER)
+            .order_by(Puzzle.difficulty, Puzzle.id)
+        )
+    )
+
+
+def solved_puzzle_ids(db: Session, user: str) -> set[int]:
+    """用户做对过（任意一次）的题 id 集合。"""
+    return {
+        pid for (pid,) in db.execute(
+            select(Attempt.puzzle_id)
+            .where(Attempt.user_id == user, Attempt.correct.is_(True))
+            .distinct()
+        )
+    }
+
+
+def first_try_puzzle_ids(db: Session, user: str) -> set[int]:
+    """用户一次做对（未中途重试）的题 id 集合，用于关卡星级。"""
+    return {
+        pid for (pid,) in db.execute(
+            select(Attempt.puzzle_id)
+            .where(
+                Attempt.user_id == user,
+                Attempt.correct.is_(True),
+                Attempt.had_retry.is_(False),
+            )
+            .distinct()
+        )
+    }

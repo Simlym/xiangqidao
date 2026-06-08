@@ -32,18 +32,28 @@ def _ensure_columns() -> None:
     additions = {
         "reviews": [("created_at", "DATE")],
         "attempts": [("had_retry", "BOOLEAN DEFAULT 0")],
-        "puzzles": [("user_id", "VARCHAR(40) DEFAULT 'default'")],
+        "puzzles": [
+            ("user_id", "VARCHAR(40) DEFAULT 'default'"),
+            ("rating", "INTEGER"),
+        ],
         "games": [
             ("user_id", "VARCHAR(40) DEFAULT 'default'"),
             ("report", "TEXT DEFAULT ''"),
         ],
     }
     with engine.begin() as conn:
+        added: set[str] = set()
         for table, cols in additions.items():
             existing = {c["name"] for c in insp.get_columns(table)}
             for name, ddl in cols:
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+                    added.add(f"{table}.{name}")
+        # 新增题目评分列：按难度回填初始 ELO（公式与 elo.difficulty_to_rating 一致）
+        if "puzzles.rating" in added:
+            conn.execute(
+                text("UPDATE puzzles SET rating = 550 + 250 * difficulty WHERE rating IS NULL")
+            )
 
 
 def init_db() -> None:

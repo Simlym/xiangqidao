@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import repository as repo
+from .. import ratings, repository as repo
 from ..auth import current_user_id
 from ..deps import get_db
 from ..importer.verify_mate import FILES, parse_fen
@@ -64,9 +64,16 @@ class SubmitRequest(BaseModel):
     correct: bool = True
 
 
+class RatingChange(BaseModel):
+    old: int
+    new: int
+    delta: int
+
+
 class SubmitResponse(BaseModel):
     next_review: date
     solution: list[str]    # 完整正解，供答错后展示讲解
+    rating: RatingChange | None = None  # 首次遇题时的评分变化（已登录用户）
 
 
 PIECE_NAMES = {
@@ -250,6 +257,13 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
 
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
 
+    # 评分只在首次遇题时结算（须在写入本次 Attempt 之前判定）
+    rating_change = None
+    if not repo.has_attempt(db, user, puzzle.id):
+        rating_change = ratings.apply(
+            db, user, puzzle, ratings.score_of(req.correct, req.had_retry)
+        )
+
     rev = repo.get_review(db, puzzle.id, user)
     if rev is None:
         rev = Review(puzzle_id=puzzle.id, user_id=user)
@@ -286,4 +300,9 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
     )
     db.commit()
 
-    return SubmitResponse(next_review=rev.next_review, solution=solution)
+    rc = (
+        RatingChange(old=rating_change["old"], new=rating_change["new"], delta=rating_change["delta"])
+        if rating_change
+        else None
+    )
+    return SubmitResponse(next_review=rev.next_review, solution=solution, rating=rc)

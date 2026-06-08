@@ -33,6 +33,7 @@ export default function Trainer({ target = null, onTargetConsumed }) {
   // 最终结果
   const [solution, setSolution]   = React.useState([]);
   const [nextReview, setNextReview] = React.useState(null);
+  const [ratingChange, setRatingChange] = React.useState(null); // 首次遇题的 ELO 变化
   const startedAt                 = React.useRef(0);
 
   // 计时训练
@@ -59,6 +60,7 @@ export default function Trainer({ target = null, onTargetConsumed }) {
     setHint(null);
     setStepMsg("");
     setSolution([]);
+    setRatingChange(null);
     setElapsed(0);
   }, []);
 
@@ -163,6 +165,7 @@ export default function Trainer({ target = null, onTargetConsumed }) {
     });
     setSolution(res.solution);
     setNextReview(res.next_review);
+    setRatingChange(res.rating || null);
     setPhase("done");
   }
 
@@ -177,6 +180,7 @@ export default function Trainer({ target = null, onTargetConsumed }) {
     });
     setSolution(res.solution);
     setNextReview(res.next_review);
+    setRatingChange(res.rating || null);
     setPhase("done");
   }
 
@@ -305,6 +309,14 @@ export default function Trainer({ target = null, onTargetConsumed }) {
       {phase === "done" && (
         <div className="panel result ok">
           <p>正解：<code>{solution.join(" → ")}</code></p>
+          {ratingChange && (
+            <p>评分 {ratingChange.old} →{" "}
+              <b>{ratingChange.new}</b>{" "}
+              <span className={ratingChange.delta >= 0 ? "delta-up" : "delta-down"}>
+                ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
+              </span>
+            </p>
+          )}
           {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
           <p className="muted">下次复习：{nextReview}</p>
           <button onClick={() => load(activeCategory)}>
