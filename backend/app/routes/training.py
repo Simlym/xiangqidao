@@ -4,13 +4,13 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import repository as repo
 from ..auth import current_user_id
 from ..deps import get_db
 from ..importer.verify_mate import FILES, parse_fen
-from ..models import Attempt, Puzzle, Review
+from ..models import Attempt, Review
 from ..play_engine import game_status, legal_moves_uci
 from ..srs import SrsState, review as srs_review
 from ..xiangqi_utils import apply_move
@@ -102,13 +102,7 @@ def _graded_hint(fen_now: str, expected: str, attempt: int) -> str:
 
 def _target_difficulty(db: Session, user: str) -> int:
     """据最近表现估计合适难度（1-5）：首答正确率越高，难度目标越高。"""
-    RECENT = 20
-    rows = db.execute(
-        select(Attempt.correct, Attempt.had_retry)
-        .where(Attempt.user_id == user)
-        .order_by(Attempt.id.desc())
-        .limit(RECENT)
-    ).all()
+    rows = repo.recent_attempts(db, user, limit=20)
     if len(rows) < 5:
         return 2  # 冷启动：偏易上手
     first_try = sum(1 for c, r in rows if c and not r)
@@ -130,46 +124,19 @@ def _target_difficulty(db: Session, user: str) -> int:
 def next_puzzle(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """返回到期题或新题。"""
     today = date.today()
-    due_count = db.scalar(
-        select(func.count())
-        .select_from(Review)
-        .where(Review.user_id == user, Review.next_review <= today)
-    ) or 0
+    due_count = repo.count_due(db, user, today)
+    puzzle = repo.first_due_puzzle(db, user, today)
 
-    puzzle = db.scalar(
-        select(Puzzle)
-        .join(Review, Review.puzzle_id == Puzzle.id)
-        .where(Review.user_id == user, Review.next_review <= today)
-        .order_by(Review.next_review)
-        .limit(1)
-    )
     new_limit_reached = False
     if puzzle is None:
         # 无到期题才考虑新题，且受每日新题上限约束
-        new_today = db.scalar(
-            select(func.count())
-            .select_from(Review)
-            .where(Review.user_id == user, Review.created_at == today)
-        ) or 0
-        if new_today < NEW_PER_DAY:
-            learned = select(Review.puzzle_id).where(Review.user_id == user)
+        if repo.count_new_today(db, user, today) < NEW_PER_DAY:
             # 难度自适应：优先选难度最接近目标的新题
-            target = _target_difficulty(db, user)
-            puzzle = db.scalar(
-                select(Puzzle)
-                .where(Puzzle.id.not_in(learned))
-                .order_by(func.abs(Puzzle.difficulty - target), Puzzle.difficulty)
-                .limit(1)
-            )
+            puzzle = repo.pick_new_puzzle(db, user, _target_difficulty(db, user))
             # 取不到说明题库已学完；取到则正常返回
         else:
             # 仍有未学新题但今日额度用尽时才算“达上限”
-            has_more = db.scalar(
-                select(func.count())
-                .select_from(Puzzle)
-                .where(Puzzle.id.not_in(select(Review.puzzle_id).where(Review.user_id == user)))
-            ) or 0
-            new_limit_reached = has_more > 0
+            new_limit_reached = repo.count_unlearned(db, user) > 0
 
     if puzzle:
         n = len([m for m in puzzle.solution.split(",") if m.strip()])
@@ -191,7 +158,7 @@ def next_puzzle(db: Session = Depends(get_db), user: str = Depends(current_user_
 @router.post("/check_move", response_model=CheckMoveResponse)
 def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
     """校验用户走的某一步是否正确，返回新局面 FEN（不写库）。"""
-    puzzle = db.get(Puzzle, req.puzzle_id)
+    puzzle = repo.get_puzzle(db, req.puzzle_id)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
 
@@ -248,15 +215,13 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
 @router.post("/submit", response_model=SubmitResponse)
 def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """记录本次作答结果（含自评），更新 SM-2。"""
-    puzzle = db.get(Puzzle, req.puzzle_id)
+    puzzle = repo.get_puzzle(db, req.puzzle_id)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
 
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
 
-    rev = db.scalar(
-        select(Review).where(Review.puzzle_id == puzzle.id, Review.user_id == user)
-    )
+    rev = repo.get_review(db, puzzle.id, user)
     if rev is None:
         rev = Review(puzzle_id=puzzle.id, user_id=user)
         db.add(rev)

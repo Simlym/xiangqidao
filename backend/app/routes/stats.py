@@ -4,12 +4,11 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session
 
+from .. import repository as repo
 from ..auth import current_user_id
 from ..deps import get_db
-from ..models import Attempt, Puzzle, Review
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -45,44 +44,16 @@ class ForecastPoint(BaseModel):
 @router.get("/overview", response_model=Overview)
 def overview(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     today = date.today()
-    total = db.scalar(select(func.count()).select_from(Puzzle)) or 0
-    learned = db.scalar(
-        select(func.count()).select_from(Review).where(Review.user_id == user)
-    ) or 0
-    due = db.scalar(
-        select(func.count())
-        .select_from(Review)
-        .where(Review.user_id == user, Review.next_review <= today)
-    ) or 0
+    total = repo.count_puzzles(db)
+    learned = repo.count_reviews(db, user)
+    due = repo.count_due(db, user, today)
 
-    total_att = db.scalar(
-        select(func.count()).select_from(Attempt).where(Attempt.user_id == user)
-    ) or 0
-    correct_att = db.scalar(
-        select(func.count())
-        .select_from(Attempt)
-        .where(Attempt.user_id == user, Attempt.correct.is_(True))
-    ) or 0
+    total_att, correct_att, first_try_att = repo.attempt_totals(db, user)
     acc = round(correct_att / total_att, 3) if total_att else 0.0
-
-    # 首答正确率：一次做对且未中途重试
-    first_try_att = db.scalar(
-        select(func.count())
-        .select_from(Attempt)
-        .where(
-            Attempt.user_id == user,
-            Attempt.correct.is_(True),
-            Attempt.had_retry.is_(False),
-        )
-    ) or 0
     first_acc = round(first_try_att / total_att, 3) if total_att else 0.0
 
     # 连续打卡：从今天往前逐日检查是否有作答
-    days = {
-        d for (d,) in db.execute(
-            select(func.date(Attempt.ts)).where(Attempt.user_id == user).distinct()
-        )
-    }
+    days = repo.attempt_dates(db, user)
     streak = 0
     cur = today
     while cur.isoformat() in days:
@@ -106,11 +77,7 @@ def forecast(days: int = 14, db: Session = Depends(get_db), user: str = Depends(
     今天那一格包含所有已过期（next_review <= today）的堆积量。
     """
     today = date.today()
-    rows = db.execute(
-        select(Review.next_review, func.count())
-        .where(Review.user_id == user)
-        .group_by(Review.next_review)
-    ).all()
+    rows = repo.review_due_counts(db, user)
 
     counts: dict[date, int] = {}
     overdue = 0
@@ -137,16 +104,7 @@ def forecast(days: int = 14, db: Session = Depends(get_db), user: str = Depends(
 @router.get("/by_category", response_model=list[CategoryStat])
 def by_category(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """各杀法类型正确率 —— 一眼看出弱点（前端画雷达图）。"""
-    rows = db.execute(
-        select(
-            Puzzle.category,
-            func.count(Attempt.id),
-            func.sum(func.cast(Attempt.correct, Integer)),
-        )
-        .join(Attempt, Attempt.puzzle_id == Puzzle.id)
-        .where(Attempt.user_id == user)
-        .group_by(Puzzle.category)
-    ).all()
+    rows = repo.category_stats(db, user)
     out = []
     for cat, n, c in rows:
         c = c or 0
@@ -158,10 +116,7 @@ def by_category(db: Session = Depends(get_db), user: str = Depends(current_user_
 def weekly(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """按周的正确率趋势（最近 8 周）。"""
     since = date.today() - timedelta(weeks=8)
-    rows = db.execute(
-        select(Attempt.ts, Attempt.correct)
-        .where(Attempt.user_id == user, func.date(Attempt.ts) >= since.isoformat())
-    ).all()
+    rows = repo.attempts_since(db, user, since)
 
     buckets: dict[date, list[int]] = {}
     for ts, correct in rows:

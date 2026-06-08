@@ -1,4 +1,4 @@
-"""数据模型。单用户场景，user_id 暂以固定值占位，便于日后扩展多用户。"""
+"""数据模型。user_id 以用户名字符串标识，匿名场景回退 'default'。"""
 
 from datetime import date, datetime
 
@@ -11,13 +11,11 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    create_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-
-class Base(DeclarativeBase):
-    pass
+# 持久化配置集中在 database 模块；此处再导出以保持既有导入路径可用
+from .database import Base, SessionLocal, engine, init_db  # noqa: F401
 
 
 class User(Base):
@@ -122,30 +120,3 @@ class GameAnalysis(Base):
     is_mistake: Mapped[bool] = mapped_column(Boolean, default=False)  # eval_drop > 80
     explanation: Mapped[str] = mapped_column(Text, default="")        # DeepSeek 解释
     puzzle_id: Mapped[int | None] = mapped_column(ForeignKey("puzzles.id"), nullable=True)
-
-
-DB_URL = "sqlite:///./data/puzzles.db"
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autoflush=False)
-
-
-def _ensure_columns() -> None:
-    """为既有 SQLite 库补齐新增列（本项目暂无迁移框架，做最小兼容）。"""
-    from sqlalchemy import inspect, text
-
-    insp = inspect(engine)
-    additions = {
-        "reviews": [("created_at", "DATE")],
-        "attempts": [("had_retry", "BOOLEAN DEFAULT 0")],
-    }
-    with engine.begin() as conn:
-        for table, cols in additions.items():
-            existing = {c["name"] for c in insp.get_columns(table)}
-            for name, ddl in cols:
-                if name not in existing:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
-
-
-def init_db() -> None:
-    Base.metadata.create_all(engine)
-    _ensure_columns()
