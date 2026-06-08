@@ -16,6 +16,36 @@ from app.models import Base, Puzzle
 # 双车错局面：h7f7 与 h1f1 均为成立的一步杀
 MULTI_MATE_FEN = "9/9/5k1R1/9/9/9/9/9/7R1/4K4 w"
 
+# 强制双步杀：f0e0(己) → f8f7(对方) → a3f3(己·杀)
+MATE_IN_TWO_FEN = "9/5k3/9/9/9/9/R8/9/6R2/5K3 w"
+MATE_IN_TWO_SOL = "f0e0,f8f7,a3f3"
+
+
+def _client_with_fen(fen: str, solution: str):
+    eng = sa_create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(eng)
+    TestSession = sessionmaker(bind=eng, autoflush=False)
+    with TestSession() as db:
+        p = Puzzle(fen=fen, solution=solution, side_to_move="w",
+                   category="test", difficulty=2, source="test")
+        db.add(p)
+        db.commit()
+        pid = p.id
+
+    def override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    return TestClient(app), pid
+
 
 def _client_with_puzzle(solution: str):
     eng = sa_create_engine(
@@ -72,6 +102,36 @@ def test_alternative_mate_accepted():
         data = r.json()
         assert data["correct"] is True
         assert data["done"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_multistep_autoplays_opponent_reply():
+    """多步题：玩家走己方着后，系统自动走出对方应着，玩家只输入己方着法。"""
+    client, pid = _client_with_fen(MATE_IN_TWO_FEN, MATE_IN_TWO_SOL)
+    try:
+        # 第 0 步（己方）：f0e0
+        r0 = client.post("/api/training/check_move",
+                         json={"puzzle_id": pid, "step": 0, "move": "f0e0"}).json()
+        assert r0["correct"] is True
+        assert r0["done"] is False
+        assert r0["opponent_move"] == "f8f7"   # 对方应着已自动走出
+
+        # 第 1 步（己方）：a3f3 —— 终结杀着
+        r1 = client.post("/api/training/check_move",
+                         json={"puzzle_id": pid, "step": 1, "move": "a3f3"}).json()
+        assert r1["correct"] is True
+        assert r1["done"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_multistep_total_steps_counts_only_player_moves():
+    """三手正解（含一手对方应着）应只算 2 个玩家步。"""
+    client, pid = _client_with_fen(MATE_IN_TWO_FEN, MATE_IN_TWO_SOL)
+    try:
+        nxt = client.get("/api/training/next").json()
+        assert nxt["puzzle"]["total_steps"] == 2
     finally:
         app.dependency_overrides.clear()
 

@@ -7,7 +7,7 @@ from ..deps import get_db
 from ..engine import get_shared_engine
 from ..llm import explain_mistake
 from ..models import Game, GameAnalysis, Puzzle
-from ..play_engine import builtin_evaluate
+from ..play_engine import builtin_evaluate, game_status
 from ..xiangqi_utils import apply_move
 
 router = APIRouter(prefix="/api/games", tags=["analysis"])
@@ -35,15 +35,16 @@ def _flip_score(score_cp: int | None) -> int | None:
 
 
 class _Eval:
-    """统一封装一个局面的评估：best_move、存档用 cp/mate、比较用 unified cp。"""
+    """统一封装一个局面的评估：best_move、存档用 cp/mate、比较用 unified cp、pv。"""
 
-    __slots__ = ("best_move", "score_cp", "score_mate", "unified")
+    __slots__ = ("best_move", "score_cp", "score_mate", "unified", "pv")
 
-    def __init__(self, best_move, score_cp, score_mate, unified):
+    def __init__(self, best_move, score_cp, score_mate, unified, pv=None):
         self.best_move = best_move
         self.score_cp = score_cp
         self.score_mate = score_mate
         self.unified = unified  # 走子方视角的等效 cp（mate 已折算），用于算 eval_drop
+        self.pv = pv            # 主变着法序列（己方/对方交替），用于生成多步题
 
 
 def _evaluate(fen: str, engine, builtin_depth: int = 3) -> _Eval:
@@ -51,15 +52,36 @@ def _evaluate(fen: str, engine, builtin_depth: int = 3) -> _Eval:
     if engine is not None:
         ev = engine.analyze(fen, depth=15)
         if ev.score_cp is not None:
-            return _Eval(ev.best_move, ev.score_cp, None, ev.score_cp)
+            return _Eval(ev.best_move, ev.score_cp, None, ev.score_cp, ev.pv)
         if ev.score_mate is not None:
-            return _Eval(ev.best_move, None, ev.score_mate, _mate_to_cp(ev.score_mate))
-        return _Eval(ev.best_move, None, None, None)
+            return _Eval(ev.best_move, None, ev.score_mate, _mate_to_cp(ev.score_mate), ev.pv)
+        return _Eval(ev.best_move, None, None, None, ev.pv)
 
     # 内置兜底：negamax 返回走子方视角 cp，极大值代表搜索内找到强制杀
     mv, cp = builtin_evaluate(fen, depth=builtin_depth)
     cp = max(-MATE_CP, min(MATE_CP, cp))
-    return _Eval(mv, cp, None, cp)
+    return _Eval(mv, cp, None, cp, None)
+
+
+def _trim_pv(fen: str, pv, max_plies: int = 7) -> list[str]:
+    """从 fen 起回放主变，截取一段合法着法作为多步题正解。
+
+    遇到将死即止；以“玩家着法”收尾（奇数长度），便于训练器逐步出题。
+    """
+    out: list[str] = []
+    cur = fen
+    for mv in (pv or [])[:max_plies]:
+        try:
+            nxt = apply_move(cur, mv)
+        except Exception:
+            break
+        out.append(mv)
+        cur = nxt
+        if game_status(cur) == "checkmate":
+            break
+    if len(out) % 2 == 0 and out:  # 末尾是对方应着则去掉，保证以己方着收尾
+        out = out[:-1]
+    return out
 
 
 def _run_analysis(game_id: int) -> None:
@@ -102,6 +124,7 @@ def _run_analysis(game_id: int) -> None:
             side = "红方" if i % 2 == 0 else "黑方"
 
             best_move: str | None = None
+            best_pv: list[str] | None = None
             score_cp_before: int | None = None
             score_mate_before: int | None = None
             eval_drop = 0
@@ -110,6 +133,7 @@ def _run_analysis(game_id: int) -> None:
                 # 分析走这步之前的局面，得到最优着和评分
                 eval_before = _evaluate(fen_before, engine)
                 best_move = eval_before.best_move or move
+                best_pv = eval_before.pv
                 score_cp_before = eval_before.score_cp
                 score_mate_before = eval_before.score_mate
 
@@ -143,9 +167,12 @@ def _run_analysis(game_id: int) -> None:
                 # 判断 FEN 中走方
                 fen_parts = fen_before.split()
                 side_to_move = fen_parts[1] if len(fen_parts) > 1 else "w"
+                # 用引擎主变生成多步正解（己方/对方交替），取不到则退化为单手
+                trimmed = _trim_pv(fen_before, best_pv)
+                solution = ",".join(trimmed) if len(trimmed) >= 1 else best_move
                 puzzle = Puzzle(
                     fen=fen_before,
-                    solution=best_move,
+                    solution=solution,
                     side_to_move=side_to_move,
                     category="实战漏算",
                     source=f"game_{game_id}",

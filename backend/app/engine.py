@@ -13,6 +13,7 @@ class MoveEval:
     best_move: str | None
     score_cp: int | None      # centipawn，正=当前方有利
     score_mate: int | None    # 几步杀，None=无强制杀
+    pv: list[str] | None = None  # 主变着法序列（己方/对方交替），用于生成多步题
 
 
 class Engine:
@@ -76,7 +77,7 @@ class Engine:
             score_cp: int | None = None
             score_mate: int | None = None
             best_depth = -1
-            pv_move: str | None = None
+            pv_line: list[str] | None = None
 
             for line in self.proc.stdout:
                 line = line.strip()
@@ -98,8 +99,8 @@ class Engine:
                     sc_cp = re.search(r"\bscore cp (-?\d+)", line)
                     sc_mate = re.search(r"\bscore mate (-?\d+)", line)
 
-                    # 解析 pv 第一着
-                    pv_m = re.search(r"\bpv ([a-i][0-9][a-i][0-9])", line)
+                    # 解析整条 pv（着法序列）
+                    pv_m = re.search(r"\bpv (.+)$", line)
 
                     if d > best_depth:
                         best_depth = d
@@ -109,15 +110,20 @@ class Engine:
                         elif sc_mate:
                             score_mate = int(sc_mate.group(1))
                             score_cp = None
-                        pv_move = pv_m.group(1) if pv_m else None
+                        if pv_m:
+                            pv_line = re.findall(r"[a-i][0-9][a-i][0-9]", pv_m.group(1))
+                        else:
+                            pv_line = None
 
-        # pv_move 优先，bestmove 保底
+        pv_move = pv_line[0] if pv_line else None
+        # pv 第一着优先，bestmove 保底
         final_best = pv_move or best_move
 
         return MoveEval(
             best_move=final_best,
             score_cp=score_cp,
             score_mate=score_mate,
+            pv=pv_line,
         )
 
     def close(self) -> None:

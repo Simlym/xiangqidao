@@ -50,8 +50,9 @@ class CheckMoveRequest(BaseModel):
 class CheckMoveResponse(BaseModel):
     correct: bool
     done: bool             # 所有步骤完成
-    fen_after: str | None  # 走对时返回新局面（供前端继续显示）
-    hint: str | None       # 答错时透露起点提示，如 "h2"（仅文件+行）
+    fen_after: str | None  # 走对时返回新局面（已含对方应着）
+    hint: str | None       # 答错时的分级提示文案
+    opponent_move: str | None = None  # 系统自动走出的对方应着（UCI），供前端展示
 
 
 class SubmitRequest(BaseModel):
@@ -142,7 +143,8 @@ def next_puzzle(db: Session = Depends(get_db), user: str = Depends(current_user_
             new_limit_reached = has_more > 0
 
     if puzzle:
-        steps = len([m for m in puzzle.solution.split(",") if m.strip()])
+        n = len([m for m in puzzle.solution.split(",") if m.strip()])
+        steps = (n + 1) // 2  # 仅玩家要走的着法数（对方应着自动走出）
         p_out = PuzzleOut(
             id=puzzle.id,
             fen=puzzle.fen,
@@ -165,27 +167,28 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
         raise HTTPException(404, "题目不存在")
 
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
-    if req.step >= len(solution):
+    n = len(solution)
+    sol_idx = 2 * req.step  # 玩家第 step 步对应的 solution 下标（偶数位）
+    if sol_idx >= n:
         raise HTTPException(400, "step 超出解题步数")
 
-    expected = solution[req.step]
+    expected = solution[sol_idx]
     user_move = req.move.strip()
-    is_last = req.step == len(solution) - 1
+    is_mating_move = sol_idx == n - 1  # 之后无对方应着，通常即终结(将死)的一手
 
-    # 当前步之前的局面（已走完前面所有正解）
+    # 当前步之前的局面（已走完前面所有 己方+对方 着法）
     fen_now = puzzle.fen
-    for mv in solution[: req.step]:
+    for mv in solution[:sol_idx]:
         fen_now = apply_move(fen_now, mv)
 
     correct = user_move == expected
 
-    # 变着容错：最后一步若用户走出“另一条同样成立的杀着”，也算对。
-    # 仅对最后一步放宽，因为中间步骤换着会让后续录入的正解线无法衔接。
-    if not correct and is_last:
+    # 变着容错：仅终结步放宽——走出“另一条同样成立的杀着”也算对；
+    # 中间步换着会让后续录入的对方应着无法衔接，故仍要求精确。
+    if not correct and is_mating_move:
         try:
             if user_move in legal_moves_uci(fen_now):
-                fen_try = apply_move(fen_now, user_move)
-                if game_status(fen_try) == "checkmate":
+                if game_status(apply_move(fen_now, user_move)) == "checkmate":
                     correct = True
         except Exception:
             pass
@@ -195,11 +198,22 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
         hint = _graded_hint(fen_now, expected, req.attempt)
         return CheckMoveResponse(correct=False, done=False, fen_after=None, hint=hint)
 
-    # 接受的着法即用户所走（非末步时它必等于录入正解；末步可能是等效变着）
+    # 应用玩家这一手（终结步可能是等效变着）
     fen_after = apply_move(fen_now, user_move)
 
-    done = is_last
-    return CheckMoveResponse(correct=True, done=done, fen_after=fen_after, hint=None)
+    # 自动走出对方应着（若有），让玩家只需关心己方着法
+    opponent_move = None
+    if sol_idx + 1 < n:
+        opponent_move = solution[sol_idx + 1]
+        try:
+            fen_after = apply_move(fen_after, opponent_move)
+        except Exception:
+            opponent_move = None
+
+    done = sol_idx + 2 >= n  # 没有下一玩家步即完成
+    return CheckMoveResponse(
+        correct=True, done=done, fen_after=fen_after, hint=None, opponent_move=opponent_move,
+    )
 
 
 @router.post("/submit", response_model=SubmitResponse)

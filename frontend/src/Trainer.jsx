@@ -73,18 +73,24 @@ export default function Trainer() {
       setCurrentFen(res.fen_after);
       setPhase("rating");
     } else {
-      // 中间步骤正确：短暂提示后继续
+      // 中间步骤正确：展示对方应着后继续
       const nextStep = step + 1;
       setStep(nextStep);
       setWrongCount(0);    // 进入下一步，重置该步错误计数
       setCurrentFen(res.fen_after);
-      setStepMsg(`第 ${step + 1} 步正确，继续！`);
+      // fen_after 已含对方应着，高亮其落子让玩家看清对方回应
+      if (res.opponent_move) setLastMove(res.opponent_move);
+      setStepMsg(
+        res.opponent_move
+          ? `第 ${step + 1} 步正确！对方应：${res.opponent_move}`
+          : `第 ${step + 1} 步正确，继续！`
+      );
       setPhase("step_ok");
       setTimeout(() => {
         setStepMsg("");
         setLastMove(null);
         setPhase("thinking");
-      }, 900);
+      }, 1100);
     }
   }
 
