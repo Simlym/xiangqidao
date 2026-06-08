@@ -32,6 +32,21 @@ export default function Trainer() {
   const [nextReview, setNextReview] = React.useState(null);
   const startedAt                 = React.useRef(0);
 
+  // 计时训练
+  const [timed, setTimed]   = React.useState(true);
+  const [elapsed, setElapsed] = React.useState(0);  // 秒
+  const solveMs               = React.useRef(0);     // 完成时定格的用时
+
+  // 解题进行中实时计时；完成/答错面板出现后停表
+  React.useEffect(() => {
+    if (!timed || !["thinking", "step_ok"].includes(phase)) return;
+    const id = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)),
+      250,
+    );
+    return () => clearInterval(id);
+  }, [timed, phase]);
+
   const load = React.useCallback(async () => {
     setPhase("loading");
     setStep(0);
@@ -41,6 +56,7 @@ export default function Trainer() {
     setHint(null);
     setStepMsg("");
     setSolution([]);
+    setElapsed(0);
 
     const d = await getNext();
     setDueCount(d.due_count);
@@ -102,12 +118,13 @@ export default function Trainer() {
 
   async function onGiveUp() {
     // 放弃：直接提交 again，拿到正解
+    solveMs.current = Date.now() - startedAt.current;
     const res = await submitRating({
       puzzle_id: puzzle.id,
       self_rating: "again",
       had_retry: true,
       correct: false,
-      time_spent_ms: Date.now() - startedAt.current,
+      time_spent_ms: solveMs.current,
     });
     setSolution(res.solution);
     setNextReview(res.next_review);
@@ -115,17 +132,20 @@ export default function Trainer() {
   }
 
   async function onRate(rating) {
+    solveMs.current = Date.now() - startedAt.current;
     const res = await submitRating({
       puzzle_id: puzzle.id,
       self_rating: rating,
       had_retry: hadRetry,
       correct: true,
-      time_spent_ms: Date.now() - startedAt.current,
+      time_spent_ms: solveMs.current,
     });
     setSolution(res.solution);
     setNextReview(res.next_review);
     setPhase("done");
   }
+
+  const fmtSec = (ms) => `${(ms / 1000).toFixed(1)} 秒`;
 
   // ── 渲染 ──────────────────────────────────────────────────────
 
@@ -156,6 +176,14 @@ export default function Trainer() {
           {totalSteps > 1 && (
             <span className="tag">共 {totalSteps} 步</span>
           )}
+          {timed && <span className="tag timer">⏱ {elapsed}s</span>}
+          <span
+            className="tag clickable"
+            onClick={() => setTimed((v) => !v)}
+            title="切换计时模式"
+          >
+            计时{timed ? "开" : "关"}
+          </span>
           <span className="due-badge">到期 {dueCount} 题</span>
         </div>
         {/* 多步进度条 */}
@@ -225,6 +253,7 @@ export default function Trainer() {
       {phase === "done" && (
         <div className="panel result ok">
           <p>正解：<code>{solution.join(" → ")}</code></p>
+          {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
           <p className="muted">下次复习：{nextReview}</p>
           <button onClick={load}>下一题 →</button>
         </div>

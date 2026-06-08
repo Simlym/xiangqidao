@@ -58,6 +58,8 @@ nav button.active { background: #8a5a2b; color: #fff; }
   display: inline-block; background: #efe6d6; color: #8a5a2b;
   border-radius: 6px; padding: 2px 8px; margin-right: 6px; font-size: 13px;
 }
+.tag.timer { background: #e6efe0; color: #2e7d32; font-variant-numeric: tabular-nums; }
+.tag.clickable { cursor: pointer; user-select: none; }
 .due-badge {
   float: right; font-size: 13px; color: #999;
 }
@@ -128,6 +130,11 @@ nav button.active { background: #8a5a2b; color: #fff; }
   box-shadow: 0 1px 3px rgba(0, 0, 0, .35), inset 0 0 0 2px #e9d3a3;
   user-select: none;
   font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
+}
+.xq-piece.moving { animation: xq-slide .24s ease-out; }
+@keyframes xq-slide {
+  from { transform: translate(var(--dx), var(--dy)); }
+  to   { transform: translate(0, 0); }
 }
 .xq-piece.red   { color: #c0392b; }
 .xq-piece.black { color: #1a1a1a; }

@@ -106,6 +106,15 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   const lastFrom = lastMove ? lastMove.slice(0, 2) : null;
   const lastTo = lastMove ? lastMove.slice(2, 4) : null;
 
+  // 走子动画：落点棋子从起点滑入。计算起点相对终点的像素偏移。
+  const sqToRC = (sq) => ({ col: "abcdefghi".indexOf(sq[0]), row: 9 - Number(sq[1]) });
+  let slide = null;
+  if (lastFrom && lastTo) {
+    const f = sqToRC(lastFrom);
+    const t = sqToRC(lastTo);
+    slide = { dx: px(f.col) - px(t.col), dy: py(f.row) - py(t.row) };
+  }
+
   return (
     <div className="xq-board-measure" ref={wrapRef}>
     <div className="xq-board-wrap" style={{ width: SW * scale, height: SH * scale }}>
@@ -163,10 +172,17 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
                 {isTarget && <span className={"xq-dot" + (cell ? " capture" : "")} />}
                 {cell && (
                   <span
+                    key={sq === lastTo && slide ? `mv-${lastMove}` : sq}
                     className={
                       "xq-piece " +
                       (cell.red ? "red" : "black") +
-                      (selected ? " selected" : "")
+                      (selected ? " selected" : "") +
+                      (sq === lastTo && slide ? " moving" : "")
+                    }
+                    style={
+                      sq === lastTo && slide
+                        ? { "--dx": `${slide.dx}px`, "--dy": `${slide.dy}px` }
+                        : undefined
                     }
                   >
                     {cell.glyph}

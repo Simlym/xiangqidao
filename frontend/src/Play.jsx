@@ -24,14 +24,18 @@ export default function Play() {
   const [humanSide, setHumanSide] = React.useState("w");
   const [status, setStatus] = React.useState("ongoing");
   const [saved, setSaved] = React.useState(false);   // 对局是否已存入复盘
+  const [canUndo, setCanUndo] = React.useState(false);
   const moves = React.useRef([]);                     // 累计着法（红黑交替）
+  const history = React.useRef([]);                   // 悔棋快照栈
 
   async function start(side, lvl) {
     setThinking(true);
     setOver(null);
     setLastMove(null);
     setSaved(false);
+    setCanUndo(false);
     moves.current = [];
+    history.current = [];
     const d = await newPlayGame({ human_side: side, level: lvl });
     setFen(d.fen);
     setLegalMoves(d.legal_moves || []);
@@ -71,6 +75,10 @@ export default function Play() {
 
   async function onMove(move) {
     if (!yourTurn || thinking || over) return;
+    // 走子前快照当前“轮到你”的局面，供悔棋还原（连人带机回退一个回合）
+    history.current.push({
+      fen, legalMoves, lastMove, status, movesLen: moves.current.length,
+    });
     setYourTurn(false);
     setThinking(true);
     setLastMove(move);
@@ -89,12 +97,28 @@ export default function Play() {
         setLegalMoves(d.legal_moves || []);
         setYourTurn(true);
       }
+      setCanUndo(true);
     } catch {
       // 理论上前端已限制为合法着法，兜底恢复
+      history.current.pop();
       setYourTurn(true);
     } finally {
       setThinking(false);
     }
+  }
+
+  function undo() {
+    if (thinking || history.current.length === 0) return;
+    const snap = history.current.pop();
+    moves.current = moves.current.slice(0, snap.movesLen);
+    setFen(snap.fen);
+    setLegalMoves(snap.legalMoves);
+    setLastMove(snap.lastMove);
+    setStatus(snap.status);
+    setOver(null);
+    setSaved(false);
+    setYourTurn(true);
+    setCanUndo(history.current.length > 0);
   }
 
   // 初始进入选择界面
@@ -160,6 +184,14 @@ export default function Play() {
             ? "将军！轮到你"
             : "轮到你走"}
         </span>
+        <button
+          className="btn-newgame"
+          onClick={undo}
+          disabled={!canUndo || thinking}
+          style={{ opacity: !canUndo || thinking ? 0.5 : 1 }}
+        >
+          悔棋
+        </button>
         <button className="btn-newgame" onClick={() => setFen(null)}>
           重开
         </button>
