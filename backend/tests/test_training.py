@@ -88,3 +88,65 @@ def test_non_mating_move_rejected():
         assert data["hint"] == "h7"
     finally:
         app.dependency_overrides.clear()
+
+
+def _client_multi(n: int):
+    """建 n 道新题的内存库客户端。"""
+    eng = sa_create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(eng)
+    TestSession = sessionmaker(bind=eng, autoflush=False)
+    with TestSession() as db:
+        for i in range(n):
+            db.add(Puzzle(fen=MULTI_MATE_FEN, solution=f"h7f{i}", side_to_move="w",
+                          category="测试", difficulty=1, source="t"))
+        db.commit()
+
+    def override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    return TestClient(app)
+
+
+def test_first_try_accuracy_excludes_retry():
+    """首答正确率只统计未重试且做对的作答。"""
+    client = _client_multi(2)
+    try:
+        # 第 1 题：一次做对（first try）
+        client.post("/api/training/submit",
+                    json={"puzzle_id": 1, "self_rating": "good", "had_retry": False, "correct": True})
+        # 第 2 题：重试后做对（非 first try）
+        client.post("/api/training/submit",
+                    json={"puzzle_id": 2, "self_rating": "good", "had_retry": True, "correct": True})
+        ov = client.get("/api/stats/overview").json()
+        assert ov["overall_accuracy"] == 1.0       # 两次都最终做对
+        assert ov["first_try_accuracy"] == 0.5      # 只有 1/2 是首答对
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_daily_new_limit(monkeypatch):
+    """达到每日新题上限后不再发新题，并置 new_limit_reached。"""
+    import app.routes.training as t
+    monkeypatch.setattr(t, "NEW_PER_DAY", 1)
+    client = _client_multi(2)
+    try:
+        first = client.get("/api/training/next").json()
+        assert first["puzzle"] is not None
+        # 学掉这道新题（生成 created_at=today 的 Review）
+        client.post("/api/training/submit",
+                    json={"puzzle_id": first["puzzle"]["id"], "self_rating": "good",
+                          "had_retry": False, "correct": True})
+        nxt = client.get("/api/training/next").json()
+        assert nxt["puzzle"] is None
+        assert nxt["new_limit_reached"] is True
+    finally:
+        app.dependency_overrides.clear()

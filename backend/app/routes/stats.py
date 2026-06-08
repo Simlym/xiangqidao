@@ -19,7 +19,8 @@ class Overview(BaseModel):
     learned: int            # 已有复习记录的题数
     due_today: int
     streak_days: int        # 连续打卡天数
-    overall_accuracy: float # 总体首次正确率近似（按 attempts）
+    overall_accuracy: float # 总体正确率（按全部 attempts）
+    first_try_accuracy: float  # 首答正确率（一次做对、未中途重试）
 
 
 class CategoryStat(BaseModel):
@@ -57,6 +58,18 @@ def overview(db: Session = Depends(get_db), user: str = Depends(current_user_id)
     ) or 0
     acc = round(correct_att / total_att, 3) if total_att else 0.0
 
+    # 首答正确率：一次做对且未中途重试
+    first_try_att = db.scalar(
+        select(func.count())
+        .select_from(Attempt)
+        .where(
+            Attempt.user_id == user,
+            Attempt.correct.is_(True),
+            Attempt.had_retry.is_(False),
+        )
+    ) or 0
+    first_acc = round(first_try_att / total_att, 3) if total_att else 0.0
+
     # 连续打卡：从今天往前逐日检查是否有作答
     days = {
         d for (d,) in db.execute(
@@ -75,6 +88,7 @@ def overview(db: Session = Depends(get_db), user: str = Depends(current_user_id)
         due_today=due,
         streak_days=streak,
         overall_accuracy=acc,
+        first_try_accuracy=first_acc,
     )
 
 

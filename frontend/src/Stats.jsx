@@ -20,6 +20,7 @@ export default function Stats() {
         <Card label="连续打卡" value={`${ov.streak_days} 天`} />
         <Card label="今日到期" value={`${ov.due_today} 题`} />
         <Card label="已学题数" value={`${ov.learned}/${ov.total_puzzles}`} />
+        <Card label="首答正确率" value={`${Math.round((ov.first_try_accuracy ?? 0) * 100)}%`} />
         <Card label="总正确率" value={`${Math.round(ov.overall_accuracy * 100)}%`} />
       </div>
 

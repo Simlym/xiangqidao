@@ -16,6 +16,7 @@ export default function Trainer() {
   const [puzzle, setPuzzle]       = React.useState(null);
   const [dueCount, setDueCount]   = React.useState(0);
   const [phase, setPhase]         = React.useState("loading");
+  const [newCapped, setNewCapped] = React.useState(false);
 
   // 多步追踪
   const [step, setStep]           = React.useState(0);
@@ -41,7 +42,7 @@ export default function Trainer() {
 
     const d = await getNext();
     setDueCount(d.due_count);
-    if (!d.puzzle) { setPhase("empty"); return; }
+    if (!d.puzzle) { setNewCapped(!!d.new_limit_reached); setPhase("empty"); return; }
 
     setPuzzle(d.puzzle);
     setCurrentFen(d.puzzle.fen);
@@ -122,8 +123,12 @@ export default function Trainer() {
   if (phase === "empty")
     return (
       <div className="panel">
-        <h2>今日到期题已清空</h2>
-        <p>没有新题可练了。导入更多题库后再来，或明天复习。</p>
+        <h2>今日训练已完成 🎉</h2>
+        {newCapped ? (
+          <p>已达今日新题上限，明天再来学新题；也可随时复习到期题，劳逸结合更高效。</p>
+        ) : (
+          <p>没有到期或新题了。导入更多题库后再来，或明天复习。</p>
+        )}
       </div>
     );
 

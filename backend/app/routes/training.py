@@ -18,6 +18,9 @@ router = APIRouter(prefix="/api/training", tags=["training"])
 
 QUALITY_MAP = {"again": 1, "hard": 3, "good": 4, "easy": 5}
 
+# 每日新题上限：到期复习不受限，仅限制每天首次学习的新题数量，防止贪多嚼不烂
+NEW_PER_DAY = 20
+
 
 # ── 数据模型 ────────────────────────────────────────────────────
 
@@ -33,6 +36,7 @@ class PuzzleOut(BaseModel):
 class NextResponse(BaseModel):
     puzzle: PuzzleOut | None
     due_count: int
+    new_limit_reached: bool = False  # 今日新题已达上限（非题库耗尽）
 
 
 class CheckMoveRequest(BaseModel):
@@ -81,11 +85,28 @@ def next_puzzle(db: Session = Depends(get_db), user: str = Depends(current_user_
         .order_by(Review.next_review)
         .limit(1)
     )
+    new_limit_reached = False
     if puzzle is None:
-        learned = select(Review.puzzle_id).where(Review.user_id == user)
-        puzzle = db.scalar(
-            select(Puzzle).where(Puzzle.id.not_in(learned)).order_by(Puzzle.difficulty).limit(1)
-        )
+        # 无到期题才考虑新题，且受每日新题上限约束
+        new_today = db.scalar(
+            select(func.count())
+            .select_from(Review)
+            .where(Review.user_id == user, Review.created_at == today)
+        ) or 0
+        if new_today < NEW_PER_DAY:
+            learned = select(Review.puzzle_id).where(Review.user_id == user)
+            puzzle = db.scalar(
+                select(Puzzle).where(Puzzle.id.not_in(learned)).order_by(Puzzle.difficulty).limit(1)
+            )
+            # 取不到说明题库已学完；取到则正常返回
+        else:
+            # 仍有未学新题但今日额度用尽时才算“达上限”
+            has_more = db.scalar(
+                select(func.count())
+                .select_from(Puzzle)
+                .where(Puzzle.id.not_in(select(Review.puzzle_id).where(Review.user_id == user)))
+            ) or 0
+            new_limit_reached = has_more > 0
 
     if puzzle:
         steps = len([m for m in puzzle.solution.split(",") if m.strip()])
@@ -100,7 +121,7 @@ def next_puzzle(db: Session = Depends(get_db), user: str = Depends(current_user_
     else:
         p_out = None
 
-    return NextResponse(puzzle=p_out, due_count=due_count)
+    return NextResponse(puzzle=p_out, due_count=due_count, new_limit_reached=new_limit_reached)
 
 
 @router.post("/check_move", response_model=CheckMoveResponse)
@@ -190,6 +211,7 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
             user_id=user,
             correct=req.correct,
             time_spent_ms=req.time_spent_ms,
+            had_retry=req.had_retry,
         )
     )
     db.commit()

@@ -62,6 +62,7 @@ class Review(Base):
     interval: Mapped[int] = mapped_column(Integer, default=0)
     ease_factor: Mapped[float] = mapped_column(Float, default=2.5)
     next_review: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    created_at: Mapped[date] = mapped_column(Date, default=date.today, index=True)  # 首次学习日，用于每日新题上限
 
     puzzle: Mapped[Puzzle] = relationship(back_populates="review")
 
@@ -78,6 +79,7 @@ class Attempt(Base):
     correct: Mapped[bool] = mapped_column(Boolean)
     time_spent_ms: Mapped[int] = mapped_column(Integer, default=0)
     wrong_move: Mapped[str] = mapped_column(String(10), default="")
+    had_retry: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否中途重试，用于首答正确率
 
 
 class Game(Base):
@@ -121,5 +123,23 @@ engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
 
 
+def _ensure_columns() -> None:
+    """为既有 SQLite 库补齐新增列（本项目暂无迁移框架，做最小兼容）。"""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    additions = {
+        "reviews": [("created_at", "DATE")],
+        "attempts": [("had_retry", "BOOLEAN DEFAULT 0")],
+    }
+    with engine.begin() as conn:
+        for table, cols in additions.items():
+            existing = {c["name"] for c in insp.get_columns(table)}
+            for name, ddl in cols:
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _ensure_columns()
