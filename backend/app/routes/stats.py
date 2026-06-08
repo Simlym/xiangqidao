@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import repository as repo
+from .. import elo, repository as repo
 from ..auth import current_user_id
 from ..deps import get_db
 
@@ -110,6 +110,50 @@ def by_category(db: Session = Depends(get_db), user: str = Depends(current_user_
         c = c or 0
         out.append(CategoryStat(category=cat, attempts=n, accuracy=round(c / n, 3) if n else 0.0))
     return sorted(out, key=lambda x: x.accuracy)
+
+
+class RatingOut(BaseModel):
+    rating: int
+    peak: int
+    solved: int
+    title: str       # 段位称号
+
+
+class LeaderboardRow(BaseModel):
+    username: str
+    rating: int
+    title: str
+    solved: int
+    is_me: bool
+
+
+@router.get("/rating", response_model=RatingOut)
+def rating(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
+    """当前用户 ELO 评分档案；未结算过则返回初始 1200。"""
+    stat = repo.get_user_stat(db, user)
+    r = stat.rating if stat else 1200
+    return RatingOut(
+        rating=r,
+        peak=stat.peak if stat else 1200,
+        solved=stat.solved if stat else 0,
+        title=elo.rank_title(r),
+    )
+
+
+@router.get("/leaderboard", response_model=list[LeaderboardRow])
+def leaderboard(limit: int = 20, db: Session = Depends(get_db), user: str = Depends(current_user_id)):
+    """评分排行榜（公开榜单，step3 社交雏形）。"""
+    rows = repo.leaderboard(db, limit)
+    return [
+        LeaderboardRow(
+            username=s.user_id,
+            rating=s.rating,
+            title=elo.rank_title(s.rating),
+            solved=s.solved,
+            is_me=(s.user_id == user),
+        )
+        for s in rows
+    ]
 
 
 @router.get("/weekly", response_model=list[WeeklyPoint])

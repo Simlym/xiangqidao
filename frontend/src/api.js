@@ -55,6 +55,14 @@ export const getOverview = () => req("/stats/overview");
 export const getByCategory = () => req("/stats/by_category");
 export const getWeekly = () => req("/stats/weekly");
 export const getForecast = (days = 14) => req(`/stats/forecast?days=${days}`);
+export const getRating = () => req("/stats/rating");
+export const getLeaderboard = (limit = 20) => req(`/stats/leaderboard?limit=${limit}`);
+
+// ── 闯关 ────────────────────────────────────────────────
+export const getLevels = () => req("/challenge/levels");
+export const getLevel = (index) => req(`/challenge/level/${index}`);
+export const submitChallenge = (payload) =>
+  req("/challenge/submit", { method: "POST", body: payload });
 
 // ── 复盘 ────────────────────────────────────────────────
 export const getGames = (limit = 20, offset = 0) => req(`/games?limit=${limit}&offset=${offset}`);

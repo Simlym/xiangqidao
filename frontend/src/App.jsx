@@ -3,9 +3,11 @@ import Trainer from "./Trainer";
 import Stats from "./Stats";
 import Games from "./Games";
 import Play from "./Play";
+import Challenge from "./Challenge";
 import Auth from "./Auth";
 import Admin from "./Admin";
 import { fetchMe, getToken, setToken } from "./api";
+import { useReminders } from "./reminders";
 
 export default function App() {
   const [tab, setTab] = React.useState("train");
@@ -15,6 +17,8 @@ export default function App() {
   const [reviewGameId, setReviewGameId] = React.useState(null);
   const [user, setUser] = React.useState(null); // {username, role}
   const [authOpen, setAuthOpen] = React.useState(false);
+  // 到期复习提醒（本地通知 + 顶部横幅）
+  const reminders = useReminders(user);
 
   // 跳到训练并指定要练的题/类目
   function practicePuzzle(puzzleId) {
@@ -58,6 +62,7 @@ export default function App() {
         <h1>象棋道</h1>
         <nav>
           <button className={tab === "train" ? "active" : ""} onClick={() => setTab("train")}>战术训练</button>
+          <button className={tab === "challenge" ? "active" : ""} onClick={() => setTab("challenge")}>闯关</button>
           <button className={tab === "stats" ? "active" : ""} onClick={() => setTab("stats")}>进度统计</button>
           <button className={tab === "games" ? "active" : ""} onClick={() => setTab("games")}>棋局复盘</button>
           <button className={tab === "play" ? "active" : ""} onClick={() => setTab("play")}>人机对弈</button>
@@ -76,6 +81,16 @@ export default function App() {
           )}
         </div>
       </header>
+      {reminders.banner && (
+        <div className="reminder-banner">
+          <span>{reminders.banner}</span>
+          <button className="btn-link" onClick={() => setTab("train")}>去复习 →</button>
+          {reminders.canEnable && (
+            <button className="btn-link" onClick={reminders.enable}>开启提醒</button>
+          )}
+          <button className="reminder-x" onClick={reminders.dismiss}>×</button>
+        </div>
+      )}
       <main>
         {tab === "train" && (
           <Trainer
@@ -83,6 +98,7 @@ export default function App() {
             onTargetConsumed={() => setTrainTarget(null)}
           />
         )}
+        {tab === "challenge" && <Challenge />}
         {tab === "stats" && <Stats onPractice={practiceCategory} />}
         {tab === "play" && <Play onGoReview={reviewGame} />}
         {tab === "admin" && user?.role === "admin" && <Admin />}
