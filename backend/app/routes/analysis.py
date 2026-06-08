@@ -3,9 +3,10 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..auth import current_user_id
 from ..deps import get_db
 from ..engine import get_shared_engine
-from ..llm import explain_mistake
+from ..llm import explain_mistake, summarize_game
 from ..models import Game, GameAnalysis, Puzzle
 from ..play_engine import builtin_evaluate, game_status
 from ..xiangqi_utils import apply_move
@@ -84,8 +85,11 @@ def _trim_pv(fen: str, pv, max_plies: int = 7) -> list[str]:
     return out
 
 
-def _run_analysis(game_id: int) -> None:
-    """后台分析函数：逐步分析棋局并写入 game_analysis 表。"""
+def _run_analysis(game_id: int, owner: str = "default") -> None:
+    """后台分析函数：逐步分析棋局并写入 game_analysis 表。
+
+    owner 为棋局归属用户，用于把实战漏着自动生成的练习题归为其私有题。
+    """
     from ..models import SessionLocal  # 避免循环导入
 
     db = SessionLocal()
@@ -176,6 +180,7 @@ def _run_analysis(game_id: int) -> None:
                     side_to_move=side_to_move,
                     category="实战漏算",
                     source=f"game_{game_id}",
+                    user_id=owner,  # 实战漏着题归棋局所有者私有
                 )
                 db.add(puzzle)
                 db.flush()  # 获取 puzzle.id
@@ -198,6 +203,9 @@ def _run_analysis(game_id: int) -> None:
             db.add(record)
             db.commit()  # 逐步提交，使前端可轮询出进度
 
+        # 全部走法分析完成后，汇总失误生成 LLM 综合复盘报告
+        _generate_report(db, game_id)
+
         # 共享引擎进程跨棋局复用，分析结束不再 close()
     except Exception:
         db.rollback()
@@ -205,22 +213,66 @@ def _run_analysis(game_id: int) -> None:
         db.close()
 
 
-@router.post("/{game_id}/analyze")
-def analyze_game(game_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """触发棋局分析（后台执行）。"""
+def _generate_report(db, game_id: int) -> None:
+    """据逐步分析结果调用 LLM 生成整局综合复盘报告，写入 game.report。"""
     game = db.get(Game, game_id)
     if not game:
+        return
+    records = (
+        db.query(GameAnalysis)
+        .filter(GameAnalysis.game_id == game_id)
+        .order_by(GameAnalysis.move_index)
+        .all()
+    )
+    total = len(records)
+    mistakes = [
+        {
+            "move_number": r.move_index + 1,
+            "side": "红方" if r.move_index % 2 == 0 else "黑方",
+            "eval_drop_cp": r.eval_drop,
+            "severity": "严重失误" if r.is_blunder else "失误",
+            "explanation": r.explanation,
+        }
+        for r in records
+        if r.is_blunder or r.is_mistake
+    ]
+
+    report = summarize_game(
+        result=game.result or "未知",
+        human_side="",  # 复盘以客观视角，不强绑红/黑
+        total_moves=total,
+        mistakes=mistakes,
+    )
+    if report:
+        game.report = report
+        db.commit()
+
+
+@router.post("/{game_id}/analyze")
+def analyze_game(
+    game_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
+    """触发棋局分析（后台执行）。"""
+    game = db.get(Game, game_id)
+    if not game or game.user_id != user:
         raise HTTPException(status_code=404, detail="棋局不存在")
 
-    background_tasks.add_task(_run_analysis, game_id)
+    background_tasks.add_task(_run_analysis, game_id, user)
     return {"status": "analyzing", "game_id": game_id}
 
 
 @router.get("/{game_id}/analysis")
-def get_analysis(game_id: int, db: Session = Depends(get_db)):
+def get_analysis(
+    game_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
     """获取棋局分析结果。"""
     game = db.get(Game, game_id)
-    if not game:
+    if not game or game.user_id != user:
         raise HTTPException(status_code=404, detail="棋局不存在")
 
     records = (
@@ -234,7 +286,7 @@ def get_analysis(game_id: int, db: Session = Depends(get_db)):
     analyzed = len(records)
 
     if not records:
-        return {"status": "not_analyzed", "moves": [], "total": total, "analyzed": 0}
+        return {"status": "not_analyzed", "moves": [], "total": total, "analyzed": 0, "report": ""}
 
     moves = [
         {
@@ -258,11 +310,14 @@ def get_analysis(game_id: int, db: Session = Depends(get_db)):
     blunder_count = sum(1 for r in records if r.is_blunder)
     mistake_count = sum(1 for r in records if r.is_mistake and not r.is_blunder)
 
+    done = bool(total and analyzed >= total)
     return {
-        "status": "done" if total and analyzed >= total else "analyzing",
+        "status": "done" if done else "analyzing",
         "moves": moves,
         "blunder_count": blunder_count,
         "mistake_count": mistake_count,
         "total": total,
         "analyzed": analyzed,
+        # 报告在逐步分析全部完成后才生成，故仅 done 时返回
+        "report": (game.report or "") if done else "",
     }

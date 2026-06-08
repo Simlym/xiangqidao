@@ -120,38 +120,67 @@ def _target_difficulty(db: Session, user: str) -> int:
 
 # ── 接口 ───────────────────────────────────────────────────────
 
+def _puzzle_out(puzzle) -> PuzzleOut:
+    n = len([m for m in puzzle.solution.split(",") if m.strip()])
+    steps = (n + 1) // 2  # 仅玩家要走的着法数（对方应着自动走出）
+    return PuzzleOut(
+        id=puzzle.id,
+        fen=puzzle.fen,
+        side_to_move=puzzle.side_to_move,
+        category=puzzle.category,
+        difficulty=puzzle.difficulty,
+        total_steps=steps,
+    )
+
+
+@router.get("/puzzle/{puzzle_id}", response_model=PuzzleOut)
+def get_training_puzzle(
+    puzzle_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
+    """按 id 取一道题用于训练（如从复盘报告/弱点跳转而来）。
+
+    仅返回对该用户可见的题（公共题库 + 本人私有题），否则 404。
+    """
+    puzzle = repo.get_visible_puzzle(db, puzzle_id, user)
+    if puzzle is None:
+        raise HTTPException(404, "题目不存在")
+    return _puzzle_out(puzzle)
+
+
 @router.get("/next", response_model=NextResponse)
-def next_puzzle(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
-    """返回到期题或新题。"""
+def next_puzzle(
+    category: str | None = None,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
+    """返回到期题或新题。
+
+    传入 category 时进入「弱点专项」模式：只在该杀法类目内取题，
+    优先到期题、其次新题，并放宽每日新题上限（用户主动针对性练习）。
+    """
     today = date.today()
     due_count = repo.count_due(db, user, today)
-    puzzle = repo.first_due_puzzle(db, user, today)
 
     new_limit_reached = False
-    if puzzle is None:
-        # 无到期题才考虑新题，且受每日新题上限约束
-        if repo.count_new_today(db, user, today) < NEW_PER_DAY:
-            # 难度自适应：优先选难度最接近目标的新题
-            puzzle = repo.pick_new_puzzle(db, user, _target_difficulty(db, user))
-            # 取不到说明题库已学完；取到则正常返回
-        else:
-            # 仍有未学新题但今日额度用尽时才算“达上限”
-            new_limit_reached = repo.count_unlearned(db, user) > 0
-
-    if puzzle:
-        n = len([m for m in puzzle.solution.split(",") if m.strip()])
-        steps = (n + 1) // 2  # 仅玩家要走的着法数（对方应着自动走出）
-        p_out = PuzzleOut(
-            id=puzzle.id,
-            fen=puzzle.fen,
-            side_to_move=puzzle.side_to_move,
-            category=puzzle.category,
-            difficulty=puzzle.difficulty,
-            total_steps=steps,
+    if category:
+        puzzle = repo.first_due_puzzle(db, user, today, category) or repo.pick_new_puzzle(
+            db, user, _target_difficulty(db, user), category
         )
     else:
-        p_out = None
+        puzzle = repo.first_due_puzzle(db, user, today)
+        if puzzle is None:
+            # 无到期题才考虑新题，且受每日新题上限约束
+            if repo.count_new_today(db, user, today) < NEW_PER_DAY:
+                # 难度自适应：优先选难度最接近目标的新题
+                puzzle = repo.pick_new_puzzle(db, user, _target_difficulty(db, user))
+                # 取不到说明题库已学完；取到则正常返回
+            else:
+                # 仍有未学新题但今日额度用尽时才算“达上限”
+                new_limit_reached = repo.count_unlearned(db, user) > 0
 
+    p_out = _puzzle_out(puzzle) if puzzle else None
     return NextResponse(puzzle=p_out, due_count=due_count, new_limit_reached=new_limit_reached)
 
 

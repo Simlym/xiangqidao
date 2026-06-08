@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..auth import current_user_id
 from ..deps import get_db
 from ..models import Game
 from ..xiangqi_utils import apply_move
@@ -57,17 +58,34 @@ class GameDetail(BaseModel):
     source: str
     notes: str
     moves: str
+    report: str
     positions: List[Position]
 
 
 @router.get("", response_model=List[GameSummary])
-def list_games(limit: int = 20, offset: int = 0, db: Session = Depends(get_db)):
-    games = db.query(Game).offset(offset).limit(limit).all()
+def list_games(
+    limit: int = 20,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
+    games = (
+        db.query(Game)
+        .filter(Game.user_id == user)
+        .order_by(Game.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return games
 
 
 @router.post("/import")
-def import_game(body: ImportRequest, db: Session = Depends(get_db)):
+def import_game(
+    body: ImportRequest,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
     # Normalize separator
     raw = body.moves.replace(",", " ").split()
     move_list = [m.strip() for m in raw if m.strip()]
@@ -77,6 +95,7 @@ def import_game(body: ImportRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail=f"非法着法格式: {m!r}，需要4字符UCI如h2e2")
 
     game = Game(
+        user_id=user,
         moves=" ".join(move_list),
         red_player=body.red_player or "",
         black_player=body.black_player or "",
@@ -93,9 +112,13 @@ def import_game(body: ImportRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/{game_id}", response_model=GameDetail)
-def get_game(game_id: int, db: Session = Depends(get_db)):
+def get_game(
+    game_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
     game = db.get(Game, game_id)
-    if not game:
+    if not game or game.user_id != user:
         raise HTTPException(status_code=404, detail="棋局不存在")
 
     move_list = game.moves.split() if game.moves.strip() else []
@@ -116,14 +139,19 @@ def get_game(game_id: int, db: Session = Depends(get_db)):
         source=game.source,
         notes=game.notes,
         moves=game.moves,
+        report=game.report or "",
         positions=positions,
     )
 
 
 @router.delete("/{game_id}")
-def delete_game(game_id: int, db: Session = Depends(get_db)):
+def delete_game(
+    game_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
     game = db.get(Game, game_id)
-    if not game:
+    if not game or game.user_id != user:
         raise HTTPException(status_code=404, detail="棋局不存在")
     db.delete(game)
     db.commit()

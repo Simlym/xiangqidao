@@ -49,6 +49,9 @@ class Puzzle(Base):
     difficulty: Mapped[int] = mapped_column(Integer, default=3)         # 1-5
     source: Mapped[str] = mapped_column(String(80), default="")
     verified: Mapped[bool] = mapped_column(Boolean, default=False)      # 是否经引擎校验
+    # 归属：'default' 表示公共题库（所有人可练）；其他值为某用户的私有题
+    # （如实战漏着自动生成题），仅本人可见。
+    user_id: Mapped[str] = mapped_column(String(40), default="default", index=True)
 
     review: Mapped["Review | None"] = relationship(back_populates="puzzle", uselist=False)
 
@@ -92,6 +95,7 @@ class Game(Base):
     __tablename__ = "games"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(40), default="default", index=True)  # 棋局归属，匿名回退 default
     played_on: Mapped[str] = mapped_column(String(20), nullable=True)
     red_player: Mapped[str] = mapped_column(String(80), default="")
     black_player: Mapped[str] = mapped_column(String(80), default="")
@@ -100,6 +104,7 @@ class Game(Base):
     opening: Mapped[str] = mapped_column(String(80), default="")
     source: Mapped[str] = mapped_column(String(80), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
+    report: Mapped[str] = mapped_column(Text, default="")  # LLM 综合复盘报告（整局总评）
 
 
 class GameAnalysis(Base):

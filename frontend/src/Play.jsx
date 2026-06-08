@@ -1,6 +1,6 @@
 import React from "react";
 import Board from "./Board";
-import { newPlayGame, playMove, importGame } from "./api";
+import { newPlayGame, playMove, importGame, analyzeGame } from "./api";
 
 const LEVELS = [
   { key: "easy", label: "入门" },
@@ -13,7 +13,7 @@ const SIDES = [
   { key: "b", label: "执黑后手" },
 ];
 
-export default function Play() {
+export default function Play({ onGoReview }) {
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);
@@ -24,6 +24,7 @@ export default function Play() {
   const [humanSide, setHumanSide] = React.useState("w");
   const [status, setStatus] = React.useState("ongoing");
   const [saved, setSaved] = React.useState(false);   // 对局是否已存入复盘
+  const [savedGameId, setSavedGameId] = React.useState(null); // 存盘后的棋局 id
   const [canUndo, setCanUndo] = React.useState(false);
   const moves = React.useRef([]);                     // 累计着法（红黑交替）
   const history = React.useRef([]);                   // 悔棋快照栈
@@ -33,6 +34,7 @@ export default function Play() {
     setOver(null);
     setLastMove(null);
     setSaved(false);
+    setSavedGameId(null);
     setCanUndo(false);
     moves.current = [];
     history.current = [];
@@ -46,7 +48,7 @@ export default function Play() {
     setThinking(false);
   }
 
-  // 对局结束：存入复盘棋谱，形成「对弈→复盘→分析」闭环
+  // 对局结束：存入复盘棋谱并自动触发分析，形成「对弈→复盘→分析」闭环
   async function recordGame(winner) {
     if (saved || moves.current.length === 0) return;
     const result =
@@ -59,7 +61,7 @@ export default function Play() {
     const foe = humanSide === "w" ? "black_player" : "red_player";
     const lvlLabel = LEVELS.find((l) => l.key === level)?.label || level;
     try {
-      await importGame({
+      const res = await importGame({
         moves: moves.current.join(" "),
         result,
         source: "人机对弈",
@@ -68,6 +70,9 @@ export default function Play() {
         played_on: new Date().toISOString().slice(0, 10),
       });
       setSaved(true);
+      setSavedGameId(res.id);
+      // 自动触发后台分析，去复盘时分析多半已就绪
+      analyzeGame(res.id).catch(() => {});
     } catch {
       /* 存盘失败不影响对弈本身 */
     }
@@ -208,8 +213,15 @@ export default function Play() {
       {over && (
         <div className="panel result ok" style={{ textAlign: "center" }}>
           <h3>{winnerText}</h3>
-          <p className="muted">{saved ? "已存入「复盘」，可前往分析本局得失。" : "本局未保存。"}</p>
-          <button onClick={() => start(humanSide, level)}>再来一盘</button>
+          <p className="muted">
+            {saved ? "已存入「复盘」，正在自动分析本局得失。" : "本局未保存。"}
+          </p>
+          <div className="btn-row" style={{ justifyContent: "center" }}>
+            {saved && savedGameId && onGoReview && (
+              <button onClick={() => onGoReview(savedGameId)}>📋 去复盘本局</button>
+            )}
+            <button onClick={() => start(humanSide, level)}>再来一盘</button>
+          </div>
         </div>
       )}
     </div>

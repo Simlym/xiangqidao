@@ -32,6 +32,11 @@ def _ensure_columns() -> None:
     additions = {
         "reviews": [("created_at", "DATE")],
         "attempts": [("had_retry", "BOOLEAN DEFAULT 0")],
+        "puzzles": [("user_id", "VARCHAR(40) DEFAULT 'default'")],
+        "games": [
+            ("user_id", "VARCHAR(40) DEFAULT 'default'"),
+            ("report", "TEXT DEFAULT ''"),
+        ],
     }
     with engine.begin() as conn:
         for table, cols in additions.items():
