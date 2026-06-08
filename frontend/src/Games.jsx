@@ -30,7 +30,7 @@ function getMoveQuality(moveData) {
   return "best";
 }
 
-export default function Games({ onNavigateToTrain }) {
+export default function Games({ onNavigateToTrain, initialGameId, onInitialGameConsumed }) {
   const [games, setGames] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState(null);
@@ -48,6 +48,29 @@ export default function Games({ onNavigateToTrain }) {
   const [analysisData, setAnalysisData] = React.useState(null); // null or {moves, blunder_count, mistake_count}
   const [progress, setProgress] = React.useState({ analyzed: 0, total: 0 });
   const pollRef = React.useRef(null);
+  const pendingAutoAnalyze = React.useRef(null); // 来自对弈跳转、需自动拉取分析的棋局 id
+
+  // 轮询分析进度，完成后落地结果（不重复触发分析）
+  const startPolling = React.useCallback((id) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setAnalyzeStatus("analyzing");
+    pollRef.current = setInterval(async () => {
+      try {
+        const result = await getAnalysis(id);
+        if (result.total != null) {
+          setProgress({ analyzed: result.analyzed || 0, total: result.total });
+        }
+        if (result.status === "done") {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          setAnalyzeStatus("done");
+          setAnalysisData(result);
+        }
+      } catch {
+        // keep polling
+      }
+    }, 1000);
+  }, []);
 
   // Load games list
   const loadGames = React.useCallback(() => {
@@ -63,6 +86,16 @@ export default function Games({ onNavigateToTrain }) {
   React.useEffect(() => {
     loadGames();
   }, [loadGames]);
+
+  // 从对弈结束「一键复盘」跳转而来：自动选中该局并拉取（已在后台进行的）分析
+  React.useEffect(() => {
+    if (initialGameId) {
+      pendingAutoAnalyze.current = initialGameId;
+      setSelectedId(initialGameId);
+      loadGames(); // 刷新列表以纳入刚结束的对局
+      onInitialGameConsumed?.();
+    }
+  }, [initialGameId, loadGames, onInitialGameConsumed]);
 
   // Load positions when a game is selected
   React.useEffect(() => {
@@ -90,7 +123,12 @@ export default function Games({ onNavigateToTrain }) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-  }, [selectedId]);
+    // 若该局是从对弈跳转而来，自动开始拉取分析结果
+    if (selectedId && pendingAutoAnalyze.current === selectedId) {
+      pendingAutoAnalyze.current = null;
+      startPolling(selectedId);
+    }
+  }, [selectedId, startPolling]);
 
   // Cleanup polling on unmount
   React.useEffect(() => {
@@ -194,30 +232,13 @@ export default function Games({ onNavigateToTrain }) {
 
   async function handleAnalyze() {
     if (!selectedId || analyzeStatus === "analyzing") return;
-    setAnalyzeStatus("analyzing");
     setProgress({ analyzed: 0, total: 0 });
     try {
       await analyzeGame(selectedId);
     } catch {
       // ignore, still start polling
     }
-    // Start polling（带进度）
-    pollRef.current = setInterval(async () => {
-      try {
-        const result = await getAnalysis(selectedId);
-        if (result.total != null) {
-          setProgress({ analyzed: result.analyzed || 0, total: result.total });
-        }
-        if (result.status === "done") {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-          setAnalyzeStatus("done");
-          setAnalysisData(result);
-        }
-      } catch {
-        // keep polling
-      }
-    }, 1000);
+    startPolling(selectedId);
   }
 
   return (
@@ -477,6 +498,19 @@ export default function Games({ onNavigateToTrain }) {
                   </div>
                 ))}
               </div>
+
+              {/* 综合复盘报告（LLM 生成，未配置时自动省略） */}
+              {analyzeStatus === "done" && analysisData?.report && (
+                <div className="analysis-panel">
+                  <div className="review-moves-title">📋 综合复盘报告</div>
+                  <div
+                    className="analysis-explanation"
+                    style={{ whiteSpace: "pre-wrap", marginTop: 6 }}
+                  >
+                    {analysisData.report}
+                  </div>
+                </div>
+              )}
 
               {/* Analysis detail panel */}
               {analyzeStatus === "done" && analysisData && (

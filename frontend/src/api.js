@@ -44,7 +44,9 @@ export const login = (username, password) =>
 export const fetchMe = () => req("/auth/me");
 
 // ── 训练 ────────────────────────────────────────────────
-export const getNext = () => req("/training/next");
+export const getNext = (category) =>
+  req(`/training/next${category ? `?category=${encodeURIComponent(category)}` : ""}`);
+export const getTrainingPuzzle = (id) => req(`/training/puzzle/${id}`);
 export const checkMove = (payload) => req("/training/check_move", { method: "POST", body: payload });
 export const submitRating = (payload) => req("/training/submit", { method: "POST", body: payload });
 

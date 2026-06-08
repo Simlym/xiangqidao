@@ -44,7 +44,7 @@ class ForecastPoint(BaseModel):
 @router.get("/overview", response_model=Overview)
 def overview(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     today = date.today()
-    total = repo.count_puzzles(db)
+    total = repo.count_puzzles(db, user)
     learned = repo.count_reviews(db, user)
     due = repo.count_due(db, user, today)
 

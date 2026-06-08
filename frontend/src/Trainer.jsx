@@ -1,6 +1,6 @@
 import React from "react";
 import Board from "./Board";
-import { getNext, checkMove, submitRating } from "./api";
+import { getNext, getTrainingPuzzle, checkMove, submitRating } from "./api";
 
 // 训练状态机
 // phase: 'loading' | 'thinking' | 'step_ok' | 'wrong' | 'rating' | 'done' | 'empty'
@@ -12,11 +12,14 @@ const RATINGS = [
   { key: "easy",  label: "容易", desc: "一眼看出，毫不费力",  color: "#2980b9" },
 ];
 
-export default function Trainer() {
+export default function Trainer({ target = null, onTargetConsumed }) {
   const [puzzle, setPuzzle]       = React.useState(null);
   const [dueCount, setDueCount]   = React.useState(0);
   const [phase, setPhase]         = React.useState("loading");
   const [newCapped, setNewCapped] = React.useState(false);
+  // 弱点专项：非空时「下一题」继续在该类目内取题
+  const [activeCategory, setActiveCategory] = React.useState(null);
+  const didInit                   = React.useRef(false);
 
   // 多步追踪
   const [step, setStep]           = React.useState(0);
@@ -47,7 +50,7 @@ export default function Trainer() {
     return () => clearInterval(id);
   }, [timed, phase]);
 
-  const load = React.useCallback(async () => {
+  const resetState = React.useCallback(() => {
     setPhase("loading");
     setStep(0);
     setLastMove(null);
@@ -57,18 +60,50 @@ export default function Trainer() {
     setStepMsg("");
     setSolution([]);
     setElapsed(0);
+  }, []);
 
-    const d = await getNext();
-    setDueCount(d.due_count);
-    if (!d.puzzle) { setNewCapped(!!d.new_limit_reached); setPhase("empty"); return; }
-
-    setPuzzle(d.puzzle);
-    setCurrentFen(d.puzzle.fen);
+  const beginPuzzle = React.useCallback((p) => {
+    setPuzzle(p);
+    setCurrentFen(p.fen);
     startedAt.current = Date.now();
     setPhase("thinking");
   }, []);
 
-  React.useEffect(() => { load(); }, [load]);
+  // 常规取题（可带类目做弱点专项）
+  const load = React.useCallback(async (category = null) => {
+    resetState();
+    const d = await getNext(category);
+    setDueCount(d.due_count);
+    if (!d.puzzle) { setNewCapped(!!d.new_limit_reached); setPhase("empty"); return; }
+    beginPuzzle(d.puzzle);
+  }, [resetState, beginPuzzle]);
+
+  // 按 id 取指定题（来自复盘报告/实战漏着推荐）
+  const loadById = React.useCallback(async (id) => {
+    resetState();
+    try {
+      const p = await getTrainingPuzzle(id);
+      beginPuzzle(p);
+    } catch {
+      setPhase("empty");
+    }
+  }, [resetState, beginPuzzle]);
+
+  // 响应外部跳转目标：指定题 / 弱点类目；无目标时仅在首次挂载取常规题
+  React.useEffect(() => {
+    if (target?.puzzleId) {
+      setActiveCategory(null);
+      loadById(target.puzzleId);
+      onTargetConsumed?.();
+    } else if (target?.category) {
+      setActiveCategory(target.category);
+      load(target.category);
+      onTargetConsumed?.();
+    } else if (!didInit.current) {
+      didInit.current = true;
+      load();
+    }
+  }, [target, load, loadById, onTargetConsumed]);
 
   async function onMove(move) {
     if (!puzzle || !["thinking"].includes(phase)) return;
@@ -153,11 +188,23 @@ export default function Trainer() {
   if (phase === "empty")
     return (
       <div className="panel">
-        <h2>今日训练已完成 🎉</h2>
-        {newCapped ? (
-          <p>已达今日新题上限，明天再来学新题；也可随时复习到期题，劳逸结合更高效。</p>
+        {activeCategory ? (
+          <>
+            <h2>「{activeCategory}」专项已练完 🎉</h2>
+            <p>该类目暂无更多可练题目。</p>
+            <button onClick={() => { setActiveCategory(null); load(); }}>
+              返回常规训练 →
+            </button>
+          </>
         ) : (
-          <p>没有到期或新题了。导入更多题库后再来，或明天复习。</p>
+          <>
+            <h2>今日训练已完成 🎉</h2>
+            {newCapped ? (
+              <p>已达今日新题上限，明天再来学新题；也可随时复习到期题，劳逸结合更高效。</p>
+            ) : (
+              <p>没有到期或新题了。导入更多题库后再来，或明天复习。</p>
+            )}
+          </>
         )}
       </div>
     );
@@ -171,6 +218,11 @@ export default function Trainer() {
       {/* 题目信息栏 */}
       <div className="panel info">
         <div className="info-top">
+          {activeCategory && (
+            <span className="tag" style={{ background: "#fff3e0", color: "#e67e22" }}>
+              弱点专项
+            </span>
+          )}
           <span className="tag">{puzzle.category}</span>
           <span className="tag">难度 {"★".repeat(puzzle.difficulty)}</span>
           {totalSteps > 1 && (
@@ -255,7 +307,9 @@ export default function Trainer() {
           <p>正解：<code>{solution.join(" → ")}</code></p>
           {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
           <p className="muted">下次复习：{nextReview}</p>
-          <button onClick={load}>下一题 →</button>
+          <button onClick={() => load(activeCategory)}>
+            {activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
+          </button>
         </div>
       )}
     </div>

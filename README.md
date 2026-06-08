@@ -20,7 +20,7 @@
 |----|------|------|
 | 前端 | React + Vite | 交叉点棋盘（含楚河汉界/九宫）；训练 / 统计 / 复盘 / 对弈 / 后台 |
 | 后端 | FastAPI | 训练调度 / 作答 / 统计 / 对弈 / 鉴权 / 后台管理 API |
-| 数据 | SQLite（可配置） | `users` `puzzles` `reviews`(SM-2) `attempts` `games`；连接串经 `XQ_DB_URL` 配置 |
+| 数据 | SQLite（可配置） | `users` `puzzles` `reviews`(SM-2) `attempts` `games`(含归属/复盘报告) `game_analysis`；连接串经 `XQ_DB_URL` 配置 |
 | 数据访问 | database + repository 层 | `app/database.py` 管引擎/会话/建表，`app/repository.py` 封装查询，业务路由与 ORM 解耦 |
 | 复习 | SM-2 | `backend/app/srs.py` |
 | 鉴权 | 标准库自实现 | PBKDF2 密码哈希 + HMAC 签名 token，无第三方依赖（`app/auth.py`）|
@@ -69,6 +69,7 @@ cd backend && python -m pytest tests/ -q
 - **多步题**：对方应着由系统自动走出，玩家只输入己方着法。
 - **计时训练**：实时计时与用时统计，可一键开关。
 - **复习日程**：统计页以柱状图展示未来到期复习量（遗忘曲线）。
+- **弱点专项**：统计页各杀法旁「去练这类」一键进入该类目专项训练，直击薄弱点。
 
 ## 环境变量
 
@@ -78,7 +79,7 @@ cd backend && python -m pytest tests/ -q
 | `XQ_ENV` | 设为 `production` 启用生产校验 | 空 |
 | `XQ_ADMIN` | 指定管理员用户名 | `admin` |
 | `XQ_DB_URL` | 数据库连接串 | `sqlite:///./data/puzzles.db` |
-| `DEEPSEEK_API_KEY` | 复盘失误讲解（可选） | 空（不调用）|
+| `DEEPSEEK_API_KEY` | 复盘逐步失误讲解 + 整局综合复盘报告（可选） | 空（不调用）|
 
 ## 鉴权与多用户
 
@@ -92,7 +93,9 @@ cd backend && python -m pytest tests/ -q
 
 「人机对弈」页可选先后手与三档难度，与引擎下完整一局；走子受规则约束并提示合法落点，
 支持**悔棋**与走子动画。未安装 Pikafish 时使用内置 negamax 搜索，开箱即用。
-对局结束自动存入「复盘」，可继续逐步分析得失，形成对弈→复盘→分析闭环。
+对局结束**自动存入「复盘」并后台触发分析**，终局面板可**一键跳转复盘本局**；
+复盘页除逐步失误外，还给出 LLM **综合复盘报告**，并把实战漏着生成专属练习题（私有），
+配合统计页「弱点专项」形成完整闭环：对弈→分析→报告→针对薄弱点再练。
 
 ## 路线图
 
@@ -103,4 +106,5 @@ cd backend && python -m pytest tests/ -q
 - [x] 登录 + 多用户数据隔离 + 管理后台
 - [x] 人机对弈（内置引擎 / Pikafish），含悔棋 / 走子动画 / 对局存盘复盘
 - [x] 多步杀法支持对方应着；难度自适应、分级提示、计时训练、复习日程可视化
+- [x] 对弈终局自动分析 + 一键复盘；LLM 综合复盘报告；棋局按用户隔离；弱点→题库推荐闭环
 - [ ] 残局基础训练；真人对战（联机）

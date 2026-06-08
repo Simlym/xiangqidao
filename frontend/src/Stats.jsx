@@ -1,7 +1,7 @@
 import React from "react";
 import { getOverview, getByCategory, getWeekly, getForecast } from "./api";
 
-export default function Stats() {
+export default function Stats({ onPractice }) {
   const [ov, setOv] = React.useState(null);
   const [cats, setCats] = React.useState([]);
   const [weekly, setWeekly] = React.useState([]);
@@ -43,6 +43,15 @@ export default function Stats() {
               <span className="bar-val">
                 {Math.round(c.accuracy * 100)}% ({c.attempts})
               </span>
+              {onPractice && (
+                <button
+                  className="btn-link"
+                  title={`专项训练「${c.category}」`}
+                  onClick={() => onPractice(c.category)}
+                >
+                  去练这类 →
+                </button>
+              )}
             </div>
           ))
         )}

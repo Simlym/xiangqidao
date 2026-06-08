@@ -16,9 +16,25 @@ from .models import Attempt, Puzzle, Review
 
 # ── 题目 / 复习 ──────────────────────────────────────────────────
 
+# 公共题库归属标识：user_id 为该值的题对所有人可见。
+PUBLIC_OWNER = "default"
+
+
+def _visible_to(user: str):
+    """题目可见性条件：公共题库 + 该用户的私有题（如实战漏着题）。"""
+    owners = [PUBLIC_OWNER] if user == PUBLIC_OWNER else [PUBLIC_OWNER, user]
+    return Puzzle.user_id.in_(owners)
+
 
 def get_puzzle(db: Session, puzzle_id: int) -> Puzzle | None:
     return db.get(Puzzle, puzzle_id)
+
+
+def get_visible_puzzle(db: Session, puzzle_id: int, user: str) -> Puzzle | None:
+    """按可见性取题：他人私有题返回 None（用于训练取题鉴权）。"""
+    return db.scalar(
+        select(Puzzle).where(Puzzle.id == puzzle_id, _visible_to(user))
+    )
 
 
 def count_due(db: Session, user: str, today: date) -> int:
@@ -29,14 +45,19 @@ def count_due(db: Session, user: str, today: date) -> int:
     ) or 0
 
 
-def first_due_puzzle(db: Session, user: str, today: date) -> Puzzle | None:
-    return db.scalar(
+def first_due_puzzle(
+    db: Session, user: str, today: date, category: str | None = None
+) -> Puzzle | None:
+    stmt = (
         select(Puzzle)
         .join(Review, Review.puzzle_id == Puzzle.id)
         .where(Review.user_id == user, Review.next_review <= today)
         .order_by(Review.next_review)
         .limit(1)
     )
+    if category:
+        stmt = stmt.where(Puzzle.category == category)
+    return db.scalar(stmt)
 
 
 def count_new_today(db: Session, user: str, today: date) -> int:
@@ -50,19 +71,25 @@ def count_new_today(db: Session, user: str, today: date) -> int:
 def count_unlearned(db: Session, user: str) -> int:
     learned = select(Review.puzzle_id).where(Review.user_id == user)
     return db.scalar(
-        select(func.count()).select_from(Puzzle).where(Puzzle.id.not_in(learned))
+        select(func.count()).select_from(Puzzle)
+        .where(Puzzle.id.not_in(learned), _visible_to(user))
     ) or 0
 
 
-def pick_new_puzzle(db: Session, user: str, target_difficulty: int) -> Puzzle | None:
-    """选一道未学新题，难度优先贴近 target_difficulty。"""
+def pick_new_puzzle(
+    db: Session, user: str, target_difficulty: int, category: str | None = None
+) -> Puzzle | None:
+    """选一道未学新题，难度优先贴近 target_difficulty。可按类目过滤。"""
     learned = select(Review.puzzle_id).where(Review.user_id == user)
-    return db.scalar(
+    stmt = (
         select(Puzzle)
-        .where(Puzzle.id.not_in(learned))
+        .where(Puzzle.id.not_in(learned), _visible_to(user))
         .order_by(func.abs(Puzzle.difficulty - target_difficulty), Puzzle.difficulty)
         .limit(1)
     )
+    if category:
+        stmt = stmt.where(Puzzle.category == category)
+    return db.scalar(stmt)
 
 
 def get_review(db: Session, puzzle_id: int, user: str) -> Review | None:
@@ -143,8 +170,10 @@ def review_due_counts(db: Session, user: str) -> list[tuple]:
 # ── 题库整体 ────────────────────────────────────────────────────
 
 
-def count_puzzles(db: Session) -> int:
-    return db.scalar(select(func.count()).select_from(Puzzle)) or 0
+def count_puzzles(db: Session, user: str = PUBLIC_OWNER) -> int:
+    return db.scalar(
+        select(func.count()).select_from(Puzzle).where(_visible_to(user))
+    ) or 0
 
 
 def count_reviews(db: Session, user: str) -> int:

@@ -9,9 +9,27 @@ import { fetchMe, getToken, setToken } from "./api";
 
 export default function App() {
   const [tab, setTab] = React.useState("train");
-  const [pendingPuzzleId, setPendingPuzzleId] = React.useState(null);
+  // 训练目标：null | {puzzleId} | {category}，用于从复盘/弱点跳转到指定练习
+  const [trainTarget, setTrainTarget] = React.useState(null);
+  // 复盘目标：从对弈结束「一键复盘」跳转时携带的棋局 id
+  const [reviewGameId, setReviewGameId] = React.useState(null);
   const [user, setUser] = React.useState(null); // {username, role}
   const [authOpen, setAuthOpen] = React.useState(false);
+
+  // 跳到训练并指定要练的题/类目
+  function practicePuzzle(puzzleId) {
+    setTrainTarget({ puzzleId });
+    setTab("train");
+  }
+  function practiceCategory(category) {
+    setTrainTarget({ category });
+    setTab("train");
+  }
+  // 跳到复盘并打开指定棋局
+  function reviewGame(gameId) {
+    setReviewGameId(gameId);
+    setTab("games");
+  }
 
   // 启动时若有 token，拉取当前用户
   React.useEffect(() => {
@@ -59,16 +77,20 @@ export default function App() {
         </div>
       </header>
       <main>
-        {tab === "train" && <Trainer />}
-        {tab === "stats" && <Stats />}
-        {tab === "play" && <Play />}
+        {tab === "train" && (
+          <Trainer
+            target={trainTarget}
+            onTargetConsumed={() => setTrainTarget(null)}
+          />
+        )}
+        {tab === "stats" && <Stats onPractice={practiceCategory} />}
+        {tab === "play" && <Play onGoReview={reviewGame} />}
         {tab === "admin" && user?.role === "admin" && <Admin />}
         {tab === "games" && (
           <Games
-            onNavigateToTrain={(puzzleId) => {
-              setPendingPuzzleId(puzzleId);
-              setTab("train");
-            }}
+            initialGameId={reviewGameId}
+            onInitialGameConsumed={() => setReviewGameId(null)}
+            onNavigateToTrain={practicePuzzle}
           />
         )}
       </main>

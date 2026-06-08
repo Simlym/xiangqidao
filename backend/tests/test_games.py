@@ -46,7 +46,7 @@ def test_import_game(db):
         black_player="黑方",
         result="红胜",
     )
-    result = import_game(req, db)
+    result = import_game(req, db, user="default")
     assert result["move_count"] == len(SAMPLE_MOVES)
     assert isinstance(result["id"], int)
 
@@ -54,18 +54,18 @@ def test_import_game(db):
 def test_import_invalid_move(db):
     req = ImportRequest(moves="h2e2 INVALID")
     with pytest.raises(HTTPException) as exc_info:
-        import_game(req, db)
+        import_game(req, db, user="default")
     assert exc_info.value.status_code == 400
 
 
 def test_import_comma_separated(db):
     req = ImportRequest(moves="h2e2,h9g7")
-    result = import_game(req, db)
+    result = import_game(req, db, user="default")
     assert result["move_count"] == 2
 
 
 def test_list_games(db):
-    games = list_games(limit=50, offset=0, db=db)
+    games = list_games(limit=50, offset=0, db=db, user="default")
     assert len(games) >= 1
     for g in games:
         assert hasattr(g, "id")
@@ -75,10 +75,10 @@ def test_list_games(db):
 
 def test_get_game_positions(db):
     req = ImportRequest(moves=" ".join(SAMPLE_MOVES))
-    result = import_game(req, db)
+    result = import_game(req, db, user="default")
     game_id = result["id"]
 
-    detail = get_game(game_id, db)
+    detail = get_game(game_id, db, user="default")
     positions = detail.positions
 
     assert len(positions) == len(SAMPLE_MOVES) + 1
@@ -103,19 +103,19 @@ def test_get_game_positions(db):
 
 def test_get_game_not_found(db):
     with pytest.raises(HTTPException) as exc_info:
-        get_game(99999, db)
+        get_game(99999, db, user="default")
     assert exc_info.value.status_code == 404
 
 
 def test_delete_game(db):
     req = ImportRequest(moves="h2e2")
-    result = import_game(req, db)
+    result = import_game(req, db, user="default")
     game_id = result["id"]
 
-    resp = delete_game(game_id, db)
+    resp = delete_game(game_id, db, user="default")
     assert resp == {"ok": True}
 
     # Confirm deleted
     with pytest.raises(HTTPException) as exc_info:
-        get_game(game_id, db)
+        get_game(game_id, db, user="default")
     assert exc_info.value.status_code == 404
