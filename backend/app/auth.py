@@ -9,6 +9,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 
@@ -19,7 +20,22 @@ from sqlalchemy.orm import Session
 from .deps import get_db
 from .models import User
 
-SECRET = os.environ.get("XQ_SECRET", "xiangqidao-dev-secret-change-me").encode()
+_DEFAULT_SECRET = "xiangqidao-dev-secret-change-me"
+_secret = os.environ.get("XQ_SECRET", _DEFAULT_SECRET)
+
+# 默认密钥意味着任何人都能伪造登录 token。生产环境必须显式设置 XQ_SECRET。
+if _secret == _DEFAULT_SECRET:
+    _env = os.environ.get("XQ_ENV", "").lower()
+    if _env in ("prod", "production"):
+        raise RuntimeError(
+            "检测到 XQ_ENV=production 但 XQ_SECRET 仍为默认值；"
+            "请设置一个随机密钥（如 `export XQ_SECRET=$(openssl rand -hex 32)`）后再启动。"
+        )
+    logging.getLogger("uvicorn.error").warning(
+        "⚠️ XQ_SECRET 使用内置默认值，仅供本地开发；上线前务必设置 XQ_SECRET 环境变量。"
+    )
+
+SECRET = _secret.encode()
 TOKEN_TTL = 60 * 60 * 24 * 14  # 14 天
 PBKDF2_ITER = 120_000
 GUEST_USER = "default"  # 未登录时的访客数据归属，保持单用户向后兼容

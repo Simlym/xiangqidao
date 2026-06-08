@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..auth import current_user_id
 from ..deps import get_db
 from ..models import Attempt, Puzzle, Review
+from ..play_engine import game_status, legal_moves_uci
 from ..srs import SrsState, review as srs_review
 from ..xiangqi_utils import apply_move
 
@@ -114,20 +115,37 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
         raise HTTPException(400, "step 超出解题步数")
 
     expected = solution[req.step]
-    correct = req.move.strip() == expected
+    user_move = req.move.strip()
+    is_last = req.step == len(solution) - 1
+
+    # 当前步之前的局面（已走完前面所有正解）
+    fen_now = puzzle.fen
+    for mv in solution[: req.step]:
+        fen_now = apply_move(fen_now, mv)
+
+    correct = user_move == expected
+
+    # 变着容错：最后一步若用户走出“另一条同样成立的杀着”，也算对。
+    # 仅对最后一步放宽，因为中间步骤换着会让后续录入的正解线无法衔接。
+    if not correct and is_last:
+        try:
+            if user_move in legal_moves_uci(fen_now):
+                fen_try = apply_move(fen_now, user_move)
+                if game_status(fen_try) == "checkmate":
+                    correct = True
+        except Exception:
+            pass
 
     if not correct:
         # 给起点提示（透露棋子所在文件+行，不透露目标）
         hint = expected[:2]
         return CheckMoveResponse(correct=False, done=False, fen_after=None, hint=hint)
 
-    # 把本步及之前所有正解步骤依序应用到初始 FEN，得到新局面
-    fen = puzzle.fen
-    for mv in solution[: req.step + 1]:
-        fen = apply_move(fen, mv)
+    # 接受的着法即用户所走（非末步时它必等于录入正解；末步可能是等效变着）
+    fen_after = apply_move(fen_now, user_move)
 
-    done = req.step == len(solution) - 1
-    return CheckMoveResponse(correct=True, done=done, fen_after=fen, hint=None)
+    done = is_last
+    return CheckMoveResponse(correct=True, done=done, fen_after=fen_after, hint=None)
 
 
 @router.post("/submit", response_model=SubmitResponse)
