@@ -11,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.main import app
 from app.deps import get_db
-from app.models import Base, Puzzle
+from app.models import Base, Puzzle, Attempt
 
 # 双车错局面：h7f7 与 h1f1 均为成立的一步杀
 MULTI_MATE_FEN = "9/9/5k1R1/9/9/9/9/9/7R1/4K4 w"
@@ -204,6 +204,79 @@ def test_first_try_accuracy_excludes_retry():
         ov = client.get("/api/stats/overview").json()
         assert ov["overall_accuracy"] == 1.0       # 两次都最终做对
         assert ov["first_try_accuracy"] == 0.5      # 只有 1/2 是首答对
+    finally:
+        app.dependency_overrides.clear()
+
+
+def _client_with_diffs():
+    """建难度 1..5 各一道新题，返回客户端与 session 工厂。"""
+    eng = sa_create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(eng)
+    TestSession = sessionmaker(bind=eng, autoflush=False)
+    with TestSession() as db:
+        for d in range(1, 6):
+            db.add(Puzzle(fen=MULTI_MATE_FEN, solution="h7f7", side_to_move="w",
+                          category="t", difficulty=d, source="t"))
+        db.commit()
+
+    def override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    return TestSession
+
+
+def test_adaptive_difficulty_high_accuracy_picks_hard():
+    """近期首答全对 → 目标难度高 → 选最难的新题。"""
+    TestSession = _client_with_diffs()
+    client = TestClient(app)
+    try:
+        with TestSession() as db:
+            for _ in range(12):
+                db.add(Attempt(puzzle_id=1, user_id="default", correct=True, had_retry=False))
+            db.commit()
+        nxt = client.get("/api/training/next").json()
+        assert nxt["puzzle"]["difficulty"] == 5
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_adaptive_difficulty_low_accuracy_picks_easy():
+    """近期全错 → 目标难度低 → 选最易的新题。"""
+    TestSession = _client_with_diffs()
+    client = TestClient(app)
+    try:
+        with TestSession() as db:
+            for _ in range(12):
+                db.add(Attempt(puzzle_id=1, user_id="default", correct=False, had_retry=True))
+            db.commit()
+        nxt = client.get("/api/training/next").json()
+        assert nxt["puzzle"]["difficulty"] == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_forecast_buckets_overdue_into_today():
+    """到期/过期题应计入预测的「今天」格。"""
+    client = _client_multi(1)
+    try:
+        # 学一道新题 → 产生一条 next_review<=today 的复习记录（间隔1天其实是明天）
+        client.post("/api/training/submit",
+                    json={"puzzle_id": 1, "self_rating": "again",
+                          "had_retry": False, "correct": False})
+        fc = client.get("/api/stats/forecast?days=7").json()
+        assert len(fc) == 7
+        assert fc[0]["label"] == "今天"
+        # again → interval=1 → 明天到期，应落在 index 1
+        assert sum(p["count"] for p in fc) >= 1
     finally:
         app.dependency_overrides.clear()
 

@@ -100,6 +100,30 @@ def _graded_hint(fen_now: str, expected: str, attempt: int) -> str:
     return f"正解：{name} {start} → {target}"
 
 
+def _target_difficulty(db: Session, user: str) -> int:
+    """据最近表现估计合适难度（1-5）：首答正确率越高，难度目标越高。"""
+    RECENT = 20
+    rows = db.execute(
+        select(Attempt.correct, Attempt.had_retry)
+        .where(Attempt.user_id == user)
+        .order_by(Attempt.id.desc())
+        .limit(RECENT)
+    ).all()
+    if len(rows) < 5:
+        return 2  # 冷启动：偏易上手
+    first_try = sum(1 for c, r in rows if c and not r)
+    acc = first_try / len(rows)
+    if acc >= 0.85:
+        return 5
+    if acc >= 0.70:
+        return 4
+    if acc >= 0.50:
+        return 3
+    if acc >= 0.30:
+        return 2
+    return 1
+
+
 # ── 接口 ───────────────────────────────────────────────────────
 
 @router.get("/next", response_model=NextResponse)
@@ -129,8 +153,13 @@ def next_puzzle(db: Session = Depends(get_db), user: str = Depends(current_user_
         ) or 0
         if new_today < NEW_PER_DAY:
             learned = select(Review.puzzle_id).where(Review.user_id == user)
+            # 难度自适应：优先选难度最接近目标的新题
+            target = _target_difficulty(db, user)
             puzzle = db.scalar(
-                select(Puzzle).where(Puzzle.id.not_in(learned)).order_by(Puzzle.difficulty).limit(1)
+                select(Puzzle)
+                .where(Puzzle.id.not_in(learned))
+                .order_by(func.abs(Puzzle.difficulty - target), Puzzle.difficulty)
+                .limit(1)
             )
             # 取不到说明题库已学完；取到则正常返回
         else:

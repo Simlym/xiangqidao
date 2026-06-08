@@ -1,15 +1,17 @@
 import React from "react";
-import { getOverview, getByCategory, getWeekly } from "./api";
+import { getOverview, getByCategory, getWeekly, getForecast } from "./api";
 
 export default function Stats() {
   const [ov, setOv] = React.useState(null);
   const [cats, setCats] = React.useState([]);
   const [weekly, setWeekly] = React.useState([]);
+  const [forecast, setForecast] = React.useState([]);
 
   React.useEffect(() => {
     getOverview().then(setOv);
     getByCategory().then(setCats);
     getWeekly().then(setWeekly);
+    getForecast(14).then(setForecast);
   }, []);
 
   if (!ov) return <div className="panel">加载中…</div>;
@@ -43,6 +45,29 @@ export default function Stats() {
               </span>
             </div>
           ))
+        )}
+      </div>
+
+      <div className="panel">
+        <h3>复习日程（遗忘曲线）</h3>
+        {forecast.every((f) => f.count === 0) ? (
+          <p className="muted">暂无待复习题目，练几道新题后这里会显示未来的复习安排。</p>
+        ) : (
+          <div className="forecast">
+            {(() => {
+              const max = Math.max(1, ...forecast.map((f) => f.count));
+              return forecast.map((f) => (
+                <div className="forecast-col" key={f.day} title={`${f.day}: ${f.count} 题`}>
+                  <span className="forecast-num">{f.count || ""}</span>
+                  <div
+                    className={"forecast-bar" + (f.overdue ? " overdue" : "")}
+                    style={{ height: `${f.count ? Math.max(6, Math.round((f.count / max) * 100)) : 0}%` }}
+                  />
+                  <span className="forecast-x">{f.label}</span>
+                </div>
+              ));
+            })()}
+          </div>
         )}
       </div>
 

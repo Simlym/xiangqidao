@@ -35,6 +35,13 @@ class WeeklyPoint(BaseModel):
     accuracy: float
 
 
+class ForecastPoint(BaseModel):
+    day: date
+    label: str      # 今天/明天/周几
+    count: int      # 当天到期复习数
+    overdue: bool    # 是否为已过期堆积（仅 day=today 那项可能为 True）
+
+
 @router.get("/overview", response_model=Overview)
 def overview(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     today = date.today()
@@ -90,6 +97,41 @@ def overview(db: Session = Depends(get_db), user: str = Depends(current_user_id)
         overall_accuracy=acc,
         first_try_accuracy=first_acc,
     )
+
+
+@router.get("/forecast", response_model=list[ForecastPoint])
+def forecast(days: int = 14, db: Session = Depends(get_db), user: str = Depends(current_user_id)):
+    """未来复习日程（间隔重复/遗忘曲线的可视化）：今后 N 天每天的到期复习量。
+
+    今天那一格包含所有已过期（next_review <= today）的堆积量。
+    """
+    today = date.today()
+    rows = db.execute(
+        select(Review.next_review, func.count())
+        .where(Review.user_id == user)
+        .group_by(Review.next_review)
+    ).all()
+
+    counts: dict[date, int] = {}
+    overdue = 0
+    for nr, n in rows:
+        d = nr if isinstance(nr, date) else date.fromisoformat(str(nr)[:10])
+        if d <= today:
+            overdue += n
+        else:
+            counts[d] = counts.get(d, 0) + n
+
+    week = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    out: list[ForecastPoint] = []
+    for i in range(days):
+        d = today + timedelta(days=i)
+        if i == 0:
+            cnt, label, od = overdue, "今天", overdue > 0
+        else:
+            label = "明天" if i == 1 else week[d.weekday()]
+            cnt, od = counts.get(d, 0), False
+        out.append(ForecastPoint(day=d, label=label, count=cnt, overdue=od))
+    return out
 
 
 @router.get("/by_category", response_model=list[CategoryStat])
