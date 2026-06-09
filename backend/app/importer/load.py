@@ -69,13 +69,17 @@ def load(path: str, verify: bool = False, movetime_ms: int = 1000, mate_check: b
                     continue
                 verified = True
 
+            # steps 缺省按题解己方着法数推断（总手数向上取整的一半）
+            n_moves = len(solution.split(","))
             db.add(
                 Puzzle(
                     fen=fen,
                     solution=solution,
                     side_to_move=item.get("side_to_move", "w"),
+                    kind=item.get("kind", "杀法"),
                     category=item.get("category", "未分类"),
                     difficulty=int(item.get("difficulty", 3)),
+                    steps=int(item.get("steps", (n_moves + 1) // 2)),
                     source=item.get("source", ""),
                     verified=verified,
                 )

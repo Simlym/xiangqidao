@@ -44,8 +44,13 @@ export const login = (username, password) =>
 export const fetchMe = () => req("/auth/me");
 
 // ── 训练 ────────────────────────────────────────────────
-export const getNext = (category) =>
-  req(`/training/next${category ? `?category=${encodeURIComponent(category)}` : ""}`);
+export const getNext = (category, kind) => {
+  const qs = new URLSearchParams();
+  if (category) qs.set("category", category);
+  if (kind) qs.set("kind", kind);
+  const s = qs.toString();
+  return req(`/training/next${s ? `?${s}` : ""}`);
+};
 export const getTrainingPuzzle = (id) => req(`/training/puzzle/${id}`);
 export const checkMove = (payload) => req("/training/check_move", { method: "POST", body: payload });
 export const submitRating = (payload) => req("/training/submit", { method: "POST", body: payload });
@@ -53,6 +58,7 @@ export const submitRating = (payload) => req("/training/submit", { method: "POST
 // ── 统计 ────────────────────────────────────────────────
 export const getOverview = () => req("/stats/overview");
 export const getByCategory = () => req("/stats/by_category");
+export const getCatalog = () => req("/stats/catalog");
 export const getWeekly = () => req("/stats/weekly");
 export const getForecast = (days = 14) => req(`/stats/forecast?days=${days}`);
 export const getRating = () => req("/stats/rating");

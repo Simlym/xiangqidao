@@ -29,6 +29,7 @@ class PuzzleOut(BaseModel):
     id: int
     fen: str
     side_to_move: str
+    kind: str          # 大类：杀法/开局/中局/残局
     category: str
     difficulty: int
     total_steps: int  # 总步数，前端用于显示进度
@@ -134,6 +135,7 @@ def _puzzle_out(puzzle) -> PuzzleOut:
         id=puzzle.id,
         fen=puzzle.fen,
         side_to_move=puzzle.side_to_move,
+        kind=getattr(puzzle, "kind", "杀法") or "杀法",
         category=puzzle.category,
         difficulty=puzzle.difficulty,
         total_steps=steps,
@@ -159,21 +161,25 @@ def get_training_puzzle(
 @router.get("/next", response_model=NextResponse)
 def next_puzzle(
     category: str | None = None,
+    kind: str | None = None,
     db: Session = Depends(get_db),
     user: str = Depends(current_user_id),
 ):
     """返回到期题或新题。
 
-    传入 category 时进入「弱点专项」模式：只在该杀法类目内取题，
-    优先到期题、其次新题，并放宽每日新题上限（用户主动针对性练习）。
+    传入 category（具体名目）或 kind（大类）时进入「专项练习」模式：
+    只在该范围内取题，优先到期题、其次新题，并放宽每日新题上限
+    （用户主动针对性练习）。
     """
     today = date.today()
     due_count = repo.count_due(db, user, today)
 
     new_limit_reached = False
-    if category:
-        puzzle = repo.first_due_puzzle(db, user, today, category) or repo.pick_new_puzzle(
-            db, user, _target_difficulty(db, user), category
+    if category or kind:
+        puzzle = repo.first_due_puzzle(
+            db, user, today, category, kind
+        ) or repo.pick_new_puzzle(
+            db, user, _target_difficulty(db, user), category, kind
         )
     else:
         puzzle = repo.first_due_puzzle(db, user, today)

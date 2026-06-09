@@ -28,6 +28,13 @@ class CategoryStat(BaseModel):
     accuracy: float
 
 
+class CatalogEntry(BaseModel):
+    kind: str        # 大类：杀法/开局/中局/残局
+    category: str    # 具体名目
+    total: int       # 该名目题数
+    learned: int     # 已学题数
+
+
 class WeeklyPoint(BaseModel):
     week_start: date
     attempts: int
@@ -110,6 +117,16 @@ def by_category(db: Session = Depends(get_db), user: str = Depends(current_user_
         c = c or 0
         out.append(CategoryStat(category=cat, attempts=n, accuracy=round(c / n, 3) if n else 0.0))
     return sorted(out, key=lambda x: x.accuracy)
+
+
+@router.get("/catalog", response_model=list[CatalogEntry])
+def catalog(db: Session = Depends(get_db), user: str = Depends(current_user_id)):
+    """题库目录：按大类/名目列出题数与已学数，供题库浏览与专项练习选择。"""
+    rows = repo.catalog(db, user)
+    return [
+        CatalogEntry(kind=k or "杀法", category=c or "未分类", total=n, learned=int(le or 0))
+        for k, c, n, le in rows
+    ]
 
 
 class RatingOut(BaseModel):

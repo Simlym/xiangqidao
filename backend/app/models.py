@@ -45,8 +45,12 @@ class Puzzle(Base):
     fen: Mapped[str] = mapped_column(String(120), nullable=False)
     solution: Mapped[str] = mapped_column(Text, nullable=False)
     side_to_move: Mapped[str] = mapped_column(String(1), default="w")  # w=红 b=黑
-    category: Mapped[str] = mapped_column(String(40), default="未分类")  # 杀法类型
+    # 两级分类：kind 为大类（杀法/开局/中局/残局），category 为具体战术名目
+    # （卧槽马/双车错/对面笑…）。弱点专项与雷达图按 category，题库浏览/筛选按 kind。
+    kind: Mapped[str] = mapped_column(String(10), default="杀法", index=True)
+    category: Mapped[str] = mapped_column(String(40), default="未分类")  # 具体战术名目
     difficulty: Mapped[int] = mapped_column(Integer, default=3)         # 1-5
+    steps: Mapped[int] = mapped_column(Integer, default=1)              # 解题回合数（mate-in-N 的 N）
     # 题目 ELO：随作答动态收敛到「真实难度」；空表示尚未初始化（按难度回填）
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(80), default="")

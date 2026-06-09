@@ -43,6 +43,8 @@ def _ensure_columns() -> None:
         "puzzles": [
             ("user_id", "VARCHAR(40) DEFAULT 'default'"),
             ("rating", "INTEGER"),
+            ("kind", "VARCHAR(10) DEFAULT '杀法'"),
+            ("steps", "INTEGER DEFAULT 1"),
         ],
         "games": [
             ("user_id", "VARCHAR(40) DEFAULT 'default'"),
@@ -61,6 +63,15 @@ def _ensure_columns() -> None:
         if "puzzles.rating" in added:
             conn.execute(
                 text("UPDATE puzzles SET rating = 550 + 250 * difficulty WHERE rating IS NULL")
+            )
+        # 新增 steps 列：按题解着法数回填（己方着法数 = (总手数+1)//2），缺省按难度近似
+        if "puzzles.steps" in added:
+            conn.execute(
+                text(
+                    "UPDATE puzzles SET steps = "
+                    "(LENGTH(solution) - LENGTH(REPLACE(solution, ',', '')) + 2) / 2 "
+                    "WHERE steps IS NULL OR steps < 1"
+                )
             )
 
 
