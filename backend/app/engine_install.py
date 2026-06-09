@@ -65,15 +65,15 @@ def binary_name() -> str:
 
 
 def binary_path() -> str:
-    return os.path.join(engine_dir(), binary_name())
+    return os.path.abspath(os.path.join(engine_dir(), binary_name()))
 
 
 def nnue_path() -> str:
-    return os.path.join(engine_dir(), "pikafish.nnue")
+    return os.path.abspath(os.path.join(engine_dir(), "pikafish.nnue"))
 
 
 def _meta_path() -> str:
-    return os.path.join(engine_dir(), "meta.json")
+    return os.path.abspath(os.path.join(engine_dir(), "meta.json"))
 
 
 def is_installed() -> bool:
