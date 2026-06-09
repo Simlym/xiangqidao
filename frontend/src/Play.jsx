@@ -253,40 +253,45 @@ export default function Play({ onGoReview }) {
 
   return (
     <div className="play">
+      {/* 状态与操作分两行：状态文案变化（引擎思考中 ↔ 轮到你走）不再挤动按钮换行，棋盘不跳动 */}
       <div className="panel play-status-bar">
-        <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
-        <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
-        {engineInfo && (
-          <span className="tag" title={engineInfo.available ? "Pikafish 强力引擎" : "未装 Pikafish，使用内置搜索"}>
-            {engineInfo.available ? "♟ Pikafish" : "♟ 内置引擎"}
+        <div className="play-status-line">
+          <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
+          <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
+          {engineInfo && (
+            <span className="tag" title={engineInfo.available ? "Pikafish 强力引擎" : "未装 Pikafish，使用内置搜索"}>
+              {engineInfo.available ? "♟ Pikafish" : "♟ 内置引擎"}
+            </span>
+          )}
+          <span className="play-turn">
+            {over
+              ? winnerText
+              : thinking
+              ? "引擎思考中…"
+              : status === "check"
+              ? "将军！轮到你"
+              : "轮到你走"}
           </span>
-        )}
-        <span className="play-turn">
-          {over
-            ? winnerText
-            : thinking
-            ? "引擎思考中…"
-            : status === "check"
-            ? "将军！轮到你"
-            : "轮到你走"}
-        </span>
-        <button
-          className={"btn-newgame" + (showEval ? " active" : "")}
-          onClick={() => setShowEval((v) => !v)}
-        >
-          {showEval ? "评分 开" : "评分 关"}
-        </button>
-        <button
-          className="btn-newgame"
-          onClick={undo}
-          disabled={!canUndo || thinking}
-          style={{ opacity: !canUndo || thinking ? 0.5 : 1 }}
-        >
-          悔棋
-        </button>
-        <button className="btn-newgame" onClick={() => setFen(null)}>
-          重开
-        </button>
+        </div>
+        <div className="play-actions">
+          <button
+            className={"btn-newgame" + (showEval ? " active" : "")}
+            onClick={() => setShowEval((v) => !v)}
+          >
+            {showEval ? "评分 开" : "评分 关"}
+          </button>
+          <button
+            className="btn-newgame"
+            onClick={undo}
+            disabled={!canUndo || thinking}
+            style={{ opacity: !canUndo || thinking ? 0.5 : 1 }}
+          >
+            悔棋
+          </button>
+          <button className="btn-newgame" onClick={() => setFen(null)}>
+            重开
+          </button>
+        </div>
       </div>
 
       {showEval && (() => {

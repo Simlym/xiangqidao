@@ -273,67 +273,75 @@ export default function Trainer({ target = null, onTargetConsumed }) {
         {stepMsg && <p className="step-msg">{stepMsg}</p>}
       </div>
 
-      {/* 棋盘 */}
-      <Board
-        fen={currentFen}
-        onMove={onMove}
-        lastMove={lastMove}
-        disabled={boardDisabled}
-      />
+      {/* 棋盘（答题完成后，结果/自评面板直接覆盖在棋面下方，免去上下滑动） */}
+      <div className="trainer-board-area">
+        <Board
+          fen={currentFen}
+          onMove={onMove}
+          lastMove={lastMove}
+          disabled={boardDisabled}
+        />
 
-      {/* 答错面板 */}
-      {phase === "wrong" && (
-        <div className="panel result bad">
-          <h3>✗ 不对</h3>
-          <div className="btn-row">
-            <button className="btn-retry" onClick={onRetry}>再试一次</button>
-            <button className="btn-giveup" onClick={onGiveUp}>查看答案</button>
+        {/* 答错面板 */}
+        {phase === "wrong" && (
+          <div className="board-overlay">
+            <div className="panel result bad">
+              <h3>✗ 不对</h3>
+              <div className="btn-row">
+                <button className="btn-retry" onClick={onRetry}>再试一次</button>
+                <button className="btn-giveup" onClick={onGiveUp}>查看答案</button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* 答对自评面板 */}
-      {phase === "rating" && (
-        <div className="panel result ok">
-          <h3>✓ 全部走出！</h3>
-          <p className="muted">
-            {hadRetry ? "中途重试过，自评最高计入「困难」。" : "你觉得这题对你来说……"}
-          </p>
-          <div className="rating-btns">
-            {RATINGS.map((r) => (
-              <button
-                key={r.key}
-                className="btn-rate"
-                style={{ "--rate-color": r.color }}
-                onClick={() => onRate(r.key)}
-              >
-                <span className="rate-label">{r.label}</span>
-                <span className="rate-desc">{r.desc}</span>
+        {/* 答对自评面板 */}
+        {phase === "rating" && (
+          <div className="board-overlay">
+            <div className="panel result ok">
+              <h3>✓ 全部走出！</h3>
+              <p className="muted">
+                {hadRetry ? "中途重试过，自评最高计入「困难」。" : "你觉得这题对你来说……"}
+              </p>
+              <div className="rating-btns">
+                {RATINGS.map((r) => (
+                  <button
+                    key={r.key}
+                    className="btn-rate"
+                    style={{ "--rate-color": r.color }}
+                    onClick={() => onRate(r.key)}
+                  >
+                    <span className="rate-label">{r.label}</span>
+                    <span className="rate-desc">{r.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 完成面板 */}
+        {phase === "done" && (
+          <div className="board-overlay">
+            <div className="panel result ok">
+              <p>正解：<code>{solution.join(" → ")}</code></p>
+              {ratingChange && (
+                <p>评分 {ratingChange.old} →{" "}
+                  <b>{ratingChange.new}</b>{" "}
+                  <span className={ratingChange.delta >= 0 ? "delta-up" : "delta-down"}>
+                    ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
+                  </span>
+                </p>
+              )}
+              {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
+              <p className="muted">下次复习：{nextReview}</p>
+              <button onClick={() => load(activeCategory)}>
+                {activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
               </button>
-            ))}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* 完成面板 */}
-      {phase === "done" && (
-        <div className="panel result ok">
-          <p>正解：<code>{solution.join(" → ")}</code></p>
-          {ratingChange && (
-            <p>评分 {ratingChange.old} →{" "}
-              <b>{ratingChange.new}</b>{" "}
-              <span className={ratingChange.delta >= 0 ? "delta-up" : "delta-down"}>
-                ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
-              </span>
-            </p>
-          )}
-          {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
-          <p className="muted">下次复习：{nextReview}</p>
-          <button onClick={() => load(activeCategory)}>
-            {activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
