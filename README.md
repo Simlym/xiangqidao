@@ -132,9 +132,33 @@ python -m app.importer.load app/importer/more.json
 | [walker8088/cchess](https://github.com/walker8088/cchess) | Python 象棋库（FEN/着法/PGN 解析） | 写导入适配器的利器 |
 | [official-pikafish/Pikafish](https://github.com/official-pikafish/Pikafish) | 顶尖开源引擎 | 解析名局自动挖掘战术题 + 校验正解 |
 
-> 接入方式：把外部数据的局面/正解转成 `{fen, solution, side_to_move, category, difficulty}` 列表，
+> 接入方式：把外部数据的局面/正解转成 `{fen, solution, side_to_move, kind, category, difficulty, steps}` 列表，
 > 经 `--verify`（Pikafish）或 `--mate-check`（内置规则）校验后导入。各源的着法记法（WXF/ICCS/UCI）
 > 需先归一化到本项目的 UCI 坐标制。
+
+**3. 一键接入 wukong-xiangqi 实战杀局（已内置适配器）** —— 该开源库约 3386 道取自世界
+象棋锦标赛等实战的杀局，**仅含局面与「Mate in N」标注、无题解着法**。`import_wukong` 用内置
+规则引擎离线搜索强制连将杀、补出正解，并自动按杀法名目（卧槽马/双车错/重炮…）分类、按步数定
+难度：
+```bash
+# 下载题源 → 求解 → 分类 → 产出本系统可导入的 JSON（可加 --limit 先小批量试跑）
+python -m app.importer.import_wukong --out app/importer/wukong_puzzles.json
+python -m app.importer.load app/importer/wukong_puzzles.json
+```
+> 「先弃后杀 / 安静着造杀」等非连续将军的题无法被纯将军搜索求解，会被跳过——保证导入的每题
+> 都是经 `verify_mate` 验证成立的连将杀。仓库已附带产出的 `wukong_puzzles.json`。
+
+### 题库分类体系（两级 + 难度 + 步数）
+
+| 字段 | 含义 | 取值示例 |
+|------|------|----------|
+| `kind` | 大类 | 杀法 / 开局 / 中局 / 残局 |
+| `category` | 具体名目 | 卧槽马、马后炮、双车错、对面笑、重炮、炮杀、车杀、兵杀… |
+| `difficulty` | 难度 | 1–5（杀法题按步数映射） |
+| `steps` | 解题回合数 | mate-in-N 的 N |
+
+训练取题 `/api/training/next` 支持 `kind`（大类专项）或 `category`（名目专项）筛选；
+`/api/stats/catalog` 返回题库目录（各名目题数 / 已学数）供前端浏览与专项练习选择。
 
 ## 测试
 ```bash

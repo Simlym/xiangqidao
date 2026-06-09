@@ -33,8 +33,10 @@ class AdminPuzzle(BaseModel):
     fen: str
     solution: str
     side_to_move: str
+    kind: str
     category: str
     difficulty: int
+    steps: int
     source: str
     verified: bool
 
@@ -43,10 +45,20 @@ class NewPuzzle(BaseModel):
     fen: str
     solution: str           # 逗号分隔的 UCI 着法
     side_to_move: str = "w"
+    kind: str = "杀法"
     category: str = "未分类"
     difficulty: int = 3
     source: str = "admin"
     mate_check: bool = True  # 单步杀法用内置规则校验
+
+
+def _admin_puzzle(p) -> "AdminPuzzle":
+    return AdminPuzzle(
+        id=p.id, fen=p.fen, solution=p.solution, side_to_move=p.side_to_move,
+        kind=getattr(p, "kind", "杀法") or "杀法", category=p.category,
+        difficulty=p.difficulty, steps=getattr(p, "steps", 1) or 1,
+        source=p.source, verified=p.verified,
+    )
 
 
 @router.get("/overview")
@@ -97,13 +109,7 @@ def list_puzzles(limit: int = 100, offset: int = 0, db: Session = Depends(get_db
     puzzles = db.scalars(
         select(Puzzle).order_by(Puzzle.id.desc()).offset(offset).limit(limit)
     ).all()
-    return [
-        AdminPuzzle(
-            id=p.id, fen=p.fen, solution=p.solution, side_to_move=p.side_to_move,
-            category=p.category, difficulty=p.difficulty, source=p.source, verified=p.verified,
-        )
-        for p in puzzles
-    ]
+    return [_admin_puzzle(p) for p in puzzles]
 
 
 @router.post("/puzzles", response_model=AdminPuzzle)
@@ -124,15 +130,13 @@ def create_puzzle(body: NewPuzzle, db: Session = Depends(get_db)):
 
     p = Puzzle(
         fen=body.fen, solution=solution, side_to_move=body.side_to_move,
-        category=body.category, difficulty=body.difficulty, source=body.source, verified=verified,
+        kind=body.kind, category=body.category, difficulty=body.difficulty,
+        steps=(len(solution.split(",")) + 1) // 2, source=body.source, verified=verified,
     )
     db.add(p)
     db.commit()
     db.refresh(p)
-    return AdminPuzzle(
-        id=p.id, fen=p.fen, solution=p.solution, side_to_move=p.side_to_move,
-        category=p.category, difficulty=p.difficulty, source=p.source, verified=p.verified,
-    )
+    return _admin_puzzle(p)
 
 
 class LlmSettings(BaseModel):

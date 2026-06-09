@@ -46,7 +46,8 @@ def count_due(db: Session, user: str, today: date) -> int:
 
 
 def first_due_puzzle(
-    db: Session, user: str, today: date, category: str | None = None
+    db: Session, user: str, today: date,
+    category: str | None = None, kind: str | None = None,
 ) -> Puzzle | None:
     stmt = (
         select(Puzzle)
@@ -57,6 +58,8 @@ def first_due_puzzle(
     )
     if category:
         stmt = stmt.where(Puzzle.category == category)
+    if kind:
+        stmt = stmt.where(Puzzle.kind == kind)
     return db.scalar(stmt)
 
 
@@ -77,9 +80,10 @@ def count_unlearned(db: Session, user: str) -> int:
 
 
 def pick_new_puzzle(
-    db: Session, user: str, target_difficulty: int, category: str | None = None
+    db: Session, user: str, target_difficulty: int,
+    category: str | None = None, kind: str | None = None,
 ) -> Puzzle | None:
-    """选一道未学新题，难度优先贴近 target_difficulty。可按类目过滤。"""
+    """选一道未学新题，难度优先贴近 target_difficulty。可按类目/大类过滤。"""
     learned = select(Review.puzzle_id).where(Review.user_id == user)
     stmt = (
         select(Puzzle)
@@ -89,7 +93,28 @@ def pick_new_puzzle(
     )
     if category:
         stmt = stmt.where(Puzzle.category == category)
+    if kind:
+        stmt = stmt.where(Puzzle.kind == kind)
     return db.scalar(stmt)
+
+
+def catalog(db: Session, user: str) -> list[tuple[str, str, int, int]]:
+    """题库目录：可见题按 (kind, category) 分组的 (大类, 名目, 题数, 已学数)。
+
+    供前端「题库浏览 / 弱点专项」选择界面使用。
+    """
+    learned = select(Review.puzzle_id).where(Review.user_id == user)
+    return db.execute(
+        select(
+            Puzzle.kind,
+            Puzzle.category,
+            func.count(Puzzle.id),
+            func.sum(func.cast(Puzzle.id.in_(learned), Integer)),
+        )
+        .where(_visible_to(user))
+        .group_by(Puzzle.kind, Puzzle.category)
+        .order_by(Puzzle.kind, func.count(Puzzle.id).desc())
+    ).all()
 
 
 def get_review(db: Session, puzzle_id: int, user: str) -> Review | None:

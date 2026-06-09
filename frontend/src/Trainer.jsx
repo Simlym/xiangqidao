@@ -232,6 +232,11 @@ export default function Trainer({ target = null, onTargetConsumed }) {
               弱点专项
             </span>
           )}
+          {puzzle.kind && puzzle.kind !== puzzle.category && (
+            <span className="tag" style={{ background: "#e8f0fe", color: "#2980b9" }}>
+              {puzzle.kind}
+            </span>
+          )}
           <span className="tag">{puzzle.category}</span>
           <span className="tag">难度 {"★".repeat(puzzle.difficulty)}</span>
           {totalSteps > 1 && (
