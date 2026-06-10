@@ -3,7 +3,7 @@ import Board from "./Board";
 import { applyMove, uciToChinese, INITIAL_FEN } from "./xiangqi";
 import {
   newPlayGame, playMove, importGame, analyzeGame, evalPosition,
-  getPlayEngine, getBookMoves, getHint,
+  getPlayEngine, getBookMoves, getHint, coachHintMove,
 } from "./api";
 import { localEval, localEngineReady } from "./localEngine";
 
@@ -91,6 +91,8 @@ export default function Play({ onGoReview }) {
   const [bookLoading, setBookLoading] = React.useState(false);
   const [hint, setHint] = React.useState(null);           // {move, text, source}
   const [hintLoading, setHintLoading] = React.useState(false);
+  const [coach, setCoach] = React.useState(null);          // AI 详解 {text} | {disabled: true}
+  const [coachLoading, setCoachLoading] = React.useState(false);
   const [moveLog, setMoveLog] = React.useState([]);        // moves.current 的可渲染副本
   const [fenCopied, setFenCopied] = React.useState(false);
   const moves = React.useRef([]);                     // 累计着法（红黑交替）
@@ -131,8 +133,8 @@ export default function Play({ onGoReview }) {
     return () => { alive = false; };
   }, [showBook, fen, thinking, over]);
 
-  // 局面一变，旧提示即作废
-  React.useEffect(() => { setHint(null); }, [fen]);
+  // 局面一变，旧提示与 AI 详解即作废
+  React.useEffect(() => { setHint(null); setCoach(null); }, [fen]);
 
   // 提示：本地引擎 → 服务器（云库命中则秒回）
   async function requestHint() {
@@ -158,6 +160,20 @@ export default function Play({ onGoReview }) {
       setHint(null);
     } finally {
       setHintLoading(false);
+    }
+  }
+
+  // AI 教练详解推荐着法的意图（未配置 AI 时按钮隐藏）
+  async function requestCoach() {
+    if (!hint?.move || coachLoading || !fen) return;
+    setCoachLoading(true);
+    try {
+      const r = await coachHintMove(fen, hint.move);
+      setCoach(r.enabled ? { text: r.text || "（AI 暂时没有返回点评）" } : { disabled: true });
+    } catch {
+      setCoach(null);
+    } finally {
+      setCoachLoading(false);
     }
   }
 
@@ -421,6 +437,23 @@ export default function Play({ onGoReview }) {
         <div className="panel hint-strip">
           💡 推荐：<strong>{hint.text}</strong>
           <span className="muted">（{hint.source}）</span>
+          {!coach && (
+            <button
+              className="btn-newgame hint-coach-btn"
+              onClick={requestCoach}
+              disabled={coachLoading}
+            >
+              {coachLoading ? "AI 思考中…" : "🤖 AI 详解"}
+            </button>
+          )}
+          {coach?.text && (
+            <div className="analysis-explanation ai-explain">{coach.text}</div>
+          )}
+          {coach?.disabled && (
+            <div className="muted" style={{ marginTop: 6 }}>
+              未启用 AI 点评（管理员可在后台配置大模型）
+            </div>
+          )}
         </div>
       )}
 

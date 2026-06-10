@@ -45,7 +45,8 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
   const moveListRef = React.useRef(null);
 
   // Analysis state
-  const [analyzeStatus, setAnalyzeStatus] = React.useState("idle"); // idle | analyzing | done
+  // idle: 未分析 | analyzing: 分析进行中 | partial: 有历史分析但未完成（可继续） | done: 已完成
+  const [analyzeStatus, setAnalyzeStatus] = React.useState("idle");
   const [analysisData, setAnalysisData] = React.useState(null); // null or {moves, blunder_count, mistake_count}
   const [progress, setProgress] = React.useState({ analyzed: 0, total: 0 });
   const pollRef = React.useRef(null);
@@ -115,7 +116,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
       .finally(() => setPosLoading(false));
   }, [selectedId]);
 
-  // Reset analysis when game changes
+  // 切换棋局：重置状态后检查数据库里已保存的分析，有则直接加载，避免重复分析
   React.useEffect(() => {
     setAnalyzeStatus("idle");
     setAnalysisData(null);
@@ -124,11 +125,32 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-    // 若该局是从对弈跳转而来，自动开始拉取分析结果
-    if (selectedId && pendingAutoAnalyze.current === selectedId) {
+    if (!selectedId) return;
+    // 若该局是从对弈跳转而来，分析已在后台进行，直接轮询进度
+    if (pendingAutoAnalyze.current === selectedId) {
       pendingAutoAnalyze.current = null;
       startPolling(selectedId);
+      return;
     }
+    let alive = true;
+    getAnalysis(selectedId)
+      .then((result) => {
+        if (!alive) return;
+        if (result.status === "done") {
+          setAnalyzeStatus("done");
+          setAnalysisData(result);
+          setProgress({ analyzed: result.analyzed || 0, total: result.total || 0 });
+        } else if (result.analyzed > 0) {
+          // 有部分历史分析（可能中途中断）：先展示已有结果，按钮变为「继续分析」
+          setAnalyzeStatus("partial");
+          setAnalysisData(result);
+          setProgress({ analyzed: result.analyzed || 0, total: result.total || 0 });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [selectedId, startPolling]);
 
   // Cleanup polling on unmount
@@ -422,14 +444,21 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                 <button
                   className={"btn-analyze" + (analyzeStatus === "analyzing" ? " analyzing" : "")}
                   onClick={handleAnalyze}
-                  disabled={analyzeStatus === "analyzing" || analyzeStatus === "done"}
+                  disabled={analyzeStatus === "analyzing"}
                 >
                   {analyzeStatus === "analyzing"
                     ? "分析中…"
                     : analyzeStatus === "done"
-                    ? "已分析"
+                    ? "重新分析"
+                    : analyzeStatus === "partial"
+                    ? "继续分析"
                     : "分析此局"}
                 </button>
+                {analyzeStatus === "done" && (
+                  <span className="tag" style={{ background: "#e6efe0", color: "#2e7d32" }}>
+                    ✓ 已分析（结果已保存）
+                  </span>
+                )}
                 {analyzeStatus === "analyzing" && (
                   <div className="analyze-progress">
                     <div className="analyze-progress-track">
@@ -534,8 +563,18 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                 </div>
               )}
 
+              {/* 历史分析未完成（中途中断）时的提示 */}
+              {analyzeStatus === "partial" && (
+                <div className="analysis-panel">
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    本局有一次未完成的分析（{progress.analyzed}/{progress.total} 步），
+                    已展示现有结果；点「继续分析」可完成剩余着法。
+                  </div>
+                </div>
+              )}
+
               {/* Analysis detail panel */}
-              {analyzeStatus === "done" && analysisData && (
+              {(analyzeStatus === "done" || analyzeStatus === "partial") && analysisData && (
                 <AnalysisPanel
                   summary={{ blunder_count: analysisData.blunder_count, mistake_count: analysisData.mistake_count }}
                   moveAnalysis={currentMoveAnalysis}

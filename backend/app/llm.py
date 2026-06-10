@@ -63,6 +63,41 @@ def summarize_game(
     return _chat(prompt, max_tokens=400, timeout=30)
 
 
+def explain_puzzle(
+    fen: str,
+    solution: list[str],   # 正解着法序列（UCI，己方/对方交替）
+    category: str,         # 战术名目，如 "卧槽马"
+    side: str,             # "红方" / "黑方"
+) -> str:
+    """讲解一道战术题的解题思路（中文）。未配置 key 时返回空串。"""
+    seq = " → ".join(solution)
+    prompt = f"""你是象棋教练。请讲解下面这道战术题的解题思路（中文，3-5句）。
+
+局面FEN：{fen}
+轮到{side}走子，战术主题：{category or "未分类"}
+正解着法序列（UCI坐标制，如h2e2表示从h2到e2，己方与对方应着交替）：{seq}
+
+请说明：① 这个杀法/战术的核心思路与子力配合；② 为什么对方无法解拆；③ 实战中识别此类机会的要点。
+不要复述坐标，用象棋术语描述（如"卧槽马""双车错""闷宫"等），简洁专业。"""
+    return _chat(prompt, max_tokens=400, timeout=30)
+
+
+def coach_move(
+    fen: str,
+    move: str,     # 推荐着法 UCI
+    side: str,     # "红方" / "黑方"
+) -> str:
+    """点评一步推荐着法好在哪里（中文，2-3句）。未配置 key 时返回空串。"""
+    prompt = f"""你是象棋教练。引擎推荐了一步棋，请简短解释这步棋的意图（中文，2-3句）。
+
+局面FEN：{fen}
+轮到{side}走子，推荐着法：{move}（UCI坐标制，如h2e2表示从h2到e2）
+
+请说明这步棋的战术/战略意图（如抢先手、控线、兑子简化、做杀等）。
+不要复述坐标，用象棋术语描述。"""
+    return _chat(prompt, max_tokens=200, timeout=30)
+
+
 def explain_mistake(
     fen: str,
     move_played: str,      # UCI，如 "h2e2"

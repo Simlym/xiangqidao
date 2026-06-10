@@ -5,6 +5,9 @@ body {
   background: #f4f1ea;
   color: #2b2b2b;
 }
+/* 触屏优化：消除 300ms 点击延迟与双击缩放（点棋盘连续落子时尤为重要） */
+button, input, select, textarea, .xq-points, nav { touch-action: manipulation; }
+button { -webkit-tap-highlight-color: transparent; }
 .app { max-width: 720px; margin: 0 auto; padding: 16px; }
 header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
@@ -28,6 +31,7 @@ header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webk
 .modal {
   background: #fff; border-radius: 14px; padding: 20px;
   width: min(320px, calc(100vw - 32px));
+  max-height: 85vh; overflow-y: auto;
   box-shadow: 0 8px 30px rgba(0,0,0,.25);
 }
 .auth-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
@@ -65,6 +69,8 @@ nav button {
   cursor: pointer; border-radius: 8px; color: #555; white-space: nowrap; flex-shrink: 0;
 }
 nav button.active { background: #8a5a2b; color: #fff; }
+/* 桌面端：仅显示完整文字标签；图标与短标签供移动端底部导航用 */
+nav .nav-ico, nav .nav-label-short { display: none; }
 
 .panel {
   background: #fff; border-radius: 12px; padding: 16px; margin: 12px 0;
@@ -390,19 +396,54 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .spark-bar { width: 60%; background: #8a5a2b; border-radius: 4px 4px 0 0; }
 .spark-x   { font-size: 11px; color: #999; margin-top: 4px; }
 
-@media (max-width: 520px) {
-  .app { padding: 10px; }
+/* ===== 移动端适配（≤640px）===== */
+@media (max-width: 640px) {
+  .app {
+    padding: 10px;
+    /* 给固定底部导航栏留出空间（含 iPhone 底部安全区） */
+    padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  }
   header { gap: 6px; margin-bottom: 10px; }
   header h1 { font-size: 20px; }
-  header nav { width: 100%; order: 3; }
   .user-box { order: 2; }
+
+  /* 导航栏变为固定底部标签栏：图标 + 短标签，拇指可达 */
+  header nav {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+    background: #fff;
+    border-top: 1px solid #e7ddc9;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, .08);
+    display: flex; justify-content: space-around; gap: 0;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    overflow-x: visible;
+  }
+  nav button {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    font-size: 11px; padding: 5px 2px; border-radius: 8px;
+  }
+  nav .nav-ico { display: block; font-size: 19px; line-height: 1.2; }
+  nav .nav-label-short { display: block; }
+  nav .nav-label-full { display: none; }
+  nav button.active { background: #f6efe3; color: #8a5a2b; font-weight: 600; }
+
   .cards { grid-template-columns: repeat(2, 1fr); }
   .rating-btns { grid-template-columns: repeat(2, 1fr); }
   .panel { padding: 12px; }
   .play-setup-row { gap: 8px; }
-  .seg-btn { padding: 7px 10px; font-size: 13px; }
+  .seg-btn { padding: 9px 12px; font-size: 14px; }
   .bar-label { width: 60px; font-size: 13px; }
   .bar-val { width: 70px; font-size: 12px; }
+
+  /* 表单控件字号 ≥16px，避免 iOS 聚焦输入框时自动放大页面 */
+  .import-input, .import-textarea, .auth-form .import-input, select, input, textarea {
+    font-size: 16px;
+  }
+
+  /* 操作按钮加大触控目标 */
+  .btn-newgame, .btn-link { padding: 8px 14px; }
+  .play-actions { gap: 6px; }
+  .play-actions .btn-newgame { flex: 1; min-width: 0; padding: 8px 6px; }
 }
 
 /* ===== 棋局复盘 ===== */
@@ -673,13 +714,16 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .move-item:hover { background: #f4f1ea; }
 .move-item.active { background: #8a5a2b; color: #fff; }
 
-/* Mobile */
-@media (max-width: 520px) {
+/* Mobile：复盘页改为上下布局 */
+@media (max-width: 640px) {
   .app { max-width: 100%; }
-  .games-layout { flex-direction: column; }
+  .games-layout { flex-direction: column; min-height: 0; }
   .games-list-panel { width: 100%; }
   .games-list-scroll { max-height: 220px; }
-  .review-content { flex-direction: column; }
+  .games-review-panel { min-height: 0; }
+  .review-content { flex-direction: column; padding: 12px; }
+  .review-board-wrap { width: 100%; }
+  .review-moves-wrap { width: 100%; }
   .review-moves-list { max-height: 200px; }
 }
 
@@ -734,6 +778,27 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .analysis-explanation {
   font-size: 13px; background: #fafaf7; border-left: 3px solid #d4b896;
   padding: 6px 10px; border-radius: 4px; margin-top: 6px; line-height: 1.6;
+}
+
+/* AI 讲解（训练题/对弈提示） */
+.ai-explain {
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+  text-align: left;
+}
+/* 选择器写高优先级，盖过 `.result button` / `.panel > button` 的通用实心样式 */
+.btn-ai, .result .btn-ai, .panel > .btn-ai {
+  display: block;
+  margin-top: 8px; padding: 8px 16px;
+  border: 1px solid #8a5a2b; border-radius: 8px;
+  background: #fdf9f0; color: #8a5a2b;
+  font-size: 14px; cursor: pointer;
+}
+.btn-ai:disabled, .result .btn-ai:disabled { opacity: .6; cursor: not-allowed; }
+.hint-coach-btn, .panel > .hint-coach-btn {
+  margin: 0 0 0 10px; font-size: 13px; padding: 4px 10px;
+  border: 1px solid #8a5a2b; background: #fff; color: #8a5a2b; border-radius: 8px;
 }
 
 /* 分析进度条 */

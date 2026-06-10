@@ -54,6 +54,8 @@ export const getNext = (category, kind) => {
 export const getTrainingPuzzle = (id) => req(`/training/puzzle/${id}`);
 export const checkMove = (payload) => req("/training/check_move", { method: "POST", body: payload });
 export const submitRating = (payload) => req("/training/submit", { method: "POST", body: payload });
+export const explainPuzzle = (puzzleId) =>
+  req("/training/explain", { method: "POST", body: { puzzle_id: puzzleId } });
 
 // ── 统计 ────────────────────────────────────────────────
 export const getOverview = () => req("/stats/overview");
@@ -85,6 +87,8 @@ export const evalPosition = (fen) => req("/play/eval", { method: "POST", body: {
 export const getPlayEngine = () => req("/play/engine");
 export const getBookMoves = (fen) => req(`/play/book?fen=${encodeURIComponent(fen)}`);
 export const getHint = (fen) => req("/play/hint", { method: "POST", body: { fen } });
+export const coachHintMove = (fen, move) =>
+  req("/play/coach", { method: "POST", body: { fen, move } });
 
 // ── 后台 ────────────────────────────────────────────────
 export const adminOverview = () => req("/admin/overview");

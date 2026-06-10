@@ -61,14 +61,26 @@ export default function App() {
       <header>
         <h1>象棋道</h1>
         <nav>
-          <button className={tab === "train" ? "active" : ""} onClick={() => setTab("train")}>战术训练</button>
-          <button className={tab === "challenge" ? "active" : ""} onClick={() => setTab("challenge")}>闯关</button>
-          <button className={tab === "stats" ? "active" : ""} onClick={() => setTab("stats")}>进度统计</button>
-          <button className={tab === "games" ? "active" : ""} onClick={() => setTab("games")}>棋局复盘</button>
-          <button className={tab === "play" ? "active" : ""} onClick={() => setTab("play")}>人机对弈</button>
-          {user?.role === "admin" && (
-            <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>管理后台</button>
-          )}
+          {[
+            { key: "train", icon: "🎯", label: "战术训练", short: "训练" },
+            { key: "challenge", icon: "🏯", label: "闯关", short: "闯关" },
+            { key: "stats", icon: "📊", label: "进度统计", short: "统计" },
+            { key: "games", icon: "📋", label: "棋局复盘", short: "复盘" },
+            { key: "play", icon: "♟️", label: "人机对弈", short: "对弈" },
+            ...(user?.role === "admin"
+              ? [{ key: "admin", icon: "⚙️", label: "管理后台", short: "后台" }]
+              : []),
+          ].map((t) => (
+            <button
+              key={t.key}
+              className={tab === t.key ? "active" : ""}
+              onClick={() => setTab(t.key)}
+            >
+              <span className="nav-ico" aria-hidden>{t.icon}</span>
+              <span className="nav-label-full">{t.label}</span>
+              <span className="nav-label-short">{t.short}</span>
+            </button>
+          ))}
         </nav>
         <div className="user-box">
           {user ? (
