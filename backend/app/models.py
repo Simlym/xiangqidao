@@ -58,6 +58,8 @@ class Puzzle(Base):
     # 归属：'default' 表示公共题库（所有人可练）；其他值为某用户的私有题
     # （如实战漏着自动生成题），仅本人可见。
     user_id: Mapped[str] = mapped_column(String(40), default="default", index=True)
+    # LLM 生成的解题讲解缓存：同一道题只调用一次大模型，之后直接复用
+    ai_explanation: Mapped[str] = mapped_column(Text, default="")
 
     review: Mapped["Review | None"] = relationship(back_populates="puzzle", uselist=False)
 

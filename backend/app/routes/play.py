@@ -1,9 +1,12 @@
 """人机对弈接口（无状态：局面 FEN 由前端持有）。"""
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from .. import cloudbook
+from ..deps import get_db
+from ..llm import coach_move
 from ..play_engine import (
     INITIAL_FEN,
     choose_move,
@@ -13,6 +16,7 @@ from ..play_engine import (
     side_to_move,
 )
 from ..ratelimit import limiter
+from ..settings import get_deepseek_config
 from ..xiangqi_utils import apply_move
 
 router = APIRouter(prefix="/api/play", tags=["play"])
@@ -135,6 +139,28 @@ def hint(request: Request, req: HintRequest):
     if book and book in legal:
         return HintResponse(move=book, source="book")
     return HintResponse(move=choose_move(req.fen, "hard"), source="engine")
+
+
+class CoachRequest(BaseModel):
+    fen: str = Field(max_length=_FEN_MAX)
+    move: str = Field(max_length=5)
+
+
+class CoachResponse(BaseModel):
+    enabled: bool   # AI 点评是否可用（未配置 key 时 False）
+    text: str
+
+
+@router.post("/coach", response_model=CoachResponse)
+@limiter.limit("10/minute")
+def coach(request: Request, req: CoachRequest, db: Session = Depends(get_db)):
+    """AI 教练点评一步推荐着法的意图，供「提示」面板的「AI 详解」按钮调用。"""
+    if req.move not in legal_moves_uci(req.fen):
+        raise HTTPException(400, "不合规则的着法")
+    if not get_deepseek_config(db).active:
+        return CoachResponse(enabled=False, text="")
+    side = "红方" if side_to_move(req.fen) == "w" else "黑方"
+    return CoachResponse(enabled=True, text=coach_move(req.fen, req.move, side))
 
 
 @router.post("/new", response_model=NewGameResponse)

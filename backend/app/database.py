@@ -45,6 +45,7 @@ def _ensure_columns() -> None:
             ("rating", "INTEGER"),
             ("kind", "VARCHAR(10) DEFAULT '杀法'"),
             ("steps", "INTEGER DEFAULT 1"),
+            ("ai_explanation", "TEXT DEFAULT ''"),
         ],
         "games": [
             ("user_id", "VARCHAR(40) DEFAULT 'default'"),

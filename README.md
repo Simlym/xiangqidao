@@ -220,7 +220,7 @@ cd backend && python -m pytest tests/ -q
 | `XQ_ORIGINS` | 允许的前端来源（CORS），逗号分隔，如 `https://xq.example.com`；留空则放开（仅限本地开发）| 空（`*`）|
 | `XQ_DB_URL` | 数据库连接串 | `sqlite:///./data/puzzles.db` |
 | `XQ_ENGINE_DIR` | 管理后台一键安装 Pikafish 的受管目录（发现引擎时优先于 PATH）| `./data/engine` |
-| `DEEPSEEK_API_KEY` | 复盘逐步失误讲解 + 整局综合复盘报告（可选）；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
+| `DEEPSEEK_API_KEY` | AI 教练（可选）：复盘逐步失误讲解 + 整局综合复盘报告 + 训练题「AI 讲解」+ 对弈提示「AI 详解」；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
 
 ## 公网部署安全清单
 

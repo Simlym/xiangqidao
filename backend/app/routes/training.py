@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,8 +10,11 @@ from .. import ratings, repository as repo
 from ..auth import current_user_id
 from ..deps import get_db
 from ..importer.verify_mate import FILES, parse_fen
+from ..llm import explain_puzzle
 from ..models import Attempt, Review
 from ..play_engine import game_status, legal_moves_uci
+from ..ratelimit import limiter
+from ..settings import get_deepseek_config
 from ..srs import SrsState, review as srs_review
 from ..xiangqi_utils import apply_move
 
@@ -75,6 +78,16 @@ class SubmitResponse(BaseModel):
     next_review: date
     solution: list[str]    # 完整正解，供答错后展示讲解
     rating: RatingChange | None = None  # 首次遇题时的评分变化（已登录用户）
+
+
+class ExplainRequest(BaseModel):
+    puzzle_id: int
+
+
+class ExplainResponse(BaseModel):
+    enabled: bool          # AI 讲解是否可用（未配置 key 时 False）
+    explanation: str
+    cached: bool = False   # 是否命中缓存（同题只调用一次大模型）
 
 
 PIECE_NAMES = {
@@ -252,6 +265,34 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
     return CheckMoveResponse(
         correct=True, done=done, fen_after=fen_after, hint=None, opponent_move=opponent_move,
     )
+
+
+@router.post("/explain", response_model=ExplainResponse)
+@limiter.limit("10/minute")
+def explain(
+    request: Request,
+    req: ExplainRequest,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
+    """AI 讲解一道题的解题思路。结果缓存到题目上，同题不重复调用大模型。"""
+    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user)
+    if puzzle is None:
+        raise HTTPException(404, "题目不存在")
+
+    if puzzle.ai_explanation:
+        return ExplainResponse(enabled=True, explanation=puzzle.ai_explanation, cached=True)
+
+    if not get_deepseek_config(db).active:
+        return ExplainResponse(enabled=False, explanation="")
+
+    solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
+    side = "红方" if puzzle.side_to_move == "w" else "黑方"
+    text = explain_puzzle(puzzle.fen, solution, puzzle.category, side)
+    if text:
+        puzzle.ai_explanation = text
+        db.commit()
+    return ExplainResponse(enabled=True, explanation=text)
 
 
 @router.post("/submit", response_model=SubmitResponse)

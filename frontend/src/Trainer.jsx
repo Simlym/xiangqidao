@@ -1,7 +1,7 @@
 import React from "react";
 import Board from "./Board";
 import { applyMove } from "./xiangqi";
-import { getNext, getTrainingPuzzle, checkMove, submitRating } from "./api";
+import { getNext, getTrainingPuzzle, checkMove, submitRating, explainPuzzle } from "./api";
 
 // 训练状态机
 // phase: 'loading' | 'thinking' | 'step_ok' | 'wrong' | 'rating' | 'done' | 'empty'
@@ -37,6 +37,11 @@ export default function Trainer({ target = null, onTargetConsumed }) {
   const [ratingChange, setRatingChange] = React.useState(null); // 首次遇题的 ELO 变化
   const startedAt                 = React.useRef(0);
 
+  // AI 讲解（完成后按需请求，后端缓存同题结果）
+  const [aiText, setAiText]         = React.useState("");
+  const [aiLoading, setAiLoading]   = React.useState(false);
+  const [aiDisabled, setAiDisabled] = React.useState(false); // 后端未配置 AI
+
   // 计时训练
   const [timed, setTimed]   = React.useState(true);
   const [elapsed, setElapsed] = React.useState(0);  // 秒
@@ -63,6 +68,8 @@ export default function Trainer({ target = null, onTargetConsumed }) {
     setSolution([]);
     setRatingChange(null);
     setElapsed(0);
+    setAiText("");
+    setAiLoading(false);
   }, []);
 
   const beginPuzzle = React.useCallback((p) => {
@@ -187,6 +194,23 @@ export default function Trainer({ target = null, onTargetConsumed }) {
     setNextReview(res.next_review);
     setRatingChange(res.rating || null);
     setPhase("done");
+  }
+
+  async function onAiExplain() {
+    if (aiLoading || !puzzle) return;
+    setAiLoading(true);
+    try {
+      const res = await explainPuzzle(puzzle.id);
+      if (!res.enabled) {
+        setAiDisabled(true);
+      } else {
+        setAiText(res.explanation || "（AI 暂时没有返回讲解，稍后再试）");
+      }
+    } catch {
+      setAiText("");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   const fmtSec = (ms) => `${(ms / 1000).toFixed(1)} 秒`;
@@ -335,6 +359,14 @@ export default function Trainer({ target = null, onTargetConsumed }) {
               )}
               {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
               <p className="muted">下次复习：{nextReview}</p>
+              {aiText && (
+                <div className="analysis-explanation ai-explain">{aiText}</div>
+              )}
+              {!aiDisabled && !aiText && (
+                <button className="btn-ai" onClick={onAiExplain} disabled={aiLoading}>
+                  {aiLoading ? "AI 思考中…" : "🤖 AI 讲解这道题"}
+                </button>
+              )}
               <button onClick={() => load(activeCategory)}>
                 {activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
               </button>
