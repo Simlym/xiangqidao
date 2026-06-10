@@ -1,8 +1,9 @@
 """人机对弈接口（无状态：局面 FEN 由前端持有）。"""
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from .. import cloudbook
 from ..play_engine import (
     INITIAL_FEN,
     choose_move,
@@ -83,6 +84,57 @@ def engine_info():
         name = os.path.basename(eng.path) if getattr(eng, "path", None) else "Pikafish"
         return EngineResponse(engine="pikafish", label=f"Pikafish（{name}）", available=True)
     return EngineResponse(engine="builtin", label="内置搜索引擎", available=False)
+
+
+class BookMove(BaseModel):
+    uci: str
+    score: int | None = None    # 走子方视角 centipawn
+    rank: int | None = None     # 云库推荐等级（越大越优）
+    winrate: float | None = None
+    note: str | None = None
+
+
+class BookResponse(BaseModel):
+    available: bool          # 云库是否可用（关闭/网络异常时 False）
+    moves: list[BookMove]
+
+
+@router.get("/book", response_model=BookResponse)
+@limiter.limit("60/minute")
+def query_book(request: Request, fen: str = Query(max_length=_FEN_MAX)):
+    """查询当前局面的云库着法（含评分/胜率），供前端开局参考面板使用。
+
+    后端代理外部云库：统一缓存、规避浏览器跨域限制。
+    """
+    moves = cloudbook.query_book(fen)
+    if moves is None:
+        return BookResponse(available=False, moves=[])
+    return BookResponse(available=True, moves=[BookMove(**m) for m in moves])
+
+
+class HintRequest(BaseModel):
+    fen: str = Field(max_length=_FEN_MAX)
+
+
+class HintResponse(BaseModel):
+    move: str | None
+    source: str  # "book" / "engine"
+
+
+@router.post("/hint", response_model=HintResponse)
+@limiter.limit("20/minute")
+def hint(request: Request, req: HintRequest):
+    """给出当前局面的推荐着法：云库命中即用，否则引擎搜索。
+
+    供前端「提示」按钮在浏览器本地引擎不可用时降级调用。
+    """
+    legal = legal_moves_uci(req.fen)
+    if not legal:
+        return HintResponse(move=None, source="engine")
+    book = cloudbook.best_book_move(req.fen, "hard")
+    if book and book in legal:
+        return HintResponse(move=book, source="book")
+    return HintResponse(move=choose_move(req.fen, "hard"), source="engine")
 
 
 @router.post("/new", response_model=NewGameResponse)

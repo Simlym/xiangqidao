@@ -4,6 +4,9 @@
 
 const FILES = "abcdefghi";
 
+export const INITIAL_FEN =
+  "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1";
+
 // 棋子字符 -> {char, red}
 const GLYPH = {
   K: "帅", A: "仕", B: "相", N: "马", R: "车", C: "炮", P: "兵",

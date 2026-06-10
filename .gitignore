@@ -11,5 +11,9 @@ backend/data/engine/
 frontend/node_modules/
 frontend/dist/
 
+# 浏览器本地引擎产物（自行放置，体积大不入库）
+frontend/public/engine/*
+!frontend/public/engine/README.md
+
 # misc
 .DS_Store

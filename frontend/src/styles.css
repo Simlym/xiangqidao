@@ -269,6 +269,46 @@ nav button.active { background: #8a5a2b; color: #fff; }
 }
 .eval-bar-label { margin-top: 6px; text-align: center; font-size: 13px; }
 
+/* 提示着法条 */
+.hint-strip { padding: 10px 14px; font-size: 14px; }
+.hint-strip strong { color: #8a5a2b; font-size: 15px; margin: 0 2px; }
+
+/* 云库着法面板 */
+.book-panel { padding: 10px 14px; }
+.book-panel-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 14px; margin-bottom: 6px;
+}
+.book-panel-head .muted { font-size: 12px; }
+.book-moves { display: flex; gap: 8px; flex-wrap: wrap; }
+.book-move {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  border: 1px solid #d9ccb5; background: #fdf9f0; border-radius: 8px;
+  padding: 5px 10px; cursor: pointer; font-size: 14px; color: #2b2b2b;
+}
+.book-move:hover:not(:disabled) { border-color: #8a5a2b; background: #fff; }
+.book-move:disabled { cursor: default; opacity: 0.65; }
+.book-move-name { font-weight: 600; }
+.book-move-score { font-size: 12px; font-variant-numeric: tabular-nums; }
+.book-move-score.pos { color: #c0392b; }
+.book-move-score.neg { color: #555; }
+.book-move-rate { font-size: 12px; color: #888; font-variant-numeric: tabular-nums; }
+
+/* 对弈棋谱（中文着法，红黑成对） */
+.move-log { padding: 10px 14px; }
+.move-log-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 14px; margin-bottom: 6px;
+}
+.move-log-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 4px 18px;
+  max-height: 132px; overflow-y: auto;
+  font-size: 13px;
+}
+.move-log-list li { display: flex; gap: 8px; min-width: 150px; }
+.move-log-no { color: #999; min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+
 /* 战术训练：结果/自评面板直接覆盖在棋面下方，免去上下滑动找按钮 */
 .trainer-board-area { position: relative; }
 .board-overlay {

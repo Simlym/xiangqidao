@@ -25,8 +25,10 @@
 | 复习 | SM-2 | `backend/app/srs.py` |
 | 鉴权 | 标准库自实现 | PBKDF2 密码哈希 + HMAC 签名 token，无第三方依赖（`app/auth.py`）|
 | 杀法校验 | 内置规则引擎 | `app/importer/verify_mate.py` 判定将军/将死，校验一步杀题，无需 Pikafish |
-| 对弈引擎 | 内置 negamax / Pikafish | 装了 Pikafish 用之，否则回退内置 alpha-beta 搜索（`app/play_engine.py`）|
+| 对弈引擎 | 云库 + 内置 negamax / Pikafish | 开局优先查云库（秒回、省 CPU），其后 Pikafish，未装则回退内置 alpha-beta 搜索（`app/play_engine.py` `app/cloudbook.py`）|
 | 分析引擎 | Pikafish (可选) | 复盘逐步分析；导入题库时校验正解 |
+| 浏览器引擎 | Pikafish WASM (可选) | 评估条/提示在用户浏览器内计算，服务器零开销；未放置产物时自动降级到服务器（`frontend/src/localEngine.js`）|
+| 云库 | 在线棋谱库代理 | 后端代理 + TTL 缓存 + 失败熔断；前端「云库」面板展示着法/评分/胜率（`app/cloudbook.py`）|
 
 着法采用 UCI 坐标制（如 `h2e2`），与 Pikafish 一致，便于后续接入复盘。
 
@@ -104,6 +106,32 @@ echo "uci" | pikafish        # 应输出 id / option 列表并以 uciok 结尾
 重启后端后，「人机对弈」页右上角的引擎标签会从 `♟ 内置引擎` 变为 `♟ Pikafish`，设置页也会提示「评分较准」。
 
 > 找不到引擎时多为：未加入 PATH、缺少 `pikafish.nnue`、或可执行权限不足。后端探测一次后会记住结果，改动后请**重启后端进程**再试。
+
+### 浏览器本地引擎（可选，评估/提示零服务器开销）
+
+把 Pikafish 的 **WebAssembly 构建**放进 `frontend/public/engine/`（三个文件：
+`pikafish.js` / `pikafish.wasm` / `pikafish.nnue`，详见该目录 README），前端会自动探测并启用：
+
+- 对弈页的**评估条**与**提示**改在用户浏览器内计算，不再请求服务器；
+- 引擎标签出现 `⚡ 本地分析`；加载失败/文件缺失时自动降级到服务器接口，功能不受影响；
+- 多线程构建需要服务器响应头 `Cross-Origin-Opener-Policy: same-origin` 与
+  `Cross-Origin-Embedder-Policy: require-corp`（Vite 开发服务器已配置，生产环境在 Nginx 等处添加）；单线程构建无此要求。
+
+### 云库（在线开局库）
+
+默认开启，无需配置。对弈引擎在**开局阶段**（默认前 12 回合）优先采用云库着法——
+秒回且质量高，同时省下一次引擎搜索；前端对弈页新增「云库」面板，可查看当前局面的
+库着法（评分/胜率，点击直接走子）与「提示」按钮（本地引擎 → 云库 → 服务器引擎逐级降级）。
+
+后端做了统一代理：进程内 TTL 缓存（开局局面高度重复）、连续失败自动熔断，
+网络不可用时静默降级，不影响对弈。环境变量：
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `XQ_CLOUDBOOK` | `1` | 设为 `0` 完全关闭云库 |
+| `XQ_CLOUDBOOK_URL` | chessdb 公共云库 | 查询接口地址 |
+| `XQ_CLOUDBOOK_TIMEOUT` | `1.5` | 单次查询超时（秒） |
+| `XQ_CLOUDBOOK_MAX_PLY` | `24` | 引擎参考云库的最大半着数 |
 
 ### 导入更多题库 / 用 Pikafish 校验
 ```bash
