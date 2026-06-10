@@ -1,7 +1,11 @@
 import React from "react";
 import Board from "./Board";
-import { applyMove } from "./xiangqi";
-import { newPlayGame, playMove, importGame, analyzeGame, evalPosition, getPlayEngine } from "./api";
+import { applyMove, uciToChinese, INITIAL_FEN } from "./xiangqi";
+import {
+  newPlayGame, playMove, importGame, analyzeGame, evalPosition,
+  getPlayEngine, getBookMoves, getHint,
+} from "./api";
+import { localEval, localEngineReady } from "./localEngine";
 
 const LEVELS = [
   { key: "easy", label: "入门" },
@@ -48,6 +52,22 @@ function describeEval({ cp, mate }, humanSide) {
   return { redPct, value, label };
 }
 
+// 把 UCI 着法序列转成中文棋谱并按回合配对：[["炮二平五","马8进7"], ...]。
+// 对局总是从标准初始局面开始，逐步重放即可得到每步走子前的局面。
+function moveLogItems(uciMoves) {
+  let f = INITIAL_FEN;
+  const texts = uciMoves.map((uci) => {
+    const t = uciToChinese(f, uci);
+    f = applyMove(f, uci);
+    return t;
+  });
+  const pairs = [];
+  for (let i = 0; i < texts.length; i += 2) {
+    pairs.push([texts[i], texts[i + 1] || ""]);
+  }
+  return pairs;
+}
+
 export default function Play({ onGoReview }) {
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
@@ -65,26 +85,90 @@ export default function Play({ onGoReview }) {
   const [evalData, setEvalData] = React.useState(null);  // 红方视角 {cp, mate}
   const [evalLoading, setEvalLoading] = React.useState(false);
   const [engineInfo, setEngineInfo] = React.useState(null); // {engine,label,available}
+  const [localReady, setLocalReady] = React.useState(false); // 浏览器本地引擎是否就绪
+  const [showBook, setShowBook] = React.useState(false);  // 云库参考面板开关
+  const [bookData, setBookData] = React.useState(null);   // {available, moves}
+  const [bookLoading, setBookLoading] = React.useState(false);
+  const [hint, setHint] = React.useState(null);           // {move, text, source}
+  const [hintLoading, setHintLoading] = React.useState(false);
+  const [moveLog, setMoveLog] = React.useState([]);        // moves.current 的可渲染副本
+  const [fenCopied, setFenCopied] = React.useState(false);
   const moves = React.useRef([]);                     // 累计着法（红黑交替）
   const history = React.useRef([]);                   // 悔棋快照栈
   const evalReqId = React.useRef(0);                  // 评分请求序号，丢弃过期响应
 
-  // 启动时探测当前实际使用的引擎（Pikafish / 内置搜索），用于界面提示
+  // 启动时探测当前实际使用的引擎（Pikafish / 内置搜索），用于界面提示；
+  // 同时探测浏览器本地引擎（public/engine/ 下有产物即启用，评分不再占用服务器）
   React.useEffect(() => {
     getPlayEngine().then(setEngineInfo).catch(() => {});
+    localEngineReady().then(setLocalReady).catch(() => {});
   }, []);
 
   // 开启评分后，每当局面稳定（轮到你/对局结束、引擎不在思考）就拉取一次评估。
-  // 用序号防止旧请求覆盖新局面的评分。
+  // 优先用浏览器本地引擎（失败自动降级到服务器）。用序号防止旧请求覆盖新局面。
   React.useEffect(() => {
     if (!showEval || !fen || thinking) return;
     const id = ++evalReqId.current;
     setEvalLoading(true);
-    evalPosition(fen)
+    const request = localReady
+      ? localEval(fen).catch(() => evalPosition(fen))
+      : evalPosition(fen);
+    request
       .then((d) => { if (id === evalReqId.current) setEvalData(d); })
       .catch(() => { if (id === evalReqId.current) setEvalData(null); })
       .finally(() => { if (id === evalReqId.current) setEvalLoading(false); });
-  }, [showEval, fen, thinking]);
+  }, [showEval, fen, thinking, localReady]);
+
+  // 云库参考：轮到自己时查询当前局面的库着法（含评分/胜率）
+  React.useEffect(() => {
+    if (!showBook || !fen || thinking || over) return;
+    let alive = true;
+    setBookLoading(true);
+    getBookMoves(fen)
+      .then((d) => { if (alive) setBookData(d); })
+      .catch(() => { if (alive) setBookData(null); })
+      .finally(() => { if (alive) setBookLoading(false); });
+    return () => { alive = false; };
+  }, [showBook, fen, thinking, over]);
+
+  // 局面一变，旧提示即作废
+  React.useEffect(() => { setHint(null); }, [fen]);
+
+  // 提示：本地引擎 → 服务器（云库命中则秒回）
+  async function requestHint() {
+    if (!yourTurn || thinking || over || hintLoading || !fen) return;
+    setHintLoading(true);
+    try {
+      let move = null;
+      let source = "";
+      if (localReady) {
+        try {
+          const r = await localEval(fen, { depth: 14 });
+          move = r.bestMove;
+          source = "本地引擎";
+        } catch { /* 降级到服务器 */ }
+      }
+      if (!move) {
+        const r = await getHint(fen);
+        move = r.move;
+        source = r.source === "book" ? "云库" : "服务器引擎";
+      }
+      setHint(move ? { move, text: uciToChinese(fen, move), source } : null);
+    } catch {
+      setHint(null);
+    } finally {
+      setHintLoading(false);
+    }
+  }
+
+  async function copyFen() {
+    if (!fen) return;
+    try {
+      await navigator.clipboard.writeText(fen);
+      setFenCopied(true);
+      setTimeout(() => setFenCopied(false), 1500);
+    } catch { /* 剪贴板不可用时静默 */ }
+  }
 
   async function start(side, lvl) {
     setThinking(true);
@@ -101,6 +185,7 @@ export default function Play({ onGoReview }) {
     setLegalMoves(d.legal_moves || []);
     setLastMove(d.engine_move || null);
     if (d.engine_move) moves.current.push(d.engine_move);  // 人执黑时引擎先手
+    setMoveLog([...moves.current]);
     setStatus(d.status);
     setYourTurn(true);
     setThinking(false);
@@ -154,6 +239,7 @@ export default function Play({ onGoReview }) {
       const d = await playMove({ fen, move, level });
       moves.current.push(move);                          // 记录人走的着法
       if (d.engine_move) moves.current.push(d.engine_move); // 记录引擎应着
+      setMoveLog([...moves.current]);
       setFen(d.fen);
       setLastMove(d.engine_move || move);
       setStatus(d.status);
@@ -183,6 +269,7 @@ export default function Play({ onGoReview }) {
     if (thinking || history.current.length === 0) return;
     const snap = history.current.pop();
     moves.current = moves.current.slice(0, snap.movesLen);
+    setMoveLog([...moves.current]);
     setFen(snap.fen);
     setLegalMoves(snap.legalMoves);
     setLastMove(snap.lastMove);
@@ -263,6 +350,11 @@ export default function Play({ onGoReview }) {
               {engineInfo.available ? "♟ Pikafish" : "♟ 内置引擎"}
             </span>
           )}
+          {localReady && (
+            <span className="tag" title="评估/提示在你的浏览器内计算，不占用服务器">
+              ⚡ 本地分析
+            </span>
+          )}
           <span className="play-turn">
             {over
               ? winnerText
@@ -279,6 +371,22 @@ export default function Play({ onGoReview }) {
             onClick={() => setShowEval((v) => !v)}
           >
             {showEval ? "评分 开" : "评分 关"}
+          </button>
+          <button
+            className={"btn-newgame" + (showBook ? " active" : "")}
+            onClick={() => setShowBook((v) => !v)}
+            title="查看云库收录的本局面着法与评分"
+          >
+            云库
+          </button>
+          <button
+            className="btn-newgame"
+            onClick={requestHint}
+            disabled={!yourTurn || thinking || !!over || hintLoading}
+            style={{ opacity: !yourTurn || thinking || over || hintLoading ? 0.5 : 1 }}
+            title="让引擎推荐一步（本地引擎/云库优先）"
+          >
+            {hintLoading ? "思考中…" : "提示"}
           </button>
           <button
             className="btn-newgame"
@@ -309,6 +417,56 @@ export default function Play({ onGoReview }) {
         );
       })()}
 
+      {hint && (
+        <div className="panel hint-strip">
+          💡 推荐：<strong>{hint.text}</strong>
+          <span className="muted">（{hint.source}）</span>
+        </div>
+      )}
+
+      {showBook && (
+        <div className="panel book-panel">
+          <div className="book-panel-head">
+            <strong>云库着法</strong>
+            <span className="muted">
+              {bookLoading
+                ? "查询中…"
+                : !bookData || !bookData.available
+                ? "云库暂不可用"
+                : bookData.moves.length === 0
+                ? "云库未收录此局面"
+                : "点击着法直接走子（评分为走子方视角）"}
+            </span>
+          </div>
+          {bookData?.available && bookData.moves.length > 0 && (
+            <div className="book-moves">
+              {bookData.moves.slice(0, 8).map((m) => {
+                const playable = yourTurn && !thinking && !over && legalMoves.includes(m.uci);
+                return (
+                  <button
+                    key={m.uci}
+                    className="book-move"
+                    disabled={!playable}
+                    onClick={() => playable && onMove(m.uci)}
+                    title={m.note || m.uci}
+                  >
+                    <span className="book-move-name">{uciToChinese(fen, m.uci)}</span>
+                    {m.score != null && (
+                      <span className={"book-move-score" + (m.score >= 0 ? " pos" : " neg")}>
+                        {m.score > 0 ? "+" : ""}{m.score}
+                      </span>
+                    )}
+                    {m.winrate != null && (
+                      <span className="book-move-rate">{m.winrate.toFixed(0)}%</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <Board
         fen={fen}
         onMove={onMove}
@@ -316,6 +474,26 @@ export default function Play({ onGoReview }) {
         disabled={!yourTurn || thinking || !!over}
         legalMoves={over ? [] : legalMoves}
       />
+
+      {moveLog.length > 0 && (
+        <div className="panel move-log">
+          <div className="move-log-head">
+            <strong>棋谱</strong>
+            <button className="btn-newgame" onClick={copyFen}>
+              {fenCopied ? "已复制" : "复制 FEN"}
+            </button>
+          </div>
+          <ol className="move-log-list">
+            {moveLogItems(moveLog).map((pair, i) => (
+              <li key={i}>
+                <span className="move-log-no">{i + 1}.</span>
+                <span>{pair[0] || "…"}</span>
+                <span>{pair[1] || ""}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {over && (
         <div className="panel result ok" style={{ textAlign: "center" }}>

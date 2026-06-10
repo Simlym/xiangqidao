@@ -183,8 +183,17 @@ DEPTH = {"easy": 1, "medium": 2, "hard": 3}
 
 
 def choose_move(fen: str, level: str = "medium") -> str | None:
-    """为当前走子方选择一着。优先 Pikafish（复用共享进程），否则内置搜索。"""
+    """为当前走子方选择一着。
+
+    开局阶段优先参考云库（秒回且着法质量高，省一次引擎搜索）；
+    其后优先 Pikafish（复用共享进程），未安装时回退内置搜索。
+    """
+    from . import cloudbook
     from .engine import get_shared_engine
+
+    book_move = cloudbook.best_book_move(fen, level)
+    if book_move and book_move in legal_moves_uci(fen):
+        return book_move
 
     engine = get_shared_engine()
     if engine is not None:

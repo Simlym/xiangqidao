@@ -83,6 +83,8 @@ export const newPlayGame = (payload) => req("/play/new", { method: "POST", body:
 export const playMove = (payload) => req("/play/move", { method: "POST", body: payload });
 export const evalPosition = (fen) => req("/play/eval", { method: "POST", body: { fen } });
 export const getPlayEngine = () => req("/play/engine");
+export const getBookMoves = (fen) => req(`/play/book?fen=${encodeURIComponent(fen)}`);
+export const getHint = (fen) => req("/play/hint", { method: "POST", body: { fen } });
 
 // ── 后台 ────────────────────────────────────────────────
 export const adminOverview = () => req("/admin/overview");
