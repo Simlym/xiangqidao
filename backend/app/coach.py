@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,9 @@ from .settings import get_deepseek_config
 # 弱点判定：作答数达到下限且正确率低于阈值的类目
 WEAK_MIN_ATTEMPTS = 3
 WEAK_ACC = 0.7
+
+# 进步对比的基线优先取这么多天前的画像快照（形成滚动的"周对比"）
+PROGRESS_BASELINE_DAYS = 7
 
 
 def build_profile(db: Session, user: str) -> dict:
@@ -136,18 +139,70 @@ def build_recommendations(profile: dict) -> list[dict]:
     return recs
 
 
+def build_progress(db: Session, user: str, current: dict) -> dict | None:
+    """与历史画像快照对比，确定性算出进步/退步指标。
+
+    基线选取：优先取 ≥PROGRESS_BASELINE_DAYS 天前最近的一份计划（滚动周对比）；
+    还没有那么久的历史时退而取最早一份。没有任何历史计划返回 None。
+    """
+    cutoff = datetime.utcnow() - timedelta(days=PROGRESS_BASELINE_DAYS)
+    q = db.query(CoachPlan).filter(CoachPlan.user_id == user, CoachPlan.profile_json != "")
+    baseline = (
+        q.filter(CoachPlan.created_at <= cutoff).order_by(CoachPlan.created_at.desc()).first()
+        or q.order_by(CoachPlan.id.asc()).first()
+    )
+    if baseline is None:
+        return None
+    try:
+        base = json.loads(baseline.profile_json)
+    except Exception:
+        return None
+    if not base:
+        return None
+
+    def _delta(key):
+        a, b = base.get(key), current.get(key)
+        if a is None or b is None:
+            return None
+        return round(b - a, 2)
+
+    def _blunders_per_game(p):
+        games = p.get("recent_games") or []
+        if not games:
+            return None
+        return round(sum(g.get("blunders", 0) for g in games) / len(games), 1)
+
+    base_weak = {w["category"] for w in base.get("weak_categories", [])}
+    cur_weak = {w["category"] for w in current.get("weak_categories", [])}
+
+    return {
+        "baseline_date": baseline.created_at.date().isoformat(),
+        "days_span": max(0, (datetime.utcnow() - baseline.created_at).days),
+        "rating_delta": _delta("rating"),
+        "solved_delta": _delta("solved"),
+        "first_try_accuracy_delta": _delta("first_try_accuracy"),
+        "recent20_delta": _delta("recent20_first_try_accuracy"),
+        "weak_fixed": sorted(base_weak - cur_weak),   # 基线是弱点、现已脱离弱点区
+        "weak_new": sorted(cur_weak - base_weak),     # 新暴露的弱点
+        "blunders_per_game_before": _blunders_per_game(base),
+        "blunders_per_game_now": _blunders_per_game(current),
+    }
+
+
 def generate_plan(db: Session, user: str, trigger: str = "manual") -> CoachPlan:
-    """生成并保存一份训练计划；LLM 可用时附教练叙述。"""
+    """生成并保存一份训练计划；LLM 可用时附教练叙述（含进步点评）。"""
     profile = build_profile(db, user)
     recs = build_recommendations(profile)
+    progress = build_progress(db, user, profile)
     text = ""
     if get_deepseek_config(db).active:
-        text = write_coach_plan(profile, recs)
+        text = write_coach_plan(profile, recs, progress)
     plan = CoachPlan(
         user_id=user,
         trigger=trigger,
         profile_json=json.dumps(profile, ensure_ascii=False),
         recommendations_json=json.dumps(recs, ensure_ascii=False),
+        progress_json=json.dumps(progress, ensure_ascii=False) if progress else "",
         plan_text=text,
     )
     db.add(plan)

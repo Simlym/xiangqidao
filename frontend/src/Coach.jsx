@@ -18,6 +18,76 @@ function recAction(rec, { onPractice, onNavigate }) {
   }
 }
 
+// 带符号数值，正绿负红；unit 如 "" / " 个百分点"
+function Delta({ value, unit = "" }) {
+  if (value == null) return null;
+  const cls = value > 0 ? "delta-up" : value < 0 ? "delta-down" : "muted";
+  const sign = value > 0 ? "+" : "";
+  return <span className={cls}>{sign}{value}{unit}</span>;
+}
+
+// 进步追踪：所有指标由后端确定性算出（对比历史画像快照），不依赖 LLM
+function ProgressCard({ progress }) {
+  const span = progress.days_span || 0;
+  const baseLabel = span > 0 ? `${span} 天前` : "上一份计划";
+  const accDelta =
+    progress.first_try_accuracy_delta != null
+      ? Math.round(progress.first_try_accuracy_delta * 100)
+      : null;
+  const hasBlunderTrend =
+    progress.blunders_per_game_before != null && progress.blunders_per_game_now != null;
+
+  const rows = [];
+  if (progress.rating_delta != null) {
+    rows.push(["评分", <Delta key="r" value={Math.round(progress.rating_delta)} />]);
+  }
+  if (progress.solved_delta) {
+    rows.push(["新解题", <span key="s">{Math.round(progress.solved_delta)} 道</span>]);
+  }
+  if (accDelta != null) {
+    rows.push(["首答正确率", <Delta key="a" value={accDelta} unit=" 个百分点" />]);
+  }
+  if (hasBlunderTrend) {
+    const improved = progress.blunders_per_game_now <= progress.blunders_per_game_before;
+    rows.push([
+      "场均严重失误",
+      <span key="b" className={improved ? "delta-up" : "delta-down"}>
+        {progress.blunders_per_game_before} → {progress.blunders_per_game_now}
+      </span>,
+    ]);
+  }
+
+  return (
+    <div className="panel coach-progress">
+      <div className="coach-progress-head">📈 进步追踪 <span className="muted">（与 {baseLabel} 相比）</span></div>
+      {rows.length > 0 ? (
+        <div className="coach-progress-grid">
+          {rows.map(([label, node]) => (
+            <div key={label} className="coach-progress-item">
+              <span className="muted">{label}</span>
+              <span className="coach-progress-val">{node}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted" style={{ margin: "6px 0 0" }}>
+          两次快照间还没有新的训练/对局数据，先去练一会儿再来看变化。
+        </p>
+      )}
+      {progress.weak_fixed?.length > 0 && (
+        <div className="coach-progress-weak">
+          ✅ 已脱离弱点区：{progress.weak_fixed.join("、")}
+        </div>
+      )}
+      {progress.weak_new?.length > 0 && (
+        <div className="coach-progress-weak warn">
+          ⚠️ 新暴露弱点：{progress.weak_new.join("、")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function fmtTime(iso) {
   if (!iso) return "";
   try {
@@ -96,6 +166,9 @@ export default function Coach({ onPractice, onNavigate }) {
           </div>
         </div>
       </div>
+
+      {/* 进步追踪：与历史画像基线的对比（生成第二份计划起出现） */}
+      {plan?.progress && <ProgressCard progress={plan.progress} />}
 
       {/* 训练计划 */}
       <div className="panel">

@@ -31,6 +31,7 @@ class PlanOut(BaseModel):
     plan_text: str             # LLM 教练叙述（未启用大模型时为空）
     recommendations: list[Rec]
     profile: dict              # 生成计划时的画像快照（水平/弱点等）
+    progress: dict | None      # 与历史基线的进步对比（无历史时为 None）
 
 
 class PlanResponse(BaseModel):
@@ -41,6 +42,7 @@ class PlanResponse(BaseModel):
 def _to_out(plan: CoachPlan) -> PlanOut:
     recs = json.loads(plan.recommendations_json or "[]")
     profile = json.loads(plan.profile_json or "{}")
+    progress = json.loads(plan.progress_json) if (plan.progress_json or "").strip() else None
     return PlanOut(
         id=plan.id,
         created_at=plan.created_at,
@@ -48,6 +50,7 @@ def _to_out(plan: CoachPlan) -> PlanOut:
         plan_text=plan.plan_text or "",
         recommendations=[Rec(**r) for r in recs],
         profile=profile,
+        progress=progress,
     )
 
 

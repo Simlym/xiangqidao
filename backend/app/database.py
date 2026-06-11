@@ -51,6 +51,9 @@ def _ensure_columns() -> None:
             ("user_id", "VARCHAR(40) DEFAULT 'default'"),
             ("report", "TEXT DEFAULT ''"),
         ],
+        "coach_plans": [
+            ("progress_json", "TEXT DEFAULT ''"),
+        ],
     }
     with engine.begin() as conn:
         added: set[str] = set()

@@ -150,6 +150,7 @@ class CoachPlan(Base):
     trigger: Mapped[str] = mapped_column(String(40), default="manual")  # manual / game:<id>
     profile_json: Mapped[str] = mapped_column(Text, default="")           # 生成时的画像快照
     recommendations_json: Mapped[str] = mapped_column(Text, default="")   # 结构化训练建议
+    progress_json: Mapped[str] = mapped_column(Text, default="")          # 与历史基线的进步对比
     plan_text: Mapped[str] = mapped_column(Text, default="")              # LLM 教学叙述
 
 
