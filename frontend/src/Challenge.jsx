@@ -1,6 +1,6 @@
 import React from "react";
 import Board from "./Board";
-import { applyMove } from "./xiangqi";
+import { applyMove, uciToChinese } from "./xiangqi";
 import { getLevels, getLevel, checkMove, submitChallenge } from "./api";
 
 // 闯关：关卡网格 → 选关进入解题器，依次解完本关全部题目。
@@ -184,6 +184,16 @@ function LevelSolver({ level, onExit }) {
   const totalSteps = puzzle.total_steps;
   const sideText = puzzle.side_to_move === "w" ? "红方" : "黑方";
 
+  // 正解从题目初始局面逐步重放，把 UCI 翻译成中文棋谱（如 炮二平五）
+  let solFen = puzzle.fen;
+  const solutionText = solution
+    .map((m) => {
+      const cn = uciToChinese(solFen, m);
+      solFen = applyMove(solFen, m);
+      return cn;
+    })
+    .join(" → ");
+
   return (
     <div className="trainer">
       <div className="panel info">
@@ -207,7 +217,10 @@ function LevelSolver({ level, onExit }) {
         </div>
         <p>轮到 <b>{sideText}</b> 走子，请走出制胜着法
           {totalSteps > 1 ? `（第 ${step + 1} / ${totalSteps} 步）` : ""}。</p>
-        {hint && <p className="hint">提示：{hint}</p>}
+        {/* 反馈槽常驻占位，提示出现时不再撑高面板导致棋盘抖动 */}
+        <div className="feedback-slot">
+          {hint && <span className="hint">提示：{hint}</span>}
+        </div>
       </div>
 
       <Board fen={fen} onMove={onMove} lastMove={lastMove} disabled={phase !== "thinking"} />
@@ -227,7 +240,7 @@ function LevelSolver({ level, onExit }) {
       {phase === "solved" && (
         <div className={"panel result " + (solvedFlags[idx] ? "ok" : "bad")}>
           <h3>{solvedFlags[idx] ? "✓ 正确" : "正解如下"}</h3>
-          <p>正解：<code>{solution.join(" → ")}</code></p>
+          <p>正解：<code>{solutionText}</code></p>
           <button onClick={onNext}>
             {idx + 1 < puzzles.length ? "下一题 →" : "完成本关 →"}
           </button>

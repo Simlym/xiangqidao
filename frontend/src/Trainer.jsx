@@ -1,6 +1,6 @@
 import React from "react";
 import Board from "./Board";
-import { applyMove } from "./xiangqi";
+import { applyMove, uciToChinese } from "./xiangqi";
 import { getNext, getTrainingPuzzle, checkMove, submitRating, explainPuzzle } from "./api";
 
 // 训练状态机
@@ -118,10 +118,11 @@ export default function Trainer({ target = null, onTargetConsumed }) {
   async function onMove(move) {
     if (!puzzle || !["thinking"].includes(phase)) return;
     const prevFen = currentFen;  // 走子前局面，供答错时回滚乐观更新
+    const fenAfterMine = applyMove(currentFen, move);  // 我方落子后局面，也用于翻译对方应着
     setLastMove(move);
     setHint(null);
     // 乐观更新：玩家这一手立刻落到棋盘上，不必等校验/对方应着返回。
-    setCurrentFen(applyMove(currentFen, move));
+    setCurrentFen(fenAfterMine);
 
     const res = await checkMove({ puzzle_id: puzzle.id, step, move, attempt: wrongCount });
 
@@ -147,7 +148,7 @@ export default function Trainer({ target = null, onTargetConsumed }) {
       if (res.opponent_move) setLastMove(res.opponent_move);
       setStepMsg(
         res.opponent_move
-          ? `第 ${step + 1} 步正确！对方应：${res.opponent_move}`
+          ? `第 ${step + 1} 步正确！对方应：${uciToChinese(fenAfterMine, res.opponent_move)}`
           : `第 ${step + 1} 步正确，继续！`
       );
       setPhase("step_ok");
@@ -214,6 +215,19 @@ export default function Trainer({ target = null, onTargetConsumed }) {
   }
 
   const fmtSec = (ms) => `${(ms / 1000).toFixed(1)} 秒`;
+
+  // 正解从题目初始局面逐步重放，把 UCI 翻译成中文棋谱（如 炮二平五）
+  const solutionText = React.useMemo(() => {
+    if (!puzzle || !solution.length) return "";
+    let fen = puzzle.fen;
+    return solution
+      .map((m) => {
+        const cn = uciToChinese(fen, m);
+        fen = applyMove(fen, m);
+        return cn;
+      })
+      .join(" → ");
+  }, [puzzle, solution]);
 
   // ── 渲染 ──────────────────────────────────────────────────────
 
@@ -291,10 +305,11 @@ export default function Trainer({ target = null, onTargetConsumed }) {
           轮到 <b>{sideText}</b> 走子，请走出制胜着法
           {totalSteps > 1 ? `（第 ${step + 1} / ${totalSteps} 步）` : ""}。
         </p>
-        {hint && (
-          <p className="hint">提示：{hint}</p>
-        )}
-        {stepMsg && <p className="step-msg">{stepMsg}</p>}
+        {/* 反馈槽常驻占位，提示/步骤反馈出现时不再撑高面板导致棋盘抖动 */}
+        <div className="feedback-slot">
+          {hint && <span className="hint">提示：{hint}</span>}
+          {stepMsg && <span className="step-msg">{stepMsg}</span>}
+        </div>
       </div>
 
       {/* 棋盘（答题完成后，结果/自评面板直接覆盖在棋面下方，免去上下滑动） */}
@@ -348,7 +363,7 @@ export default function Trainer({ target = null, onTargetConsumed }) {
         {phase === "done" && (
           <div className="board-overlay">
             <div className="panel result ok">
-              <p>正解：<code>{solution.join(" → ")}</code></p>
+              <p>正解：<code>{solutionText}</code></p>
               {ratingChange && (
                 <p>评分 {ratingChange.old} →{" "}
                   <b>{ratingChange.new}</b>{" "}

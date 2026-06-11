@@ -99,12 +99,17 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .step-dot.done    { background: #27ae60; }
 .step-dot.current { background: #8a5a2b; }
 
+/* 反馈槽：常驻固定最小高度，提示/步骤反馈出现时面板高度不变，避免棋盘抖动 */
+.feedback-slot {
+  min-height: 34px; margin-top: 6px;
+  display: flex; align-items: center;
+}
 .hint {
   background: #fffbe6; border-left: 3px solid #f0b429;
-  padding: 6px 10px; border-radius: 4px; font-size: 14px; margin: 6px 0;
+  padding: 6px 10px; border-radius: 4px; font-size: 14px;
 }
 .step-msg {
-  color: #27ae60; font-weight: 600; font-size: 15px; margin: 6px 0 0;
+  color: #27ae60; font-weight: 600; font-size: 15px;
 }
 
 /* 棋盘（交叉点制） */
