@@ -351,6 +351,10 @@ nav .nav-ico, nav .nav-label-short { display: none; }
   box-shadow: 0 10px 36px rgba(0, 0, 0, .3);
   animation: overlay-rise .18s ease-out;
 }
+@keyframes overlay-rise {
+  from { transform: translateY(10px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
 /* 高优先级盖过 `.result button` 的通用实心按钮样式 */
 .result button.play-over-close {
   position: absolute; top: 2px; right: 4px; margin: 0;
@@ -412,30 +416,40 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .captured-diff { margin-left: auto; font-size: 12px; color: #285f96; font-weight: 600; }
 .captured-diff.red { color: #c0392b; }
 
-/* 战术训练：结果/自评面板直接覆盖在棋面下方，免去上下滑动找按钮 */
+/* 战术训练：结果/自评面板浮于棋面正中，配暖棕遮罩聚焦弹窗 */
 .trainer-board-area { position: relative; }
 .board-overlay {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  display: flex; justify-content: center;
-  padding: 0 8px 8px;
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
   pointer-events: none;
+  background: rgba(60, 36, 12, .26);
+  border-radius: 8px;            /* 与棋盘圆角一致 */
+  animation: overlay-fade .18s ease-out;
+}
+@keyframes overlay-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .board-overlay > .panel {
   pointer-events: auto;
   margin: 0;
   width: 100%;
-  max-width: 460px;
-  background: rgba(255, 255, 255, .97);
-  backdrop-filter: blur(3px);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, .22);
-  animation: overlay-rise .18s ease-out;
+  max-width: 400px;
+  max-height: 100%;
+  overflow-y: auto;
+  background: #fffdf7;                          /* 暖白，呼应米色主题 */
+  border: 1px solid #e0cfa8;                    /* 暖棕描边 */
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(60, 36, 12, .38);
+  animation: overlay-pop .2s ease-out;
 }
-@keyframes overlay-rise {
-  from { transform: translateY(10px); opacity: 0; }
-  to   { transform: none; opacity: 1; }
+@keyframes overlay-pop {
+  from { transform: scale(.94); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
 }
 
-/* 结果面板 */
+/* 结果面板：标题按对错着色 */
 .result.ok h3 { color: #2e7d32; margin: 0 0 8px; }
 .result.bad h3 { color: #c0392b; margin: 0 0 8px; }
 
