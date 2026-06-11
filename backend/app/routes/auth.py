@@ -54,6 +54,9 @@ def register(request: Request, body: Credentials, db: Session = Depends(get_db))
     user = User(username=username, password_hash=hash_password(body.password), role=role)
     db.add(user)
     db.commit()
+    # 注册赠送初始积分，便于新用户立即体验 AI 教练等大模型功能
+    from .. import credits
+    credits.grant_signup(db, username)
     return AuthResponse(token=make_token(username), username=username, role=role)
 
 

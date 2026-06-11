@@ -125,7 +125,7 @@ function fmtDuration(ms) {
   return s < 60 ? `${s}秒` : `${Math.floor(s / 60)}分${s % 60}秒`;
 }
 
-export default function Play({ onGoReview }) {
+export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin }) {
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);
@@ -250,16 +250,22 @@ export default function Play({ onGoReview }) {
     }
   }
 
-  // AI 教练详解推荐着法的意图（未配置 AI 时按钮隐藏）
+  // AI 教练详解推荐着法的意图（需登录并消耗积分；未配置 AI 时按钮隐藏）
   async function requestCoach() {
     if (!hint?.move || coachLoading || !fen) return;
+    if (!user) {
+      onRequireLogin?.();
+      return;
+    }
     setCoachLoading(true);
     try {
       const r = await coachHintMove(fen, hint.move);
       setCoach(r.enabled ? { text: r.text || "（AI 暂时没有返回点评）" } : { disabled: true });
-    } catch {
-      setCoach(null);
+    } catch (e) {
+      if (e.status === 401) onRequireLogin?.();
+      setCoach({ error: e.message || "AI 详解失败" });
     } finally {
+      onCreditsChanged?.();
       setCoachLoading(false);
     }
   }
@@ -326,6 +332,7 @@ export default function Play({ onGoReview }) {
       });
       setSaved(true);
       setSavedGameId(res.id);
+      onCreditsChanged?.(); // 对弈奖励可能已入账
       // 自动触发后台分析，去复盘时分析多半已就绪
       analyzeGame(res.id).catch(() => {});
     } catch {
@@ -618,6 +625,9 @@ export default function Play({ onGoReview }) {
             <div className="muted" style={{ marginTop: 6 }}>
               未启用 AI 点评（管理员可在后台配置大模型）
             </div>
+          )}
+          {coach?.error && (
+            <div className="import-error" style={{ marginTop: 6 }}>{coach.error}</div>
           )}
         </div>
       )}

@@ -7,8 +7,47 @@ import Play from "./Play";
 import Challenge from "./Challenge";
 import Auth from "./Auth";
 import Admin from "./Admin";
-import { fetchMe, getToken, setToken } from "./api";
+import { fetchMe, getToken, setToken, getCredits, checkinCredits } from "./api";
 import { useReminders } from "./reminders";
+
+// 顶部积分徽标 + 每日签到。积分用于兑换 AI（大模型）功能权益。
+function CreditsBadge({ credits, onCheckin }) {
+  const [busy, setBusy] = React.useState(false);
+  const [toast, setToast] = React.useState("");
+  if (!credits) return null;
+
+  async function doCheckin() {
+    if (busy || credits.checkin_today) return;
+    setBusy(true);
+    try {
+      const r = await checkinCredits();
+      if (r.awarded > 0) {
+        setToast(`签到 +${r.awarded} 积分${r.streak > 1 ? `（连签 ${r.streak} 天）` : ""}`);
+        setTimeout(() => setToast(""), 2600);
+      }
+      onCheckin();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="credits-box">
+      <span className="credits-amt" title="积分：用于兑换 AI 教练等大模型功能">
+        💎 {credits.balance}
+      </span>
+      <button
+        className="btn-link credits-checkin"
+        onClick={doCheckin}
+        disabled={busy || credits.checkin_today}
+        title={credits.checkin_today ? "今日已签到" : "每日签到领积分"}
+      >
+        {credits.checkin_today ? "已签到" : busy ? "…" : "签到"}
+      </button>
+      {toast && <span className="credits-toast">{toast}</span>}
+    </span>
+  );
+}
 
 export default function App() {
   const [tab, setTab] = React.useState("train");
@@ -17,7 +56,17 @@ export default function App() {
   // 复盘目标：从对弈结束「一键复盘」跳转时携带的棋局 id
   const [reviewGameId, setReviewGameId] = React.useState(null);
   const [user, setUser] = React.useState(null); // {username, role}
+  const [credits, setCredits] = React.useState(null); // {balance, checkin_today, costs, ...}
   const [authOpen, setAuthOpen] = React.useState(false);
+
+  // 拉取积分余额；登录态下调用，未登录清空
+  const refreshCredits = React.useCallback(() => {
+    if (!getToken()) {
+      setCredits(null);
+      return;
+    }
+    getCredits().then(setCredits).catch(() => {});
+  }, []);
   // 到期复习提醒（本地通知 + 顶部横幅）
   const reminders = useReminders(user);
 
@@ -36,25 +85,35 @@ export default function App() {
     setTab("games");
   }
 
-  // 启动时若有 token，拉取当前用户
+  // 启动时若有 token，拉取当前用户与积分
   React.useEffect(() => {
     if (getToken()) {
       fetchMe()
-        .then((u) => setUser(u))
+        .then((u) => {
+          setUser(u);
+          refreshCredits();
+        })
         .catch(() => setToken(null));
     }
-  }, []);
+  }, [refreshCredits]);
 
   function onAuth(res) {
     setToken(res.token);
     setUser({ username: res.username, role: res.role });
     setAuthOpen(false);
+    refreshCredits();
   }
 
   function logout() {
     setToken(null);
     setUser(null);
+    setCredits(null);
     if (tab === "admin") setTab("train");
+  }
+
+  // 登录态失效（如收到 401）时，清理并弹出登录框
+  function requireLogin() {
+    setAuthOpen(true);
   }
 
   return (
@@ -87,6 +146,7 @@ export default function App() {
         <div className="user-box">
           {user ? (
             <>
+              <CreditsBadge credits={credits} onCheckin={refreshCredits} />
               <span className="user-name">{user.username}</span>
               <button className="btn-link" onClick={logout}>退出</button>
             </>
@@ -110,18 +170,40 @@ export default function App() {
           <Trainer
             target={trainTarget}
             onTargetConsumed={() => setTrainTarget(null)}
+            user={user}
+            onCreditsChanged={refreshCredits}
+            onRequireLogin={requireLogin}
           />
         )}
-        {tab === "coach" && <Coach onPractice={practiceCategory} onNavigate={setTab} />}
+        {tab === "coach" && (
+          <Coach
+            onPractice={practiceCategory}
+            onNavigate={setTab}
+            user={user}
+            credits={credits}
+            onCreditsChanged={refreshCredits}
+            onRequireLogin={requireLogin}
+          />
+        )}
         {tab === "challenge" && <Challenge />}
         {tab === "stats" && <Stats onPractice={practiceCategory} />}
-        {tab === "play" && <Play onGoReview={reviewGame} />}
+        {tab === "play" && (
+          <Play
+            onGoReview={reviewGame}
+            user={user}
+            onCreditsChanged={refreshCredits}
+            onRequireLogin={requireLogin}
+          />
+        )}
         {tab === "admin" && user?.role === "admin" && <Admin />}
         {tab === "games" && (
           <Games
             initialGameId={reviewGameId}
             onInitialGameConsumed={() => setReviewGameId(null)}
             onNavigateToTrain={practicePuzzle}
+            user={user}
+            onCreditsChanged={refreshCredits}
+            onRequireLogin={requireLogin}
           />
         )}
       </main>

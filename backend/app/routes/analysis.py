@@ -3,12 +3,13 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from ..auth import current_user_id
+from .. import credits
+from ..auth import current_user, current_user_id
 from ..deps import get_db
 from ..ratelimit import limiter
 from ..engine import get_shared_engine
 from ..llm import explain_mistake, summarize_game
-from ..models import Game, GameAnalysis, Puzzle
+from ..models import Game, GameAnalysis, Puzzle, User
 from ..play_engine import builtin_evaluate, game_status
 from ..settings import get_deepseek_config
 from ..xiangqi_utils import apply_move
@@ -122,6 +123,8 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
         db.query(GameAnalysis).filter(GameAnalysis.game_id == game_id).delete()
         db.commit()
 
+        llm_active = get_deepseek_config(db).active  # 整局一次性判定，避免逐手查配置
+
         for i, move in enumerate(move_list):
             fen_before = fens[i]
             fen_after = fens[i + 1]
@@ -157,7 +160,14 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
             is_mistake = eval_drop > MISTAKE_DROP
 
             explanation = ""
-            if (is_blunder or is_mistake) and best_move and best_move != move:
+            # 失误讲解由大模型生成，逐处消耗积分；扣不动则只保留引擎数据（不再调用 LLM）。
+            if (
+                (is_blunder or is_mistake)
+                and best_move
+                and best_move != move
+                and llm_active
+                and credits.try_spend(db, owner, "mistake_explain", f"game:{game_id}")
+            ):
                 explanation = explain_mistake(
                     fen=fen_before,
                     move_played=move,
@@ -166,6 +176,8 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
                     move_number=i + 1,
                     side=side,
                 )
+                if not explanation:
+                    credits.refund(db, owner, "mistake_explain", f"game:{game_id}")
 
             # 对大漏着创建练习题
             puzzle_id: int | None = None
@@ -206,7 +218,7 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
             db.commit()  # 逐步提交，使前端可轮询出进度
 
         # 全部走法分析完成后，汇总失误生成 LLM 综合复盘报告
-        _generate_report(db, game_id)
+        _generate_report(db, game_id, owner)
 
         # 据本局新数据（失误画像/新生成的漏算题）刷新 AI 教练训练计划
         try:
@@ -223,10 +235,17 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
         db.close()
 
 
-def _generate_report(db, game_id: int) -> None:
-    """据逐步分析结果调用 LLM 生成整局综合复盘报告，写入 game.report。"""
+def _generate_report(db, game_id: int, owner: str = "default") -> None:
+    """据逐步分析结果调用 LLM 生成整局综合复盘报告，写入 game.report。
+
+    报告由大模型生成，消耗积分；未启用大模型或积分不足时跳过（不影响逐步分析结果）。
+    """
+    if not get_deepseek_config(db).active:
+        return
     game = db.get(Game, game_id)
     if not game:
+        return
+    if not credits.try_spend(db, owner, "game_report", f"game:{game_id}"):
         return
     records = (
         db.query(GameAnalysis)
@@ -256,6 +275,8 @@ def _generate_report(db, game_id: int) -> None:
     if report:
         game.report = report
         db.commit()
+    else:
+        credits.refund(db, owner, "game_report", f"game:{game_id}")
 
 
 @router.post("/{game_id}/analyze")
@@ -265,14 +286,18 @@ def analyze_game(
     game_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: str = Depends(current_user_id),
+    user: User = Depends(current_user),
 ):
-    """触发棋局分析（后台执行）。"""
+    """触发棋局分析（后台执行）。
+
+    需登录。引擎逐步分析始终进行；大模型点评（失误讲解 / 复盘报告 / 教练计划）按积分
+    余额逐项消耗，余额耗尽则自动降级为纯引擎数据，不会无上限地刷大模型。
+    """
     game = db.get(Game, game_id)
-    if not game or game.user_id != user:
+    if not game or game.user_id != user.username:
         raise HTTPException(status_code=404, detail="棋局不存在")
 
-    background_tasks.add_task(_run_analysis, game_id, user)
+    background_tasks.add_task(_run_analysis, game_id, user.username)
     return {"status": "analyzing", "game_id": game_id}
 
 

@@ -15,6 +15,22 @@ header {
 header h1 { font-size: 24px; margin: 0; color: #8a5a2b; flex-shrink: 0; }
 .user-box { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .user-name { font-size: 14px; color: #555; font-weight: 600; }
+
+/* 积分徽标 + 签到 */
+.credits-box { display: flex; align-items: center; gap: 6px; position: relative; }
+.credits-amt {
+  font-size: 14px; font-weight: 700; color: #8a5a2b;
+  background: #f6efe3; border: 1px solid #e7ddc9;
+  border-radius: 8px; padding: 4px 9px; white-space: nowrap;
+}
+.credits-checkin { padding: 4px 9px; font-size: 13px; }
+.credits-checkin:disabled { opacity: .55; cursor: default; }
+.credits-toast {
+  position: absolute; top: 110%; right: 0; z-index: 60;
+  background: #2b7a3b; color: #fff; font-size: 12px; font-weight: 600;
+  border-radius: 8px; padding: 6px 10px; white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,.18);
+}
 /* Header nav takes full width on second row when wrapping */
 header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webkit-overflow-scrolling: touch; }
 .btn-link {

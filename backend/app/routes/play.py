@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import cloudbook
+from .. import cloudbook, credits
+from ..auth import current_user
 from ..deps import get_db
 from ..llm import coach_move
+from ..models import User
 from ..play_engine import (
     INITIAL_FEN,
     choose_move,
@@ -153,14 +155,30 @@ class CoachResponse(BaseModel):
 
 @router.post("/coach", response_model=CoachResponse)
 @limiter.limit("10/minute")
-def coach(request: Request, req: CoachRequest, db: Session = Depends(get_db)):
-    """AI 教练点评一步推荐着法的意图，供「提示」面板的「AI 详解」按钮调用。"""
+def coach(
+    request: Request,
+    req: CoachRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """AI 教练点评一步推荐着法的意图，供「提示」面板的「AI 详解」按钮调用。
+
+    需登录并消耗积分，防止未登录用户刷大模型接口。
+    """
     if req.move not in legal_moves_uci(req.fen):
         raise HTTPException(400, "不合规则的着法")
     if not get_deepseek_config(db).active:
         return CoachResponse(enabled=False, text="")
+    if not credits.try_spend(db, user.username, "play_coach", "play"):
+        raise HTTPException(
+            402,
+            f"积分不足，AI 走法点评需 {credits.cost(db, 'play_coach')} 积分。可通过签到、对弈、做题获取。",
+        )
     side = "红方" if side_to_move(req.fen) == "w" else "黑方"
-    return CoachResponse(enabled=True, text=coach_move(req.fen, req.move, side))
+    text = coach_move(req.fen, req.move, side)
+    if not text:
+        credits.refund(db, user.username, "play_coach", "play")
+    return CoachResponse(enabled=True, text=text)
 
 
 @router.post("/new", response_model=NewGameResponse)

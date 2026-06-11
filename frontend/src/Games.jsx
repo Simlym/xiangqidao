@@ -31,7 +31,7 @@ function getMoveQuality(moveData) {
   return "best";
 }
 
-export default function Games({ onNavigateToTrain, initialGameId, onInitialGameConsumed }) {
+export default function Games({ onNavigateToTrain, initialGameId, onInitialGameConsumed, user, onCreditsChanged, onRequireLogin }) {
   const [games, setGames] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState(null);
@@ -67,12 +67,13 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
           pollRef.current = null;
           setAnalyzeStatus("done");
           setAnalysisData(result);
+          onCreditsChanged?.(); // 分析期间的大模型点评已消耗积分，刷新余额
         }
       } catch {
         // keep polling
       }
     }, 1000);
-  }, []);
+  }, [onCreditsChanged]);
 
   // Load games list
   const loadGames = React.useCallback(() => {
@@ -267,12 +268,21 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
 
   async function handleAnalyze() {
     if (!selectedId || analyzeStatus === "analyzing") return;
+    if (!user) {
+      onRequireLogin?.();
+      return;
+    }
     setProgress({ analyzed: 0, total: 0 });
     try {
       await analyzeGame(selectedId);
-    } catch {
-      // ignore, still start polling
+    } catch (e) {
+      if (e.status === 401) {
+        onRequireLogin?.();
+        return;
+      }
+      // 其它错误：仍尝试轮询（分析可能已在进行）
     }
+    onCreditsChanged?.(); // 分析会按余额消耗大模型点评积分
     startPolling(selectedId);
   }
 

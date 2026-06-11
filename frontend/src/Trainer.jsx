@@ -13,7 +13,7 @@ const RATINGS = [
   { key: "easy",  label: "容易", desc: "一眼看出，毫不费力",  color: "#2980b9" },
 ];
 
-export default function Trainer({ target = null, onTargetConsumed }) {
+export default function Trainer({ target = null, onTargetConsumed, user, onCreditsChanged, onRequireLogin }) {
   const [puzzle, setPuzzle]       = React.useState(null);
   const [dueCount, setDueCount]   = React.useState(0);
   const [phase, setPhase]         = React.useState("loading");
@@ -195,10 +195,15 @@ export default function Trainer({ target = null, onTargetConsumed }) {
     setNextReview(res.next_review);
     setRatingChange(res.rating || null);
     setPhase("done");
+    onCreditsChanged?.(); // 首次做对可能奖励积分
   }
 
   async function onAiExplain() {
     if (aiLoading || !puzzle) return;
+    if (!user) {
+      onRequireLogin?.();
+      return;
+    }
     setAiLoading(true);
     try {
       const res = await explainPuzzle(puzzle.id);
@@ -206,9 +211,12 @@ export default function Trainer({ target = null, onTargetConsumed }) {
         setAiDisabled(true);
       } else {
         setAiText(res.explanation || "（AI 暂时没有返回讲解，稍后再试）");
+        if (!res.cached) onCreditsChanged?.(); // 新生成才扣分
       }
-    } catch {
-      setAiText("");
+    } catch (e) {
+      if (e.status === 401) onRequireLogin?.();
+      setAiText(e.message || "AI 讲解失败");
+      onCreditsChanged?.();
     } finally {
       setAiLoading(false);
     }

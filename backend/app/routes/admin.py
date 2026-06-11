@@ -217,8 +217,8 @@ def update_llm_settings(body: LlmSettingsUpdate, request: Request,
 
 
 @router.post("/settings/llm/test")
-def test_llm_settings(db: Session = Depends(get_db)):
-    """用当前配置发一次最小请求，验证密钥是否可用。"""
+def test_llm_settings(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """用当前配置发一次最小请求，验证密钥是否可用。仅管理员可调用。"""
     from ..llm import _chat
 
     cfg = get_deepseek_config(db)

@@ -70,6 +70,10 @@ export const getLeaderboard = (limit = 20) => req(`/stats/leaderboard?limit=${li
 export const getCoachPlan = () => req("/coach/plan");
 export const refreshCoachPlan = () => req("/coach/plan", { method: "POST", body: {} });
 
+// ── 积分 ────────────────────────────────────────────────
+export const getCredits = () => req("/credits/me");
+export const checkinCredits = () => req("/credits/checkin", { method: "POST", body: {} });
+
 // ── 闯关 ────────────────────────────────────────────────
 export const getLevels = () => req("/challenge/levels");
 export const getLevel = (index) => req(`/challenge/level/${index}`);

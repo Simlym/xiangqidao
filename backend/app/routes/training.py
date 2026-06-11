@@ -6,12 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import ratings, repository as repo
-from ..auth import current_user_id
+from .. import credits, ratings, repository as repo
+from ..auth import current_user, current_user_id
 from ..deps import get_db
 from ..importer.verify_mate import FILES, parse_fen
 from ..llm import explain_puzzle
-from ..models import Attempt, Review
+from ..models import Attempt, Review, User
 from ..play_engine import game_status, legal_moves_uci
 from ..ratelimit import limiter
 from ..settings import get_deepseek_config
@@ -273,18 +273,25 @@ def explain(
     request: Request,
     req: ExplainRequest,
     db: Session = Depends(get_db),
-    user: str = Depends(current_user_id),
+    user: User = Depends(current_user),
 ):
-    """AI 讲解一道题的解题思路。结果缓存到题目上，同题不重复调用大模型。"""
-    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user)
+    """AI 讲解一道题的解题思路。需登录；首次生成消耗积分，结果缓存后复用免费。"""
+    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user.username)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
 
+    # 命中缓存直接返回（不扣分）：同题只调用一次大模型
     if puzzle.ai_explanation:
         return ExplainResponse(enabled=True, explanation=puzzle.ai_explanation, cached=True)
 
     if not get_deepseek_config(db).active:
         return ExplainResponse(enabled=False, explanation="")
+
+    if not credits.try_spend(db, user.username, "puzzle_explain", f"puzzle:{puzzle.id}"):
+        raise HTTPException(
+            402,
+            f"积分不足，AI 题目讲解需 {credits.cost(db, 'puzzle_explain')} 积分。可通过签到、对弈、做题获取。",
+        )
 
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
     side = "红方" if puzzle.side_to_move == "w" else "黑方"
@@ -292,6 +299,8 @@ def explain(
     if text:
         puzzle.ai_explanation = text
         db.commit()
+    else:
+        credits.refund(db, user.username, "puzzle_explain", f"puzzle:{puzzle.id}")
     return ExplainResponse(enabled=True, explanation=text)
 
 
@@ -306,10 +315,14 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
 
     # 评分只在首次遇题时结算（须在写入本次 Attempt 之前判定）
     rating_change = None
-    if not repo.has_attempt(db, user, puzzle.id):
+    first_attempt = not repo.has_attempt(db, user, puzzle.id)
+    if first_attempt:
         rating_change = ratings.apply(
             db, user, puzzle, ratings.score_of(req.correct, req.had_retry)
         )
+    # 首次做对奖励积分（每日封顶，防刷），鼓励多训练
+    if first_attempt and req.correct:
+        credits.earn(db, user, "puzzle", f"puzzle:{puzzle.id}")
 
     rev = repo.get_review(db, puzzle.id, user)
     if rev is None:

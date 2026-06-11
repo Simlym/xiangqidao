@@ -100,7 +100,9 @@ def test_analyze_endpoint_returns_analyzing_without_engine():
     from unittest.mock import patch
     from sqlalchemy.pool import StaticPool
     from app.main import app
+    from app.auth import hash_password, make_token
     from app.deps import get_db
+    from app.models import User
 
     # StaticPool 让所有连接共享同一个内存数据库（跨连接可见）
     test_engine = sa_create_engine(
@@ -111,9 +113,10 @@ def test_analyze_endpoint_returns_analyzing_without_engine():
     Base.metadata.create_all(test_engine)
     TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False)
 
-    # 先直接插入一个 game 记录
+    # /analyze 现要求登录：插入用户与其名下的 game 记录
     with TestSessionLocal() as db:
-        game = Game(moves="h2e2 h7e7", played_on="2026-01-01")
+        db.add(User(username="tester", password_hash=hash_password("password1")))
+        game = Game(moves="h2e2 h7e7", played_on="2026-01-01", user_id="tester")
         db.add(game)
         db.commit()
         db.refresh(game)
@@ -129,10 +132,11 @@ def test_analyze_endpoint_returns_analyzing_without_engine():
     app.dependency_overrides[get_db] = override_get_db
 
     client = TestClient(app)
+    auth = {"Authorization": f"Bearer {make_token('tester')}"}
 
     # 用 patch 阻止后台任务真正执行（避免其使用真实 SessionLocal）
     with patch("app.routes.analysis._run_analysis"):
-        resp = client.post(f"/api/games/{game_id}/analyze")
+        resp = client.post(f"/api/games/{game_id}/analyze", headers=auth)
 
     assert resp.status_code == 200
     data = resp.json()

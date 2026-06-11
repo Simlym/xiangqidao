@@ -186,6 +186,42 @@ class SecurityLog(Base):
     target: Mapped[str] = mapped_column(String(120), default="")
 
 
+class CreditAccount(Base):
+    """用户积分账户（仅登录用户拥有，故 LLM 权益必须登录才能使用）。
+
+    积分是平台内部「大模型权益」货币：签到 / 对弈 / 做题赚取，调用大模型功能消耗。
+    访客（user_id='default'）不建账户，因此无法消耗积分调用 LLM，从根上挡住「白嫖刷接口」。
+    """
+
+    __tablename__ = "credit_accounts"
+
+    user_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    balance: Mapped[int] = mapped_column(Integer, default=0)
+    total_earned: Mapped[int] = mapped_column(Integer, default=0)  # 累计获取（不含初始赠送外的统计口径）
+    last_checkin: Mapped[date | None] = mapped_column(Date, nullable=True)  # 最近签到日
+    checkin_streak: Mapped[int] = mapped_column(Integer, default=0)  # 连续签到天数
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CreditLog(Base):
+    """积分流水（append-only）：用于审计与「每日上限」统计，防止刷分。
+
+    kind 形如 'earn:checkin' / 'earn:game' / 'spend:coach_plan' / 'refund:puzzle_explain'。
+    amount 正为入账、负为扣减；balance_after 记录变动后余额，便于对账。
+    """
+
+    __tablename__ = "credit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(40), index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    day: Mapped[date] = mapped_column(Date, default=date.today, index=True)  # 本地日期，按日聚合算上限
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    balance_after: Mapped[int] = mapped_column(Integer, default=0)
+    ref: Mapped[str] = mapped_column(String(80), default="")  # 关联对象，如 puzzle:123 / game:45
+
+
 class AppSetting(Base):
     """运行时全局配置（键值对），供管理员在后台修改而无需重启或改环境变量。
 

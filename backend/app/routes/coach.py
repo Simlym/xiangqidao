@@ -3,14 +3,15 @@
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import current_user_id
+from .. import credits
+from ..auth import current_user, current_user_id
 from ..coach import generate_plan
 from ..deps import get_db
-from ..models import CoachPlan
+from ..models import CoachPlan, User
 from ..ratelimit import limiter
 from ..settings import get_deepseek_config
 
@@ -74,8 +75,17 @@ def latest_plan(db: Session = Depends(get_db), user: str = Depends(current_user_
 def refresh_plan(
     request: Request,
     db: Session = Depends(get_db),
-    user: str = Depends(current_user_id),
+    user: User = Depends(current_user),
 ):
-    """按当前数据重新生成训练计划（LLM 可用时附教练叙述，调用较慢）。"""
-    plan = generate_plan(db, user, trigger="manual")
+    """按当前数据重新生成训练计划（LLM 可用时附教练叙述，调用较慢）。
+
+    需登录；启用大模型时消耗积分（积分不足则提示，纯数据计划仍可在 GET 看到）。
+    """
+    if get_deepseek_config(db).active and not credits.can_afford(db, user.username, "coach_plan"):
+        raise HTTPException(
+            402,
+            f"积分不足，生成 AI 教练计划需 {credits.cost(db, 'coach_plan')} 积分。"
+            "可通过签到、对弈、做题获取积分。",
+        )
+    plan = generate_plan(db, user.username, trigger="manual")
     return PlanResponse(plan=_to_out(plan), llm_enabled=get_deepseek_config(db).active)

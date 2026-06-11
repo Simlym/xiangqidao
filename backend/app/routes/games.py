@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from .. import credits
 from ..auth import current_user_id
 from ..deps import get_db
 from ..models import Game
@@ -114,7 +115,9 @@ def import_game(
     db.add(game)
     db.commit()
     db.refresh(game)
-    return {"id": game.id, "move_count": len(move_list)}
+    # 完成一局有效对弈奖励积分（登录用户、达到最小手数、每日封顶，防刷）
+    awarded = credits.award_game(db, user, len(move_list), f"game:{game.id}")
+    return {"id": game.id, "move_count": len(move_list), "credits_awarded": awarded}
 
 
 @router.get("/{game_id}", response_model=GameDetail)

@@ -100,7 +100,7 @@ function fmtTime(iso) {
   }
 }
 
-export default function Coach({ onPractice, onNavigate }) {
+export default function Coach({ onPractice, onNavigate, user, credits, onCreditsChanged, onRequireLogin }) {
   const [data, setData] = React.useState(null);       // {plan, llm_enabled}
   const [rating, setRating] = React.useState(null);   // {rating, title, peak, solved}
   const [overview, setOverview] = React.useState(null);
@@ -124,17 +124,25 @@ export default function Coach({ onPractice, onNavigate }) {
 
   async function refresh() {
     if (refreshing) return;
+    if (!user) {
+      onRequireLogin?.();
+      return;
+    }
     setRefreshing(true);
     setError("");
     try {
       const d = await refreshCoachPlan();
       setData(d);
     } catch (e) {
+      if (e.status === 401) onRequireLogin?.();
       setError(e.message || "生成失败，请稍后再试");
     } finally {
+      onCreditsChanged?.(); // 余额可能已变化
       setRefreshing(false);
     }
   }
+
+  const planCost = credits?.costs?.coach_plan;
 
   if (loading) return <div className="panel">加载中…</div>;
 
@@ -175,7 +183,11 @@ export default function Coach({ onPractice, onNavigate }) {
         <div className="coach-plan-head">
           <h3 style={{ margin: 0, color: "#8a5a2b" }}>🧑‍🏫 我的训练计划</h3>
           <button className="btn-newgame" onClick={refresh} disabled={refreshing}>
-            {refreshing ? "教练备课中…" : plan ? "更新计划" : "生成计划"}
+            {refreshing
+              ? "教练备课中…"
+              : `${plan ? "更新计划" : "生成计划"}${
+                  llmEnabled && planCost ? `（消耗 ${planCost} 积分）` : ""
+                }`}
           </button>
         </div>
         {plan && (
@@ -189,6 +201,12 @@ export default function Coach({ onPractice, onNavigate }) {
           <p className="muted">
             还没有训练计划。点「生成计划」，教练会根据你的评分、弱点雷达和近期对局失误，
             制定一份针对性的训练安排；之后每局对弈复盘完成时会自动更新。
+            {llmEnabled && (
+              <>
+                <br />AI 教练点评由大模型生成，需登录并消耗积分
+                {planCost ? `（每次 ${planCost} 积分）` : ""}；积分可通过每日签到、对弈、做题获取。
+              </>
+            )}
           </p>
         ) : (
           <>

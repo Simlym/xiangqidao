@@ -12,9 +12,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
+from app.auth import hash_password, make_token
 from app.deps import get_db
 from app.coach import build_profile, build_progress, build_recommendations
-from app.models import Attempt, Base, CoachPlan, Puzzle
+from app.models import Attempt, Base, CoachPlan, Puzzle, User
 
 MATE_FEN = "9/5k1R1/9/9/9/9/9/9/9/4K4 w"
 
@@ -110,16 +111,23 @@ def test_progress_none_without_history():
 
 
 def test_plan_endpoints(monkeypatch):
-    """GET 无计划返回 null；POST 生成计划（无 LLM 时 plan_text 为空但建议可用）。"""
+    """GET 无计划返回 null；POST 生成计划（无 LLM 时 plan_text 为空但建议可用）。
+
+    POST 生成计划需登录（防匿名刷大模型）；统一以同一登录用户读写，确保归属一致。
+    """
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     TestSession = _session_factory()
+    with TestSession() as db:
+        db.add(User(username="tester", password_hash=hash_password("password1")))
+        db.commit()
     client = _client(TestSession)
+    auth = {"Authorization": f"Bearer {make_token('tester')}"}
 
-    r = client.get("/api/coach/plan")
+    r = client.get("/api/coach/plan", headers=auth)
     assert r.status_code == 200
     assert r.json()["plan"] is None
 
-    r = client.post("/api/coach/plan")
+    r = client.post("/api/coach/plan", headers=auth)
     assert r.status_code == 200
     body = r.json()
     assert body["plan"] is not None
@@ -131,11 +139,11 @@ def test_plan_endpoints(monkeypatch):
     assert body["plan"]["progress"] is None
 
     # 再 GET 应返回刚生成的计划（已持久化）
-    r = client.get("/api/coach/plan")
+    r = client.get("/api/coach/plan", headers=auth)
     assert r.json()["plan"]["id"] == body["plan"]["id"]
 
     # 第二份计划：以首份为基线，progress 出现（跨度可为 0 天）
-    r = client.post("/api/coach/plan")
+    r = client.post("/api/coach/plan", headers=auth)
     progress = r.json()["plan"]["progress"]
     assert progress is not None
     assert progress["rating_delta"] == 0
