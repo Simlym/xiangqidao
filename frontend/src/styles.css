@@ -840,6 +840,49 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .delta-up { color: #27ae60; font-weight: 700; }
 .delta-down { color: #c0392b; font-weight: 700; }
 
+/* ── AI 教练 ─────────────────────────────────────────────── */
+.coach-plan-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap;
+}
+.coach-plan-text { max-height: none; margin-bottom: 12px; }
+.coach-rec-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.coach-rec {
+  display: flex; align-items: center; gap: 10px;
+  background: #fdf9f0; border: 1px solid #e7ddc9; border-radius: 10px;
+  padding: 10px 12px; font-size: 14px;
+}
+.coach-rec-no {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  background: #8a5a2b; color: #fff; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.coach-rec-reason { flex: 1; min-width: 0; line-height: 1.5; }
+.coach-rec-btn { flex-shrink: 0; white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .coach-rec { flex-wrap: wrap; }
+  .coach-rec-btn { margin-left: 32px; width: calc(100% - 32px); }
+}
+
+/* 进步追踪 */
+.coach-progress-head { font-weight: 600; font-size: 15px; color: #8a5a2b; }
+.coach-progress-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px; margin-top: 10px;
+}
+.coach-progress-item {
+  display: flex; flex-direction: column; gap: 2px;
+  background: #fdf9f0; border: 1px solid #efe6d6; border-radius: 10px;
+  padding: 8px 12px; font-size: 13px;
+}
+.coach-progress-val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.coach-progress-weak {
+  margin-top: 10px; font-size: 13px; color: #2e7d32;
+  background: #f3fbf4; border-radius: 8px; padding: 6px 10px;
+}
+.coach-progress-weak.warn { color: #b26a00; background: #fff8e1; }
+
 /* ── 排行榜 ───────────────────────────────────────────────── */
 .leaderboard { list-style: none; margin: 0; padding: 0; }
 .leaderboard li {

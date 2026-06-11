@@ -1,5 +1,6 @@
 import React from "react";
 import Trainer from "./Trainer";
+import Coach from "./Coach";
 import Stats from "./Stats";
 import Games from "./Games";
 import Play from "./Play";
@@ -63,6 +64,7 @@ export default function App() {
         <nav>
           {[
             { key: "train", icon: "🎯", label: "战术训练", short: "训练" },
+            { key: "coach", icon: "🧑‍🏫", label: "AI 教练", short: "教练" },
             { key: "challenge", icon: "🏯", label: "闯关", short: "闯关" },
             { key: "stats", icon: "📊", label: "进度统计", short: "统计" },
             { key: "games", icon: "📋", label: "棋局复盘", short: "复盘" },
@@ -110,6 +112,7 @@ export default function App() {
             onTargetConsumed={() => setTrainTarget(null)}
           />
         )}
+        {tab === "coach" && <Coach onPractice={practiceCategory} onNavigate={setTab} />}
         {tab === "challenge" && <Challenge />}
         {tab === "stats" && <Stats onPractice={practiceCategory} />}
         {tab === "play" && <Play onGoReview={reviewGame} />}

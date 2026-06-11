@@ -66,6 +66,10 @@ export const getForecast = (days = 14) => req(`/stats/forecast?days=${days}`);
 export const getRating = () => req("/stats/rating");
 export const getLeaderboard = (limit = 20) => req(`/stats/leaderboard?limit=${limit}`);
 
+// ── AI 教练 ─────────────────────────────────────────────
+export const getCoachPlan = () => req("/coach/plan");
+export const refreshCoachPlan = () => req("/coach/plan", { method: "POST", body: {} });
+
 // ── 闯关 ────────────────────────────────────────────────
 export const getLevels = () => req("/challenge/levels");
 export const getLevel = (index) => req(`/challenge/level/${index}`);

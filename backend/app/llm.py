@@ -98,6 +98,87 @@ def coach_move(
     return _chat(prompt, max_tokens=200, timeout=30)
 
 
+def _progress_lines(progress: dict | None) -> str:
+    """把确定性算出的进步对比指标整理成 prompt 片段；无基线返回空串。"""
+    if not progress:
+        return ""
+    lines = [f"进步对比（与 {progress.get('days_span', 0)} 天前的基线相比）："]
+
+    def _pp(v):  # 比率差值 → 百分点
+        return f"{'+' if v >= 0 else ''}{round(v * 100)} 个百分点"
+
+    if progress.get("rating_delta") is not None:
+        d = progress["rating_delta"]
+        lines.append(f"- 评分变化：{'+' if d >= 0 else ''}{round(d)}")
+    if progress.get("solved_delta"):
+        lines.append(f"- 新结算题数：{round(progress['solved_delta'])} 道")
+    if progress.get("first_try_accuracy_delta") is not None:
+        lines.append(f"- 首答正确率变化：{_pp(progress['first_try_accuracy_delta'])}")
+    if progress.get("weak_fixed"):
+        lines.append(f"- 已脱离弱点区的类目：{'、'.join(progress['weak_fixed'])}")
+    if progress.get("weak_new"):
+        lines.append(f"- 新暴露的弱点类目：{'、'.join(progress['weak_new'])}")
+    before, now = progress.get("blunders_per_game_before"), progress.get("blunders_per_game_now")
+    if before is not None and now is not None:
+        lines.append(f"- 场均严重失误：{before} → {now}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def write_coach_plan(
+    profile: dict,
+    recommendations: list[dict],
+    progress: dict | None = None,
+) -> str:
+    """据用户画像写个性化训练计划叙述（中文）。未配置 key 时返回空串。
+
+    画像、建议与进步对比均为规则引擎产出的事实，LLM 只做「教练口吻」的解读与编排。
+    """
+    weak = profile.get("weak_categories") or []
+    weak_line = (
+        "、".join(f"{w['category']}（正确率{round(w['accuracy'] * 100)}%）" for w in weak)
+        if weak
+        else "暂未发现明显弱点类目"
+    )
+    games = profile.get("recent_games") or []
+    if games:
+        blunders = sum(g["blunders"] for g in games)
+        mistakes = sum(g["mistakes"] for g in games)
+        games_line = f"已复盘 {len(games)} 局，共检出 {blunders} 处严重失误、{mistakes} 处一般失误"
+    else:
+        games_line = "近期暂无已复盘的对局"
+
+    def _pct(v):
+        return f"{round(v * 100)}%" if v is not None else "暂无数据"
+
+    rec_lines = "\n".join(f"{i + 1}. {r['reason']}" for i, r in enumerate(recommendations))
+    prog_block = _progress_lines(progress)
+    prog_section = f"\n{prog_block}\n" if prog_block else ""
+    first_part = (
+        "① 水平评估与进步点评（点明现在大概什么水平；结合上面的进步对比，"
+        "肯定具体进步、指出退步并分析原因）"
+        if prog_block
+        else "① 水平评估（一两句，点明现在大概什么水平、最近状态如何）"
+    )
+
+    prompt = f"""你是资深象棋教练，请基于学员档案写一份个性化训练计划（中文，260字以内）。
+
+学员档案：
+- 当前评分：{profile.get('rating')}（{profile.get('title')}），历史最高 {profile.get('peak')}，已结算 {profile.get('solved')} 题
+- 首答正确率：总体 {_pct(profile.get('first_try_accuracy'))}，最近20题 {_pct(profile.get('recent20_first_try_accuracy'))}
+- 弱点类目：{weak_line}
+- 近期对局：{games_line}
+- 今日到期复习 {profile.get('due_today')} 题；待练实战漏算题 {profile.get('pending_blunder_puzzles')} 道
+{prog_section}
+系统给出的训练安排（已按优先级排序）：
+{rec_lines}
+
+请分三部分：{first_part}；
+② 主要短板与棋理成因（如计算深度、子力协调、杀法熟练度）；
+③ 本阶段训练安排（结合上面系统建议给出执行顺序与目标）。最后一句简短鼓励。
+口吻像面对面指导的老师，具体、可执行，不要空话，不要列举数字以外的坐标。"""
+    return _chat(prompt, max_tokens=550, timeout=30)
+
+
 def explain_mistake(
     fen: str,
     move_played: str,      # UCI，如 "h2e2"
