@@ -29,15 +29,10 @@ export default function Admin() {
   const [tab, setTab] = React.useState("overview");
   const [ov, setOv] = React.useState(null);
   const [users, setUsers] = React.useState([]);
-  const [puzzles, setPuzzles] = React.useState([]);
-  const [form, setForm] = React.useState(EMPTY);
-  const [msg, setMsg] = React.useState("");
-  const [err, setErr] = React.useState("");
 
   const reload = React.useCallback(() => {
     adminOverview().then(setOv).catch(() => {});
     adminUsers().then(setUsers).catch(() => {});
-    adminPuzzles().then(setPuzzles).catch(() => {});
   }, []);
 
   React.useEffect(() => {
@@ -53,28 +48,6 @@ export default function Admin() {
       alert(e.message);
     }
   }
-
-  async function delPuzzle(id) {
-    if (!window.confirm("删除该题目？")) return;
-    await adminDeletePuzzle(id);
-    reload();
-  }
-
-  async function addPuzzle(e) {
-    e.preventDefault();
-    setErr("");
-    setMsg("");
-    try {
-      await adminCreatePuzzle({ ...form, difficulty: Number(form.difficulty), mate_check: true });
-      setMsg("添加成功，已通过将死校验");
-      setForm(EMPTY);
-      reload();
-    } catch (e2) {
-      setErr(e2.message);
-    }
-  }
-
-  const change = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   return (
     <div className="admin">
@@ -141,58 +114,199 @@ export default function Admin() {
       </div>
       )}
 
-      {/* 题库：新增题目 + 题库列表 */}
-      {tab === "puzzles" && (
-      <>
-      <div className="panel">
-        <h3>新增战术题（单步杀法自动校验）</h3>
-        <form className="admin-form" onSubmit={addPuzzle}>
-          <input className="import-input" name="fen" placeholder="FEN，如 4k4/R8/8R/9/9/9/9/9/9/3K5"
-                 value={form.fen} onChange={change} />
-          <div className="import-row">
-            <input className="import-input" name="solution" placeholder="正解 UCI，如 i7i9（多步逗号分隔）"
-                   value={form.solution} onChange={change} />
-            <select className="import-input" name="side_to_move" value={form.side_to_move} onChange={change}>
-              <option value="w">红方走</option>
-              <option value="b">黑方走</option>
-            </select>
-          </div>
-          <div className="import-row">
-            <input className="import-input" name="category" placeholder="分类，如 双车错"
-                   value={form.category} onChange={change} />
-            <select className="import-input" name="difficulty" value={form.difficulty} onChange={change}>
-              {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>难度 {d}</option>)}
-            </select>
-          </div>
-          {err && <div className="import-error">{err}</div>}
-          {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
-          <button className="btn-import-submit" type="submit">添加题目</button>
-        </form>
+      {/* 题库管理 */}
+      {tab === "puzzles" && <PuzzlesPanel />}
+    </div>
+  );
+}
+
+const PUZZLE_PAGE = 20;
+
+function PuzzlesPanel() {
+  const [data, setData] = React.useState({ total: 0, categories: [], items: [] });
+  const [category, setCategory] = React.useState("");
+  const [difficulty, setDifficulty] = React.useState(0);
+  const [qInput, setQInput] = React.useState("");
+  const [q, setQ] = React.useState("");
+  const [offset, setOffset] = React.useState(0);
+  const [showAdd, setShowAdd] = React.useState(false);
+  const [form, setForm] = React.useState(EMPTY);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+
+  // 搜索防抖
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(qInput.trim());
+      setOffset(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [qInput]);
+
+  const load = React.useCallback(() => {
+    adminPuzzles({ limit: PUZZLE_PAGE, offset, category, difficulty, q })
+      .then(setData)
+      .catch(() => {});
+  }, [offset, category, difficulty, q]);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  async function delPuzzle(id) {
+    if (!window.confirm("删除该题目？")) return;
+    try {
+      await adminDeletePuzzle(id);
+      // 删掉本页最后一条时回到上一页，否则原地刷新
+      if (data.items.length === 1 && offset > 0) setOffset((o) => o - PUZZLE_PAGE);
+      else load();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function addPuzzle(e) {
+    e.preventDefault();
+    setErr("");
+    setMsg("");
+    try {
+      await adminCreatePuzzle({ ...form, difficulty: Number(form.difficulty), mate_check: true });
+      setMsg("添加成功，已通过将死校验");
+      setForm(EMPTY);
+      load();
+    } catch (e2) {
+      setErr(e2.message);
+    }
+  }
+
+  const change = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const page = Math.floor(offset / PUZZLE_PAGE) + 1;
+  const pages = Math.max(1, Math.ceil(data.total / PUZZLE_PAGE));
+  const filtered = category || difficulty || q;
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>题库（{data.total}）</h3>
+        <button
+          className="btn-import-submit"
+          onClick={() => { setShowAdd(true); setMsg(""); setErr(""); }}
+        >
+          ＋ 新增题目
+        </button>
       </div>
 
-      {/* 题库列表 */}
-      <div className="panel">
-        <h3>题库（{puzzles.length}）</h3>
-        <div className="admin-table-wrap"><table className="admin-table">
-          <thead>
-            <tr><th>ID</th><th>分类</th><th>难度</th><th>正解</th><th>校验</th><th></th></tr>
-          </thead>
-          <tbody>
-            {puzzles.map((p) => (
-              <tr key={p.id}>
-                <td>{p.id}</td>
-                <td>{p.category}</td>
-                <td>{"★".repeat(p.difficulty)}</td>
-                <td><code>{p.solution}</code></td>
-                <td>{p.verified ? "✓" : "—"}</td>
-                <td><button className="game-delete-btn" onClick={() => delPuzzle(p.id)}>×</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table></div>
-      </div>
-      </>
+      {showAdd && (
+        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="panel-head">
+              <h3 style={{ margin: 0 }}>新增战术题</h3>
+              <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
+            </div>
+            <p className="muted" style={{ marginTop: 0 }}>单步杀法会自动做将死校验。</p>
+            <form className="admin-form" onSubmit={addPuzzle}>
+              <input className="import-input" name="fen" placeholder="FEN，如 4k4/R8/8R/9/9/9/9/9/9/3K5"
+                     value={form.fen} onChange={change} />
+              <div className="import-row">
+                <input className="import-input" name="solution" placeholder="正解 UCI，如 i7i9（多步逗号分隔）"
+                       value={form.solution} onChange={change} />
+                <select className="import-input" name="side_to_move" value={form.side_to_move} onChange={change}>
+                  <option value="w">红方走</option>
+                  <option value="b">黑方走</option>
+                </select>
+              </div>
+              <div className="import-row">
+                <input className="import-input" name="category" placeholder="分类，如 双车错"
+                       value={form.category} onChange={change} />
+                <select className="import-input" name="difficulty" value={form.difficulty} onChange={change}>
+                  {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>难度 {d}</option>)}
+                </select>
+              </div>
+              {err && <div className="import-error">{err}</div>}
+              {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
+              <button className="btn-import-submit" type="submit">添加题目</button>
+            </form>
+          </div>
+        </div>
       )}
+
+      {/* 筛选工具栏 */}
+      <div className="puzzle-filter">
+        <input
+          className="import-input"
+          placeholder="搜索 ID / 分类 / 正解 / FEN"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+        />
+        <select
+          className="import-input"
+          value={category}
+          onChange={(e) => { setCategory(e.target.value); setOffset(0); }}
+        >
+          <option value="">全部分类</option>
+          {data.categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          className="import-input"
+          value={difficulty}
+          onChange={(e) => { setDifficulty(Number(e.target.value)); setOffset(0); }}
+        >
+          <option value={0}>全部难度</option>
+          {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>难度 {d}</option>)}
+        </select>
+        {filtered && (
+          <button
+            type="button"
+            className="game-delete-btn"
+            style={{ width: "auto", padding: "0 12px" }}
+            onClick={() => { setQInput(""); setQ(""); setCategory(""); setDifficulty(0); setOffset(0); }}
+          >
+            清除筛选
+          </button>
+        )}
+      </div>
+
+      <div className="admin-table-wrap"><table className="admin-table">
+        <thead>
+          <tr><th>ID</th><th>分类</th><th>难度</th><th>正解</th><th>来源</th><th>校验</th><th></th></tr>
+        </thead>
+        <tbody>
+          {data.items.map((p) => (
+            <tr key={p.id}>
+              <td>{p.id}</td>
+              <td>{p.category}</td>
+              <td>{"★".repeat(p.difficulty)}</td>
+              <td><code>{p.solution}</code></td>
+              <td>{p.source}</td>
+              <td>{p.verified ? "✓" : "—"}</td>
+              <td><button className="game-delete-btn" onClick={() => delPuzzle(p.id)}>×</button></td>
+            </tr>
+          ))}
+          {data.items.length === 0 && (
+            <tr><td colSpan={7} className="muted" style={{ textAlign: "center" }}>
+              {filtered ? "没有匹配的题目" : "题库为空"}
+            </td></tr>
+          )}
+        </tbody>
+      </table></div>
+
+      <div className="import-row" style={{ marginTop: 10, alignItems: "center" }}>
+        <button
+          className="btn-import-submit"
+          disabled={offset === 0}
+          onClick={() => setOffset((o) => Math.max(0, o - PUZZLE_PAGE))}
+        >
+          上一页
+        </button>
+        <span className="muted" style={{ fontSize: 13 }}>第 {page} / {pages} 页</span>
+        <button
+          className="btn-import-submit"
+          disabled={offset + PUZZLE_PAGE >= data.total}
+          onClick={() => setOffset((o) => o + PUZZLE_PAGE)}
+        >
+          下一页
+        </button>
+      </div>
     </div>
   );
 }
@@ -313,7 +427,16 @@ function EnginePanel() {
           ))}
         </select>
         <button className="btn-import-submit" disabled={busy} onClick={install}>
-          {busy ? "安装中…" : st.installed ? "更新到最新版" : "下载并安装"}
+          {busy ? (
+            <>
+              <span className="btn-spinner" />
+              安装中
+            </>
+          ) : st.installed ? (
+            "更新到最新版"
+          ) : (
+            "下载并安装"
+          )}
         </button>
         {st.installed && (
           <button

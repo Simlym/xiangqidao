@@ -79,12 +79,44 @@ def _ensure_columns() -> None:
             )
 
 
+def _migrate_reviews_unique() -> None:
+    """旧库 reviews.puzzle_id 为单列 UNIQUE，多用户对同一题各自建复习记录会冲突；
+    重建表迁移为 (puzzle_id, user_id) 联合唯一。SQLite 无法删除列内联约束，只能重建。"""
+    if not DB_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        indexes = conn.execute(text("PRAGMA index_list('reviews')")).fetchall()
+        # 行结构: (seq, name, unique, origin, partial)
+        needs_rebuild = False
+        for _, name, unique, *_ in indexes:
+            if not unique:
+                continue
+            cols = [r[2] for r in conn.execute(text(f"PRAGMA index_info('{name}')"))]
+            if cols == ["puzzle_id"]:
+                needs_rebuild = True
+                break
+        if not needs_rebuild:
+            return
+        # 先删命名索引（重命名表不改索引名，否则与新表索引冲突）；自动索引随表删除
+        for _, name, *_ in indexes:
+            if not name.startswith("sqlite_autoindex"):
+                conn.execute(text(f"DROP INDEX {name}"))
+        conn.execute(text("ALTER TABLE reviews RENAME TO reviews_old"))
+        Base.metadata.tables["reviews"].create(bind=conn)
+        cols_sql = "id, puzzle_id, user_id, repetitions, interval, ease_factor, next_review, created_at"
+        conn.execute(
+            text(f"INSERT INTO reviews ({cols_sql}) SELECT {cols_sql} FROM reviews_old")
+        )
+        conn.execute(text("DROP TABLE reviews_old"))
+
+
 def init_db() -> None:
     # 导入 models 以确保所有表都已注册到 Base.metadata
     from . import models  # noqa: F401
 
     Base.metadata.create_all(engine)
     _ensure_columns()
+    _migrate_reviews_unique()
 
 
 @contextmanager

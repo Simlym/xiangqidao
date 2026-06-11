@@ -11,8 +11,9 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 # 持久化配置集中在 database 模块；此处再导出以保持既有导入路径可用
 from .database import Base, SessionLocal, engine, init_db  # noqa: F401
@@ -61,16 +62,15 @@ class Puzzle(Base):
     # LLM 生成的解题讲解缓存：同一道题只调用一次大模型，之后直接复用
     ai_explanation: Mapped[str] = mapped_column(Text, default="")
 
-    review: Mapped["Review | None"] = relationship(back_populates="puzzle", uselist=False)
-
 
 class Review(Base):
-    """SM-2 复习状态（每题一行）。"""
+    """SM-2 复习状态（每用户每题一行）。"""
 
     __tablename__ = "reviews"
+    __table_args__ = (UniqueConstraint("puzzle_id", "user_id", name="uq_reviews_puzzle_user"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    puzzle_id: Mapped[int] = mapped_column(ForeignKey("puzzles.id"), unique=True)
+    puzzle_id: Mapped[int] = mapped_column(ForeignKey("puzzles.id"))
     user_id: Mapped[str] = mapped_column(String(40), default="default", index=True)
 
     repetitions: Mapped[int] = mapped_column(Integer, default=0)
@@ -78,8 +78,6 @@ class Review(Base):
     ease_factor: Mapped[float] = mapped_column(Float, default=2.5)
     next_review: Mapped[date] = mapped_column(Date, default=date.today, index=True)
     created_at: Mapped[date] = mapped_column(Date, default=date.today, index=True)  # 首次学习日，用于每日新题上限
-
-    puzzle: Mapped[Puzzle] = relationship(back_populates="review")
 
 
 class Attempt(Base):

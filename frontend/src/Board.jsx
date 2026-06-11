@@ -53,9 +53,18 @@ const MARKS = positionMarks();
 
 // 点击式走子：先点起点，再点终点，回调 onMove(uciMove)。
 // 传入 legalMoves（UCI 数组）时，限制只能走合法着法并提示落点。
-export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
+// 传入 hintMove（UCI）时，用虚线圈标出推荐着法的起点与落点。
+// 传入 flipped 时翻转视角（黑方在下），只变换显示坐标，棋盘数据与方格名不变。
+export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped }) {
   const board = parseFen(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
+
+  // 显示坐标变换：翻转时上下左右同时镜像（相当于把棋盘旋转 180°）
+  const dCol = (col) => (flipped ? COLS - 1 - col : col);
+  const dRow = (row) => (flipped ? ROWS - 1 - row : row);
+  // 坐标条：红方用汉字、黑方用数字；谁在下方谁的标签放底部
+  const topLabels = flipped ? [...BOTTOM_LABELS].reverse() : TOP_LABELS;
+  const bottomLabels = flipped ? [...TOP_LABELS].reverse() : BOTTOM_LABELS;
 
   // 自适应缩放：按容器宽度等比缩放整块棋盘（保留内部固定像素坐标）。
   // 窄屏缩小、宽屏（PC）适当放大，最高 MAX_SCALE 倍。
@@ -115,6 +124,9 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   // 高亮：选中起点 & 上一步
   const lastFrom = lastMove ? lastMove.slice(0, 2) : null;
   const lastTo = lastMove ? lastMove.slice(2, 4) : null;
+  // 推荐着法（提示）起点与落点
+  const hintFrom = hintMove ? hintMove.slice(0, 2) : null;
+  const hintTo = hintMove ? hintMove.slice(2, 4) : null;
 
   // 走子动画：落点棋子从起点滑入。计算起点相对终点的像素偏移。
   const sqToRC = (sq) => ({ col: "abcdefghi".indexOf(sq[0]), row: 9 - Number(sq[1]) });
@@ -122,7 +134,10 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
   if (lastFrom && lastTo) {
     const f = sqToRC(lastFrom);
     const t = sqToRC(lastTo);
-    slide = { dx: px(f.col) - px(t.col), dy: py(f.row) - py(t.row) };
+    slide = {
+      dx: px(dCol(f.col)) - px(dCol(t.col)),
+      dy: py(dRow(f.row)) - py(dRow(t.row)),
+    };
   }
   // 上一步是谁走的：看终点格棋子颜色，红方/黑方用不同高亮色。
   const lastToRC = lastTo ? sqToRC(lastTo) : null;
@@ -137,8 +152,8 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
       style={{ width: SW, height: TOTAL_H, transform: `scale(${scale})`, transformOrigin: "top left" }}
     >
       <div className="xq-coords">
-        {TOP_LABELS.map((t, c) => (
-          <span key={`tl${c}`} style={{ left: px(c) }}>{t}</span>
+        {topLabels.map((t, c) => (
+          <span key={`tl${c}`} className={flipped ? "red" : ""} style={{ left: px(c) }}>{t}</span>
         ))}
       </div>
     <div className="xq-board" style={{ width: SW, height: SH }}>
@@ -185,12 +200,13 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
               <div
                 key={`${row}-${col}`}
                 className="xq-point"
-                style={{ left: px(col), top: py(row) }}
+                style={{ left: px(dCol(col)), top: py(dRow(row)) }}
                 onClick={() => handleClick(row, col)}
               >
                 {highlight && (
                   <span className={"xq-mark-last " + markSide} />
                 )}
+                {(sq === hintFrom || sq === hintTo) && <span className="xq-mark-hint" />}
                 {isTarget && <span className={"xq-dot" + (cell ? " capture" : "")} />}
                 {cell && (
                   <span
@@ -217,8 +233,8 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves }) {
       </div>
     </div>
       <div className="xq-coords">
-        {BOTTOM_LABELS.map((t, c) => (
-          <span key={`bl${c}`} className="red" style={{ left: px(c) }}>{t}</span>
+        {bottomLabels.map((t, c) => (
+          <span key={`bl${c}`} className={flipped ? "" : "red"} style={{ left: px(c) }}>{t}</span>
         ))}
       </div>
     </div>

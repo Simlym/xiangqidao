@@ -98,8 +98,9 @@ export const coachHintMove = (fen, move) =>
 export const adminOverview = () => req("/admin/overview");
 export const adminUsers = () => req("/admin/users");
 export const adminDeleteUser = (id) => req(`/admin/users/${id}`, { method: "DELETE" });
-export const adminPuzzles = (limit = 100, offset = 0) =>
-  req(`/admin/puzzles?limit=${limit}&offset=${offset}`);
+export const adminPuzzles = ({ limit = 20, offset = 0, category = "", difficulty = 0, q = "" } = {}) =>
+  req(`/admin/puzzles?limit=${limit}&offset=${offset}&difficulty=${difficulty}` +
+      `&category=${encodeURIComponent(category)}&q=${encodeURIComponent(q)}`);
 export const adminCreatePuzzle = (payload) => req("/admin/puzzles", { method: "POST", body: payload });
 export const adminDeletePuzzle = (id) => req(`/admin/puzzles/${id}`, { method: "DELETE" });
 export const adminGetEngine = () => req("/admin/engine");

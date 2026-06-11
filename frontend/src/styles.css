@@ -64,6 +64,22 @@ header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webk
 .admin-table code { font-size: 12px; }
 .admin-form { display: flex; flex-direction: column; gap: 10px; }
 .admin h3 { margin: 0 0 12px; color: #8a5a2b; }
+
+/* 题库管理：标题行 + 筛选栏 + 折叠的新增表单 */
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.panel-head h3 { margin: 0; }
+.puzzle-filter { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.puzzle-filter input.import-input { flex: 1 1 180px; width: auto; }
+.puzzle-filter select.import-input { flex: 0 0 auto; width: auto; }
+.modal-wide { width: min(460px, calc(100vw - 32px)); }
+.modal-close {
+  border: none; background: transparent; color: #aaa;
+  font-size: 22px; line-height: 1; padding: 2px 6px; cursor: pointer;
+}
+.modal-close:hover { color: #666; }
 nav button {
   border: none; background: transparent; font-size: 15px; padding: 7px 10px;
   cursor: pointer; border-radius: 8px; color: #555; white-space: nowrap; flex-shrink: 0;
@@ -220,6 +236,18 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .xq-piece.selected {
   box-shadow: 0 0 0 3px rgba(255, 200, 0, .9), 0 1px 3px rgba(0, 0, 0, .35);
 }
+/* 提示着法：虚线圈呼吸标出推荐着法的起点与落点 */
+.xq-mark-hint {
+  position: absolute;
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2.5px dashed rgba(230, 160, 30, .95);
+  pointer-events: none;
+  animation: xq-hint-pulse 1.2s ease-in-out infinite;
+}
+@keyframes xq-hint-pulse {
+  0%, 100% { transform: scale(1); opacity: .95; }
+  50%      { transform: scale(1.1); opacity: .55; }
+}
 /* 合法落点提示 */
 .xq-dot {
   position: absolute;
@@ -305,20 +333,84 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .book-move-score.neg { color: #555; }
 .book-move-rate { font-size: 12px; color: #888; font-variant-numeric: tabular-nums; }
 
-/* 对弈棋谱（中文着法，红黑成对） */
-.move-log { padding: 10px 14px; }
+/* 对弈主区：PC 上棋盘居左、棋谱右侧伴随显示（移动端见底部媒体查询） */
+.play-main { display: flex; gap: 14px; align-items: flex-start; }
+.play-board-area { position: relative; flex: 1; min-width: 0; }
+
+/* 对局结束：结果面板覆盖在棋盘中央，不必滚到页面底部 */
+.play-over {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px; pointer-events: none;
+}
+.play-over .panel {
+  pointer-events: auto; position: relative; margin: 0;
+  width: 100%; max-width: 360px;
+  background: rgba(255, 255, 255, .96);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, .3);
+  animation: overlay-rise .18s ease-out;
+}
+/* 高优先级盖过 `.result button` 的通用实心按钮样式 */
+.result button.play-over-close {
+  position: absolute; top: 2px; right: 4px; margin: 0;
+  border: none; background: transparent; color: #aaa;
+  font-size: 22px; line-height: 1; padding: 4px 8px; cursor: pointer;
+}
+.result button.play-over-close:hover { color: #555; background: transparent; }
+
+/* 对弈棋谱（中文着法，红黑成对）：PC 上为右侧竖排栏 */
+.play-main .move-log {
+  width: 224px; flex-shrink: 0; margin: 0;
+  padding: 10px 14px;
+}
 .move-log-head {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 14px; margin-bottom: 6px;
 }
 .move-log-list {
   list-style: none; margin: 0; padding: 0;
-  display: flex; flex-wrap: wrap; gap: 4px 18px;
-  max-height: 132px; overflow-y: auto;
+  display: flex; flex-direction: column; flex-wrap: nowrap; gap: 4px;
+  max-height: 560px; overflow-y: auto;
   font-size: 13px;
 }
 .move-log-list li { display: flex; gap: 8px; min-width: 150px; }
 .move-log-no { color: #999; min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+.move-log-cell { display: inline-flex; align-items: baseline; gap: 4px; min-width: 64px; }
+/* 每步用时（紧跟着法的小字） */
+.move-time {
+  font-style: normal; font-size: 11px; color: #b3a78e;
+  font-variant-numeric: tabular-nums;
+}
+/* 最新一着高亮 */
+.move-log-list .latest {
+  background: #efe6d6; color: #6b4a2b; font-weight: 600;
+  border-radius: 4px; padding: 0 4px;
+}
+
+/* 被吃子展示：棋盘下方的双方失子条 */
+.captured-bar {
+  padding: 8px 12px; margin: 12px 0 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.captured-row {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  min-height: 24px;
+}
+.captured-label { font-size: 12px; color: #999; margin-right: 4px; flex-shrink: 0; }
+.captured-piece {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700;
+  background: radial-gradient(circle at 35% 28%, #fffefb 0%, #f6ead0 55%, #e7d2a4 100%);
+  border: 1px solid #b9925a;
+  font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
+  user-select: none;
+}
+.captured-piece.red { color: #c0392b; }
+.captured-piece.black { color: #1a1a1a; }
+.captured-diff { margin-left: auto; font-size: 12px; color: #285f96; font-weight: 600; }
+.captured-diff.red { color: #c0392b; }
 
 /* 战术训练：结果/自评面板直接覆盖在棋面下方，免去上下滑动找按钮 */
 .trainer-board-area { position: relative; }
@@ -449,6 +541,14 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   .btn-newgame, .btn-link { padding: 8px 14px; }
   .play-actions { gap: 6px; }
   .play-actions .btn-newgame { flex: 1; min-width: 0; padding: 8px 6px; }
+
+  /* 对弈区回到上下堆叠：棋盘在上、棋谱横排在下 */
+  .play-main { flex-direction: column; gap: 0; }
+  .play-main .move-log { width: 100%; margin: 12px 0; }
+  .move-log-list {
+    flex-direction: row; flex-wrap: wrap; gap: 4px 18px;
+    max-height: 132px;
+  }
 }
 
 /* ===== 棋局复盘 ===== */
@@ -608,15 +708,34 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 }
 
 .btn-import-submit {
-  padding: 8px;
+  padding: 8px 12px;
   background: #27ae60;
   color: #fff;
   border: none;
   border-radius: 8px;
   font-size: 13px;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 .btn-import-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+.btn-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, .35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: btn-spin .8s linear infinite;
+}
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
 
 /* Right panel */
 .games-review-panel {

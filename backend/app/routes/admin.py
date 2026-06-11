@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin
@@ -39,6 +39,12 @@ class AdminPuzzle(BaseModel):
     steps: int
     source: str
     verified: bool
+
+
+class AdminPuzzleList(BaseModel):
+    total: int
+    categories: list[str]
+    items: list[AdminPuzzle]
 
 
 class NewPuzzle(BaseModel):
@@ -104,12 +110,33 @@ def delete_user(user_id: int, request: Request, db: Session = Depends(get_db),
     return {"ok": True}
 
 
-@router.get("/puzzles", response_model=list[AdminPuzzle])
-def list_puzzles(limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+@router.get("/puzzles", response_model=AdminPuzzleList)
+def list_puzzles(limit: int = 20, offset: int = 0, category: str = "",
+                 difficulty: int = 0, q: str = "", db: Session = Depends(get_db)):
+    query = select(Puzzle)
+    if category:
+        query = query.where(Puzzle.category == category)
+    if difficulty:
+        query = query.where(Puzzle.difficulty == difficulty)
+    if q:
+        like = f"%{q}%"
+        conds = [Puzzle.solution.like(like), Puzzle.fen.like(like), Puzzle.category.like(like)]
+        if q.isdigit():
+            conds.append(Puzzle.id == int(q))
+        query = query.where(or_(*conds))
+
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     puzzles = db.scalars(
-        select(Puzzle).order_by(Puzzle.id.desc()).offset(offset).limit(limit)
+        query.order_by(Puzzle.id.desc()).offset(offset).limit(limit)
     ).all()
-    return [_admin_puzzle(p) for p in puzzles]
+    categories = db.scalars(
+        select(Puzzle.category).distinct().order_by(Puzzle.category)
+    ).all()
+    return AdminPuzzleList(
+        total=total,
+        categories=[c for c in categories if c],
+        items=[_admin_puzzle(p) for p in puzzles],
+    )
 
 
 @router.post("/puzzles", response_model=AdminPuzzle)
