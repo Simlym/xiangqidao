@@ -208,6 +208,14 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
         # 全部走法分析完成后，汇总失误生成 LLM 综合复盘报告
         _generate_report(db, game_id)
 
+        # 据本局新数据（失误画像/新生成的漏算题）刷新 AI 教练训练计划
+        try:
+            from ..coach import generate_plan
+
+            generate_plan(db, owner, trigger=f"game:{game_id}")
+        except Exception:
+            db.rollback()  # 计划生成失败不影响已落库的分析结果
+
         # 共享引擎进程跨棋局复用，分析结束不再 close()
     except Exception:
         db.rollback()

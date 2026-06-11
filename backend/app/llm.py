@@ -98,6 +98,49 @@ def coach_move(
     return _chat(prompt, max_tokens=200, timeout=30)
 
 
+def write_coach_plan(profile: dict, recommendations: list[dict]) -> str:
+    """据用户画像写个性化训练计划叙述（中文）。未配置 key 时返回空串。
+
+    画像与建议均为规则引擎产出的事实，LLM 只做「教练口吻」的解读与编排。
+    """
+    weak = profile.get("weak_categories") or []
+    weak_line = (
+        "、".join(f"{w['category']}（正确率{round(w['accuracy'] * 100)}%）" for w in weak)
+        if weak
+        else "暂未发现明显弱点类目"
+    )
+    games = profile.get("recent_games") or []
+    if games:
+        blunders = sum(g["blunders"] for g in games)
+        mistakes = sum(g["mistakes"] for g in games)
+        games_line = f"已复盘 {len(games)} 局，共检出 {blunders} 处严重失误、{mistakes} 处一般失误"
+    else:
+        games_line = "近期暂无已复盘的对局"
+
+    def _pct(v):
+        return f"{round(v * 100)}%" if v is not None else "暂无数据"
+
+    rec_lines = "\n".join(f"{i + 1}. {r['reason']}" for i, r in enumerate(recommendations))
+
+    prompt = f"""你是资深象棋教练，请基于学员档案写一份个性化训练计划（中文，220字以内）。
+
+学员档案：
+- 当前评分：{profile.get('rating')}（{profile.get('title')}），历史最高 {profile.get('peak')}，已结算 {profile.get('solved')} 题
+- 首答正确率：总体 {_pct(profile.get('first_try_accuracy'))}，最近20题 {_pct(profile.get('recent20_first_try_accuracy'))}
+- 弱点类目：{weak_line}
+- 近期对局：{games_line}
+- 今日到期复习 {profile.get('due_today')} 题；待练实战漏算题 {profile.get('pending_blunder_puzzles')} 道
+
+系统给出的训练安排（已按优先级排序）：
+{rec_lines}
+
+请分三部分：① 水平评估（一两句，点明现在大概什么水平、最近状态如何）；
+② 主要短板与棋理成因（如计算深度、子力协调、杀法熟练度）；
+③ 本阶段训练安排（结合上面系统建议给出执行顺序与目标）。最后一句简短鼓励。
+口吻像面对面指导的老师，具体、可执行，不要空话，不要列举数字以外的坐标。"""
+    return _chat(prompt, max_tokens=500, timeout=30)
+
+
 def explain_mistake(
     fen: str,
     move_played: str,      # UCI，如 "h2e2"

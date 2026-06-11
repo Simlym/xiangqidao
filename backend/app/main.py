@@ -15,6 +15,7 @@ from .routes import (
     analysis,
     auth,
     challenge,
+    coach,
     engine_admin,
     games,
     play,
@@ -54,6 +55,7 @@ app.include_router(engine_admin.router)
 app.include_router(training.router)
 app.include_router(challenge.router)
 app.include_router(stats.router)
+app.include_router(coach.router)
 app.include_router(play.router)
 # analysis 必须在 games 前注册：/games/{id}/analyze 否则被 games 的 DELETE /{id} 拦截
 app.include_router(analysis.router)
