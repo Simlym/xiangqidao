@@ -102,6 +102,12 @@ export const coachHintMove = (fen, move) =>
 export const adminOverview = () => req("/admin/overview");
 export const adminUsers = () => req("/admin/users");
 export const adminDeleteUser = (id) => req(`/admin/users/${id}`, { method: "DELETE" });
+export const adminUserCredits = (username, limit = 50) =>
+  req(`/admin/credits/${encodeURIComponent(username)}?limit=${limit}`);
+export const adminAdjustCredits = (username, delta, reason = "") =>
+  req(`/admin/credits/${encodeURIComponent(username)}/adjust`, {
+    method: "POST", body: { delta, reason },
+  });
 export const adminPuzzles = ({ limit = 20, offset = 0, category = "", difficulty = 0, q = "" } = {}) =>
   req(`/admin/puzzles?limit=${limit}&offset=${offset}&difficulty=${difficulty}` +
       `&category=${encodeURIComponent(category)}&q=${encodeURIComponent(q)}`);

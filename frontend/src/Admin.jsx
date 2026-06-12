@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  adminAdjustCredits,
   adminCreatePuzzle,
   adminDeletePuzzle,
   adminDeleteUser,
@@ -12,6 +13,7 @@ import {
   adminRemoveEngine,
   adminTestLlmSettings,
   adminUpdateLlmSettings,
+  adminUserCredits,
   adminUsers,
 } from "./api";
 
@@ -25,10 +27,15 @@ const TABS = [
   { key: "logs", label: "日志" },
 ];
 
+// 后端时间戳为 UTC（无时区后缀），补 Z 再转本地时间显示
+const fmtDay = (s) => (s ? new Date(s + "Z").toLocaleDateString() : "—");
+const fmtTime = (s) => (s ? new Date(s + "Z").toLocaleString() : "—");
+
 export default function Admin() {
   const [tab, setTab] = React.useState("overview");
   const [ov, setOv] = React.useState(null);
   const [users, setUsers] = React.useState([]);
+  const [creditUser, setCreditUser] = React.useState(null); // 正在查看积分详情的用户名
 
   const reload = React.useCallback(() => {
     adminOverview().then(setOv).catch(() => {});
@@ -92,9 +99,15 @@ export default function Admin() {
       {tab === "users" && (
       <div className="panel">
         <h3>用户管理</h3>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+          点击「积分」数值可查看流水并手工调整（补偿 / 纠错）。
+        </p>
         <div className="admin-table-wrap"><table className="admin-table">
           <thead>
-            <tr><th>ID</th><th>用户名</th><th>角色</th><th>作答</th><th>已学</th><th></th></tr>
+            <tr>
+              <th>ID</th><th>用户名</th><th>角色</th><th>注册</th><th>最近登录</th>
+              <th>做题ELO</th><th>作答</th><th>已学</th><th>对弈</th><th>连签</th><th>积分</th><th></th>
+            </tr>
           </thead>
           <tbody>
             {users.map((u) => (
@@ -102,8 +115,22 @@ export default function Admin() {
                 <td>{u.id}</td>
                 <td>{u.username}</td>
                 <td>{u.role === "admin" ? <span className="tag">管理员</span> : "用户"}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{fmtDay(u.created_at)}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{fmtTime(u.last_login)}</td>
+                <td>{u.rating ?? "—"}</td>
                 <td>{u.attempts}</td>
                 <td>{u.learned}</td>
+                <td>{u.games}</td>
+                <td>{u.checkin_streak || "—"}</td>
+                <td>
+                  <button
+                    className="btn-import-submit"
+                    style={{ padding: "2px 10px" }}
+                    onClick={() => setCreditUser(u.username)}
+                  >
+                    {u.credits}
+                  </button>
+                </td>
                 <td>
                   <button className="game-delete-btn" onClick={() => delUser(u.id)}>×</button>
                 </td>
@@ -111,11 +138,128 @@ export default function Admin() {
             ))}
           </tbody>
         </table></div>
+        {creditUser && (
+          <CreditsModal
+            username={creditUser}
+            onClose={() => setCreditUser(null)}
+            onChanged={reload}
+          />
+        )}
       </div>
       )}
 
       {/* 题库管理 */}
       {tab === "puzzles" && <PuzzlesPanel />}
+    </div>
+  );
+}
+
+// 积分流水 kind → 中文标签
+function kindLabel(kind) {
+  const MAP = {
+    "grant:signup": "注册赠送",
+    "admin:adjust": "管理员调整",
+    "earn:checkin": "签到",
+    "earn:game": "对弈奖励",
+    "earn:puzzle": "做题奖励",
+  };
+  if (MAP[kind]) return MAP[kind];
+  if (kind.startsWith("spend:")) return "消耗";
+  if (kind.startsWith("refund:")) return "退回";
+  return kind;
+}
+
+function CreditsModal({ username, onClose, onChanged }) {
+  const [data, setData] = React.useState(null);
+  const [delta, setDelta] = React.useState("");
+  const [reason, setReason] = React.useState("");
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(() => {
+    adminUserCredits(username).then(setData).catch((e) => setErr(e.message));
+  }, [username]);
+
+  async function adjust(e) {
+    e.preventDefault();
+    setErr("");
+    setMsg("");
+    const d = Number(delta);
+    if (!Number.isInteger(d) || d === 0) {
+      setErr("请输入非 0 整数，负数为扣减");
+      return;
+    }
+    try {
+      const next = await adminAdjustCredits(username, d, reason.trim());
+      setData(next);
+      setDelta("");
+      setReason("");
+      setMsg(`已调整 ${d > 0 ? "+" : ""}${d}，当前余额 ${next.balance}`);
+      onChanged?.(); // 刷新用户列表里的余额
+    } catch (e2) {
+      setErr(e2.message);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+        <div className="panel-head">
+          <h3 style={{ margin: 0 }}>积分 · {username}</h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        {data && (
+          <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+            余额 <b>{data.balance}</b> ・ 累计获取 {data.total_earned}
+            ・ 连签 {data.checkin_streak} 天
+            {data.last_checkin ? ` ・ 最近签到 ${data.last_checkin}` : ""}
+          </p>
+        )}
+
+        <form className="import-row" onSubmit={adjust} style={{ alignItems: "center" }}>
+          <input
+            className="import-input"
+            style={{ maxWidth: 120 }}
+            placeholder="如 100 / -50"
+            value={delta}
+            onChange={(e) => setDelta(e.target.value)}
+          />
+          <input
+            className="import-input"
+            placeholder="原因（计入审计日志）"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <button className="btn-import-submit" type="submit">调整</button>
+        </form>
+        {err && <div className="import-error">{err}</div>}
+        {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
+
+        <div className="admin-table-wrap" style={{ maxHeight: 320, overflowY: "auto" }}>
+          <table className="admin-table">
+            <thead>
+              <tr><th>时间</th><th>类型</th><th>变动</th><th>余额</th><th>备注</th></tr>
+            </thead>
+            <tbody>
+              {(data?.logs || []).map((r, i) => (
+                <tr key={i}>
+                  <td style={{ whiteSpace: "nowrap" }}>{r.ts}</td>
+                  <td>{kindLabel(r.kind)}</td>
+                  <td style={{ color: r.amount >= 0 ? "#27ae60" : "#c0392b" }}>
+                    {r.amount > 0 ? `+${r.amount}` : r.amount}
+                  </td>
+                  <td>{r.balance_after}</td>
+                  <td>{r.ref || "—"}</td>
+                </tr>
+              ))}
+              {data && data.logs.length === 0 && (
+                <tr><td colSpan={5} className="muted" style={{ textAlign: "center" }}>暂无流水</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

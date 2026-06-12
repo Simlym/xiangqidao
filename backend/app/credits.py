@@ -12,7 +12,9 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+import os
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -50,6 +52,20 @@ DEFAULT_COST = {
 }
 
 _MIN_GAME_MOVES = 12  # 少于此手数的对局不计对弈奖励，防止空局刷分
+
+# 签到与每日上限的「一天」按此时区切换，而非服务器本地时区。
+# 目标用户群在国内，默认北京时间；部署在 UTC 服务器时若不设置，
+# 日期会在北京时间早 8 点才切换，签到与连签判定都会错乱。
+DEFAULT_TZ = "Asia/Shanghai"
+
+
+def _today() -> date:
+    """积分体系的「今天」：按 XQ_TZ（默认 Asia/Shanghai）取日期。"""
+    name = os.environ.get("XQ_TZ", DEFAULT_TZ).strip() or DEFAULT_TZ
+    try:
+        return datetime.now(ZoneInfo(name)).date()
+    except Exception:  # 时区名无效或系统缺 tzdata 时退回服务器本地日期
+        return date.today()
 
 
 # ── 配置读取（AppSetting 覆盖默认值）────────────────────────────
@@ -117,7 +133,7 @@ def _log(db: Session, acc: CreditAccount, kind: str, amount: int, ref: str) -> N
             amount=amount,
             balance_after=acc.balance,
             ref=ref,
-            day=date.today(),
+            day=_today(),
         )
     )
 
@@ -127,15 +143,24 @@ def _earned_today(db: Session, user_id: str, action: str) -> int:
         select(func.coalesce(func.sum(CreditLog.amount), 0)).where(
             CreditLog.user_id == user_id,
             CreditLog.kind == f"earn:{action}",
-            CreditLog.day == date.today(),
+            CreditLog.day == _today(),
         )
     )
     return int(total or 0)
 
 
 def grant_signup(db: Session, user_id: str) -> int:
-    """注册赠送初始积分。仅在账户尚无任何流水时发放，避免重复。"""
+    """注册赠送初始积分。同一 user_id 仅发放一次（按 grant:signup 流水判重），
+    防止删号重注、重复调用等场景反复领取。"""
     if not _is_member(user_id):
+        return 0
+    granted = db.scalar(
+        select(func.count()).select_from(CreditLog).where(
+            CreditLog.user_id == user_id,
+            CreditLog.kind == "grant:signup",
+        )
+    )
+    if granted:
         return 0
     acc = get_account(db, user_id)
     amount = _int_setting(db, "credit_signup_grant", DEFAULT_SIGNUP_GRANT)
@@ -184,6 +209,27 @@ def refund(db: Session, user_id: str, action: str, ref: str = "") -> None:
     db.commit()
 
 
+def admin_adjust(db: Session, user_id: str, delta: int, reason: str = "") -> int:
+    """管理员手工调整（补偿 / 纠错 / 活动发放）。返回实际变动数。
+
+    扣减不会把余额扣成负数（按余额封底）；流水 kind 为 'admin:adjust'，
+    ref 记录原因，审计日志由调用方（admin 路由）负责。
+    """
+    if not _is_member(user_id):
+        return 0
+    acc = get_account(db, user_id)
+    actual = max(delta, -acc.balance)  # 最多扣到 0
+    if actual == 0:
+        return 0
+    acc.balance += actual
+    if actual > 0:
+        acc.total_earned += actual
+    acc.updated_at = datetime.utcnow()
+    _log(db, acc, "admin:adjust", actual, reason[:80])
+    db.commit()
+    return actual
+
+
 def earn(db: Session, user_id: str, action: str, ref: str = "") -> int:
     """因正向行为（对弈 / 做题）入账积分，遵守每日上限。返回实际入账数。"""
     if not _is_member(user_id):
@@ -221,12 +267,12 @@ def checkin(db: Session, user_id: str) -> dict:
     if not _is_member(user_id):
         return {"already": False, "awarded": 0, "balance": 0, "streak": 0}
     acc = get_account(db, user_id)
-    today = date.today()
+    today = _today()
     if acc.last_checkin == today:
         return {"already": True, "awarded": 0, "balance": acc.balance, "streak": acc.checkin_streak}
 
     # 连签判定：昨天签过则 +1，否则重置为 1
-    if acc.last_checkin == today.fromordinal(today.toordinal() - 1):
+    if acc.last_checkin == today - timedelta(days=1):
         acc.checkin_streak += 1
     else:
         acc.checkin_streak = 1
@@ -249,7 +295,7 @@ def checkin(db: Session, user_id: str) -> dict:
 def summary(db: Session, user_id: str) -> dict:
     """账户概览，供前端展示余额、签到状态与价目表。"""
     acc = db.get(CreditAccount, user_id) if _is_member(user_id) else None
-    today = date.today()
+    today = _today()
     return {
         "balance": acc.balance if acc else 0,
         "total_earned": acc.total_earned if acc else 0,
