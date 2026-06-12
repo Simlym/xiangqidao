@@ -400,6 +400,18 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     }
   }
 
+  // 认输：按引擎获胜结束本局，正常走存盘/分析闭环
+  function resign() {
+    if (over || thinking) return;
+    if (!window.confirm("确定认输本局吗？")) return;
+    setOver({ winner: "engine", status: "resigned" });
+    setOverDismissed(false);
+    setLegalMoves([]);
+    setYourTurn(false);
+    playSound("lose");
+    recordGame("engine");
+  }
+
   function undo() {
     if (thinking || history.current.length === 0) return;
     const snap = history.current.pop();
@@ -492,6 +504,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const winnerText = over
     ? over.winner === "human"
       ? "🎉 你赢了！"
+      : over.status === "resigned"
+      ? "你认输了，下盘再战"
       : over.winner === "engine"
       ? "引擎获胜，再接再厉"
       : "和棋"
@@ -567,6 +581,15 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             {muted
               ? "🔇 静音"
               : `🔊 ${SOUND_THEMES.find((t) => t.key === soundKey)?.label || ""}`}
+          </button>
+          <button
+            className="btn-newgame"
+            onClick={resign}
+            disabled={!!over || thinking}
+            style={{ opacity: over || thinking ? 0.5 : 1 }}
+            title="放弃本局，判引擎获胜"
+          >
+            认输
           </button>
           {over && overDismissed && (
             <button className="btn-newgame" onClick={() => setOverDismissed(false)}>
