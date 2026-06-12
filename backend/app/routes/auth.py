@@ -1,6 +1,7 @@
 """鉴权接口：注册 / 登录 / 当前用户。"""
 
 import os
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -68,6 +69,8 @@ def login(request: Request, body: Credentials, db: Session = Depends(get_db)):
     if not user or not verify_password(body.password, user.password_hash):
         login_failed(request, username, db=db)
         raise HTTPException(401, "用户名或密码错误")
+    user.last_login = datetime.utcnow()  # 供管理后台查看用户活跃情况
+    db.commit()
     return AuthResponse(token=make_token(user.username), username=user.username, role=user.role)
 
 

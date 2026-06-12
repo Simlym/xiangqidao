@@ -5,9 +5,20 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from .. import credits
 from ..auth import require_admin
 from ..deps import get_db
-from ..models import Attempt, Game, Puzzle, Review, SecurityLog, User
+from ..models import (
+    Attempt,
+    CreditAccount,
+    CreditLog,
+    Game,
+    Puzzle,
+    Review,
+    SecurityLog,
+    User,
+    UserStat,
+)
 from ..security_log import admin_action
 from ..settings import (
     KEY_DEEPSEEK_API_KEY,
@@ -24,8 +35,14 @@ class AdminUser(BaseModel):
     id: int
     username: str
     role: str
-    attempts: int
-    learned: int
+    created_at: str          # 注册时间（UTC ISO）
+    last_login: str          # 最近登录（UTC ISO），从未登录为空串
+    attempts: int            # 练习：作答次数
+    learned: int             # 练习：已学题数
+    games: int               # 对弈/复盘：棋局数
+    rating: int | None       # 做题 ELO（无档案为 None）
+    credits: int             # 积分余额
+    checkin_streak: int      # 连续签到天数
 
 
 class AdminPuzzle(BaseModel):
@@ -77,19 +94,39 @@ def overview(db: Session = Depends(get_db)):
     }
 
 
+def _count_by_user(db: Session, model) -> dict[str, int]:
+    """按 user_id 一次聚合计数，避免对每个用户逐条查询。"""
+    rows = db.execute(
+        select(model.user_id, func.count()).group_by(model.user_id)
+    ).all()
+    return {uid: int(n) for uid, n in rows}
+
+
 @router.get("/users", response_model=list[AdminUser])
 def list_users(db: Session = Depends(get_db)):
+    """用户列表（含练习/对弈/积分/登录等运营分析维度）。"""
     users = db.scalars(select(User).order_by(User.id)).all()
+    attempts = _count_by_user(db, Attempt)
+    learned = _count_by_user(db, Review)
+    games = _count_by_user(db, Game)
+    stats = {s.user_id: s for s in db.scalars(select(UserStat)).all()}
+    accounts = {a.user_id: a for a in db.scalars(select(CreditAccount)).all()}
+
     out = []
     for u in users:
-        attempts = db.scalar(
-            select(func.count()).select_from(Attempt).where(Attempt.user_id == u.username)
-        ) or 0
-        learned = db.scalar(
-            select(func.count()).select_from(Review).where(Review.user_id == u.username)
-        ) or 0
-        out.append(AdminUser(id=u.id, username=u.username, role=u.role,
-                             attempts=attempts, learned=learned))
+        stat = stats.get(u.username)
+        acc = accounts.get(u.username)
+        out.append(AdminUser(
+            id=u.id, username=u.username, role=u.role,
+            created_at=u.created_at.isoformat(timespec="seconds") if u.created_at else "",
+            last_login=u.last_login.isoformat(timespec="seconds") if u.last_login else "",
+            attempts=attempts.get(u.username, 0),
+            learned=learned.get(u.username, 0),
+            games=games.get(u.username, 0),
+            rating=stat.rating if stat else None,
+            credits=acc.balance if acc else 0,
+            checkin_streak=acc.checkin_streak if acc else 0,
+        ))
     return out
 
 
@@ -101,13 +138,84 @@ def delete_user(user_id: int, request: Request, db: Session = Depends(get_db),
         raise HTTPException(404, "用户不存在")
     if user.id == admin.id:
         raise HTTPException(400, "不能删除自己")
-    # 一并清理其训练数据
+    # 一并清理其训练数据与积分数据（不清积分会让同名重注在旧余额上再领注册赠送）
     db.query(Attempt).filter(Attempt.user_id == user.username).delete()
     db.query(Review).filter(Review.user_id == user.username).delete()
+    db.query(CreditLog).filter(CreditLog.user_id == user.username).delete()
+    db.query(CreditAccount).filter(CreditAccount.user_id == user.username).delete()
     db.delete(user)
     db.commit()
     admin_action(request, admin.username, "delete_user", user.username, db=db)
     return {"ok": True}
+
+
+class AdminCreditLogRow(BaseModel):
+    ts: str
+    kind: str        # earn:* / spend:* / refund:* / grant:signup / admin:adjust
+    amount: int
+    balance_after: int
+    ref: str
+
+
+class AdminCredits(BaseModel):
+    username: str
+    balance: int
+    total_earned: int
+    checkin_streak: int
+    last_checkin: str    # ISO 日期，从未签到为空串
+    logs: list[AdminCreditLogRow]
+
+
+class CreditAdjustBody(BaseModel):
+    delta: int           # 正为发放、负为扣减（扣减以余额封底，不会扣成负数）
+    reason: str = ""
+
+
+def _admin_credits_view(db: Session, username: str, log_limit: int = 50) -> AdminCredits:
+    acc = db.get(CreditAccount, username)
+    rows = db.scalars(
+        select(CreditLog).where(CreditLog.user_id == username)
+        .order_by(CreditLog.id.desc()).limit(log_limit)
+    ).all()
+    return AdminCredits(
+        username=username,
+        balance=acc.balance if acc else 0,
+        total_earned=acc.total_earned if acc else 0,
+        checkin_streak=acc.checkin_streak if acc else 0,
+        last_checkin=acc.last_checkin.isoformat() if acc and acc.last_checkin else "",
+        logs=[
+            AdminCreditLogRow(
+                ts=r.ts.isoformat(sep=" ", timespec="seconds"),
+                kind=r.kind, amount=r.amount, balance_after=r.balance_after, ref=r.ref,
+            )
+            for r in rows
+        ],
+    )
+
+
+@router.get("/credits/{username}", response_model=AdminCredits)
+def user_credits(username: str, limit: int = 50, db: Session = Depends(get_db)):
+    """某用户的积分账户与近期流水（注意：积分账户按用户名而非数字 ID 标识）。"""
+    if not db.scalar(select(User).where(User.username == username)):
+        raise HTTPException(404, "用户不存在")
+    return _admin_credits_view(db, username, min(max(limit, 1), 200))
+
+
+@router.post("/credits/{username}/adjust", response_model=AdminCredits)
+def adjust_credits(username: str, body: CreditAdjustBody, request: Request,
+                   db: Session = Depends(get_db),
+                   admin: User = Depends(require_admin)):
+    """手工调整用户积分（客服补偿 / 纠错 / 活动发放），记审计日志。"""
+    if not db.scalar(select(User).where(User.username == username)):
+        raise HTTPException(404, "用户不存在")
+    if body.delta == 0:
+        raise HTTPException(400, "调整数值不能为 0")
+    if abs(body.delta) > 100_000:
+        raise HTTPException(400, "单次调整不能超过 100000")
+    credits.admin_adjust(db, username, body.delta, body.reason.strip())
+    admin_action(request, admin.username, "adjust_credits",
+                 f"{username}:{body.delta:+d} {body.reason.strip()}"[:120], db=db)
+    return _admin_credits_view(db, username)
 
 
 @router.get("/puzzles", response_model=AdminPuzzleList)

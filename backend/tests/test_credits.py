@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine as sa_create_engine
+from sqlalchemy import select as sa_select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -17,7 +18,7 @@ from app import credits
 from app.main import app
 from app.auth import hash_password, make_token
 from app.deps import get_db
-from app.models import Base, CreditAccount, Puzzle, User
+from app.models import Base, CreditAccount, CreditLog, Puzzle, User
 from app.settings import KEY_DEEPSEEK_API_KEY, KEY_DEEPSEEK_ENABLED, set_setting
 
 MATE_FEN = "9/5k1R1/9/9/9/9/9/9/9/4K4 w"
@@ -45,9 +46,9 @@ def _client(TestSession):
     return TestClient(app)
 
 
-def _add_user(TestSession, name="tester"):
+def _add_user(TestSession, name="tester", role="user"):
     with TestSession() as db:
-        db.add(User(username=name, password_hash=hash_password("password1")))
+        db.add(User(username=name, password_hash=hash_password("password1"), role=role))
         db.commit()
 
 
@@ -61,6 +62,9 @@ def test_signup_grant_once():
     TestSession = _session_factory()
     with TestSession() as db:
         assert credits.grant_signup(db, "alice") == credits.DEFAULT_SIGNUP_GRANT
+        assert credits.balance(db, "alice") == credits.DEFAULT_SIGNUP_GRANT
+        # 幂等：重复调用（如删号重注但旧流水仍在、接口被重放）不再发放
+        assert credits.grant_signup(db, "alice") == 0
         assert credits.balance(db, "alice") == credits.DEFAULT_SIGNUP_GRANT
 
 
@@ -128,6 +132,16 @@ def test_try_spend_blocks_when_insufficient():
         assert credits.try_spend(db, "poor", "coach_plan") is False
 
 
+def test_admin_adjust_clamps_at_zero():
+    TestSession = _session_factory()
+    with TestSession() as db:
+        credits.admin_adjust(db, "alice", 30, "活动发放")
+        assert credits.balance(db, "alice") == 30
+        # 扣减超出余额时按余额封底，不会扣成负数
+        assert credits.admin_adjust(db, "alice", -100, "纠错") == -30
+        assert credits.balance(db, "alice") == 0
+
+
 # ── 接口层 ──────────────────────────────────────────────────────
 
 def test_credits_me_requires_login():
@@ -189,3 +203,69 @@ def test_explain_charges_credits(monkeypatch):
 
     with TestSession() as db:
         assert credits.balance(db, "tester") == before - credits.DEFAULT_COST["puzzle_explain"]
+
+
+# ── 管理员积分接口 ──────────────────────────────────────────────
+
+def test_admin_credits_endpoints():
+    TestSession = _session_factory()
+    _add_user(TestSession, "boss", role="admin")
+    _add_user(TestSession, "alice")
+    with TestSession() as db:
+        credits.grant_signup(db, "alice")
+    client = _client(TestSession)
+
+    # 普通用户无权访问
+    assert client.get("/api/admin/credits/alice", headers=_auth("alice")).status_code == 403
+
+    r = client.get("/api/admin/credits/alice", headers=_auth("boss"))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["balance"] == credits.DEFAULT_SIGNUP_GRANT
+    assert body["logs"][0]["kind"] == "grant:signup"
+
+    # 调整：发放 +50，流水与审计可见
+    r = client.post("/api/admin/credits/alice/adjust",
+                    json={"delta": 50, "reason": "补偿"}, headers=_auth("boss"))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["balance"] == credits.DEFAULT_SIGNUP_GRANT + 50
+    assert body["logs"][0]["kind"] == "admin:adjust" and body["logs"][0]["ref"] == "补偿"
+
+    # 非法参数与不存在的用户
+    assert client.post("/api/admin/credits/alice/adjust",
+                       json={"delta": 0}, headers=_auth("boss")).status_code == 400
+    assert client.get("/api/admin/credits/nobody", headers=_auth("boss")).status_code == 404
+
+
+def test_delete_user_cleans_credit_data():
+    TestSession = _session_factory()
+    _add_user(TestSession, "boss", role="admin")
+    _add_user(TestSession, "alice")
+    with TestSession() as db:
+        credits.grant_signup(db, "alice")
+        uid = db.scalar(sa_select(User.id).where(User.username == "alice"))
+    client = _client(TestSession)
+    assert client.delete(f"/api/admin/users/{uid}", headers=_auth("boss")).status_code == 200
+    with TestSession() as db:
+        assert db.get(CreditAccount, "alice") is None
+        assert db.scalar(sa_select(CreditLog).where(CreditLog.user_id == "alice")) is None
+        # 同名重新注册可重新领取注册赠送（旧数据已清理，不叠加旧余额）
+        assert credits.grant_signup(db, "alice") == credits.DEFAULT_SIGNUP_GRANT
+
+
+def test_admin_users_includes_analysis_fields():
+    TestSession = _session_factory()
+    _add_user(TestSession, "boss", role="admin")
+    with TestSession() as db:
+        credits.grant_signup(db, "boss")
+    client = _client(TestSession)
+    # 登录会记录 last_login
+    r = client.post("/api/auth/login", json={"username": "boss", "password": "password1"})
+    assert r.status_code == 200
+
+    rows = client.get("/api/admin/users", headers=_auth("boss")).json()
+    row = next(u for u in rows if u["username"] == "boss")
+    assert row["credits"] == credits.DEFAULT_SIGNUP_GRANT
+    assert row["games"] == 0 and row["attempts"] == 0
+    assert row["last_login"]  # 刚登录过，非空

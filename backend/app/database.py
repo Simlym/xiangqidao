@@ -38,6 +38,7 @@ def _ensure_columns() -> None:
         return
     insp = inspect(engine)
     additions = {
+        "users": [("last_login", "DATETIME")],
         "reviews": [("created_at", "DATE")],
         "attempts": [("had_retry", "BOOLEAN DEFAULT 0")],
         "puzzles": [

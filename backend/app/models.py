@@ -29,6 +29,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[str] = mapped_column(String(10), default="user")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 最近登录（UTC）
 
 
 class Puzzle(Base):
