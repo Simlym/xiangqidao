@@ -55,7 +55,7 @@ const MARKS = positionMarks();
 // 传入 legalMoves（UCI 数组）时，限制只能走合法着法并提示落点。
 // 传入 hintMove（UCI）时，用虚线圈标出推荐着法的起点与落点。
 // 传入 flipped 时翻转视角（黑方在下），只变换显示坐标，棋盘数据与方格名不变。
-export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped, maxHeight }) {
+export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hintMove, arrowMove, gradeBadge, flipped, maxHeight }) {
   const board = parseFen(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
 
@@ -130,6 +130,51 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hin
   // 推荐着法（提示）起点与落点
   const hintFrom = hintMove ? hintMove.slice(0, 2) : null;
   const hintTo = hintMove ? hintMove.slice(2, 4) : null;
+
+  // 推荐着法箭头：精准连接起点格中心 → 落点格中心（显示坐标已按 flipped 变换）
+  const arrowSqToRC = (sq) => ({ col: "abcdefghi".indexOf(sq[0]), row: 9 - Number(sq[1]) });
+  let arrow = null;
+  if (arrowMove && arrowMove.length >= 4) {
+    const af = arrowSqToRC(arrowMove.slice(0, 2));
+    const at = arrowSqToRC(arrowMove.slice(2, 4));
+    if (af.col >= 0 && at.col >= 0) {
+      const x1 = px(dCol(af.col));
+      const y1 = py(dRow(af.row));
+      const x2 = px(dCol(at.col));
+      const y2 = py(dRow(at.row));
+      const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+      const ux = (x2 - x1) / len; // 方向单位向量
+      const uy = (y2 - y1) / len;
+      const nx = -uy; // 法向单位向量
+      const ny = ux;
+
+      // 锥形箭身：起点细、向落点渐宽，末端接尖头
+      const W_TAIL = 0.1;  // 起点半宽（细，不盖住棋子）
+      const W_SHAFT = 1;   // 箭身末端（箭头根部）半宽
+      const HEAD_W = 4;    // 箭头半宽
+      const HEAD_LEN = Math.min(6, len * 0.42); // 箭头长度（短着法时按比例缩短）
+      const baseD = Math.max(0, len - HEAD_LEN); // 箭头根部距起点的距离
+
+      // 沿方向 t 距离、法向 ±半宽 的点
+      const pt = (t, halfW, sign) => [
+        x1 + ux * t + nx * halfW * sign,
+        y1 + uy * t + ny * halfW * sign,
+      ];
+      const tail1 = pt(0, W_TAIL, 1);
+      const tail2 = pt(0, W_TAIL, -1);
+      const base1 = pt(baseD, W_SHAFT, 1);
+      const base2 = pt(baseD, W_SHAFT, -1);
+      const wing1 = pt(baseD, HEAD_W, 1);
+      const wing2 = pt(baseD, HEAD_W, -1);
+      const tip = [x2, y2];
+
+      // 多边形：尾左 → 根左 → 翼左 → 尖 → 翼右 → 根右 → 尾右
+      const poly = [tail1, base1, wing1, tip, wing2, base2, tail2]
+        .map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`)
+        .join(" ");
+      arrow = { poly, x1, y1 };
+    }
+  }
 
   // 走子动画：落点棋子从起点滑入。计算起点相对终点的像素偏移。
   const sqToRC = (sq) => ({ col: "abcdefghi".indexOf(sq[0]), row: 9 - Number(sq[1]) });
@@ -211,6 +256,14 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hin
                 )}
                 {(sq === hintFrom || sq === hintTo) && <span className="xq-mark-hint" />}
                 {isTarget && <span className={"xq-dot" + (cell ? " capture" : "")} />}
+                {gradeBadge && gradeBadge.square === sq && (
+                  <span
+                    className={"xq-grade " + gradeBadge.key + (gradeBadge.symbol ? " symbol" : "")}
+                    title={gradeBadge.title}
+                  >
+                    {gradeBadge.label}
+                  </span>
+                )}
                 {cell && (
                   <span
                     key={sq === lastTo && slide ? `mv-${lastMove}` : sq}
@@ -234,6 +287,20 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hin
           })
         )}
       </div>
+
+      {/* 推荐着法箭头：锥形（起点细、向落点渐宽、尖头），覆盖在棋子之上 */}
+      {arrow && (
+        <svg
+          className="xq-arrow-layer"
+          width={SW}
+          height={SH}
+          viewBox={`0 0 ${SW} ${SH}`}
+        >
+          {/* 白 halo（描边加填充，略外扩）→ 彩色锥形箭身盖在上面 */}
+          <polygon className="xq-arrow-halo" points={arrow.poly} />
+          <polygon className="xq-arrow-body" points={arrow.poly} />
+        </svg>
+      )}
     </div>
       <div className="xq-coords">
         {bottomLabels.map((t, c) => (

@@ -41,6 +41,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [aiText, setAiText]         = React.useState("");
   const [aiLoading, setAiLoading]   = React.useState(false);
   const [aiDisabled, setAiDisabled] = React.useState(false); // 后端未配置 AI
+  const [panelHidden, setPanelHidden] = React.useState(false); // 收起结果面板回看棋局
 
   // 计时训练
   const [timed, setTimed]   = React.useState(true);
@@ -93,6 +94,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     setElapsed(0);
     setAiText("");
     setAiLoading(false);
+    setPanelHidden(false);
   }, []);
 
   const beginPuzzle = React.useCallback((p) => {
@@ -391,10 +393,25 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
           </div>
         )}
 
-        {/* 完成面板 */}
-        {phase === "done" && (
+        {/* 完成面板：收起后浮现「展开」按钮，便于回看棋局/AI 分析 */}
+        {phase === "done" && panelHidden && (
+          <button
+            className="overlay-restore-btn"
+            onClick={() => setPanelHidden(false)}
+          >
+            展开结果 ▴
+          </button>
+        )}
+        {phase === "done" && !panelHidden && (
           <div className="board-overlay">
             <div className="panel result ok">
+              <button
+                className="overlay-collapse-btn"
+                onClick={() => setPanelHidden(true)}
+                title="收起面板，回看棋局"
+              >
+                回看棋局 ▾
+              </button>
               <p>正解：<code>{solutionText}</code></p>
               {ratingChange && (
                 <p>评分 {ratingChange.old} →{" "}

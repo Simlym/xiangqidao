@@ -985,13 +985,15 @@ function LlmUsagePanel() {
   );
 }
 
-const LEVEL_CLASS = { DEBUG: "muted", INFO: "", WARNING: "warn", ERROR: "off" };
+const LEVEL_CLASS = { DEBUG: "debug", INFO: "info", WARNING: "warn", ERROR: "error" };
 
 function SyslogPanel() {
   const [data, setData] = React.useState({ level: "INFO", supported_levels: [], records: [] });
   const [auto, setAuto] = React.useState(true);
   const [err, setErr] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [onlyLevel, setOnlyLevel] = React.useState("");
   const boxRef = React.useRef(null);
 
   const load = React.useCallback(async () => {
@@ -1015,11 +1017,6 @@ function SyslogPanel() {
     return () => clearInterval(id);
   }, [auto, load]);
 
-  // 新日志到达时自动滚到底部
-  React.useEffect(() => {
-    if (auto && boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
-  }, [data.records, auto]);
-
   async function changeLevel(level) {
     setBusy(true);
     try {
@@ -1034,6 +1031,7 @@ function SyslogPanel() {
   }
 
   async function clear() {
+    if (!window.confirm("确定清空当前进程内的运行日志缓冲？")) return;
     setBusy(true);
     try {
       await adminClearSyslog();
@@ -1045,47 +1043,114 @@ function SyslogPanel() {
     }
   }
 
+  // 等级过滤 + 关键字搜索
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return data.records.filter((r) => {
+      if (onlyLevel && r.level !== onlyLevel) return false;
+      if (!q) return true;
+      return (
+        r.message.toLowerCase().includes(q) ||
+        r.logger.toLowerCase().includes(q)
+      );
+    });
+  }, [data.records, query, onlyLevel]);
+
+  // 各等级计数，给筛选标签用
+  const counts = React.useMemo(() => {
+    const c = { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0 };
+    for (const r of data.records) if (r.level in c) c[r.level] += 1;
+    return c;
+  }, [data.records]);
+
+  // 新日志到达且未筛选时，自动滚到底部
+  React.useEffect(() => {
+    if (auto && !query && !onlyLevel && boxRef.current) {
+      boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    }
+  }, [filtered, auto, query, onlyLevel]);
+
+  const levels = data.supported_levels.length
+    ? data.supported_levels
+    : ["DEBUG", "INFO", "WARNING", "ERROR"];
+
   return (
     <div className="panel">
-      <h3>系统运行日志</h3>
-      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+      <div className="syslog-head">
+        <h3 style={{ margin: 0 }}>系统运行日志</h3>
+        <span className="syslog-count">
+          {filtered.length}
+          {filtered.length !== data.records.length ? ` / ${data.records.length}` : ""} 条
+        </span>
+        {auto && <span className="syslog-live"><i />实时</span>}
+      </div>
+      <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
         进程内最近 500 条运行日志（重启即清空），用于排查问题。
         等级调到 <code>DEBUG</code> 可看到 LLM 的完整提示词、思考与输出。
       </p>
 
-      <div className="import-row" style={{ alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <label style={{ fontSize: 13 }}>
-          日志等级：
+      <div className="syslog-toolbar">
+        <label className="syslog-field">
+          等级
           <select
-            className="import-input"
-            style={{ width: "auto", marginLeft: 6 }}
             value={data.level}
             disabled={busy}
             onChange={(e) => changeLevel(e.target.value)}
           >
-            {(data.supported_levels.length ? data.supported_levels : ["DEBUG", "INFO", "WARNING", "ERROR"]).map(
-              (lv) => (
-                <option key={lv} value={lv}>{lv}</option>
-              )
-            )}
+            {levels.map((lv) => (
+              <option key={lv} value={lv}>{lv}</option>
+            ))}
           </select>
         </label>
+
+        <input
+          className="syslog-search"
+          type="search"
+          placeholder="搜索日志内容 / 模块…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        <div className="syslog-spacer" />
+
         <label className="ai-check" style={{ fontSize: 13 }}>
           <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-          自动刷新（3s）
+          自动刷新
         </label>
         <button className="btn-ghost" disabled={busy} onClick={load}>刷新</button>
         <button className="btn-ghost danger" disabled={busy} onClick={clear}>清空</button>
       </div>
 
+      <div className="syslog-chips">
+        <button
+          className={"syslog-chip" + (onlyLevel === "" ? " active" : "")}
+          onClick={() => setOnlyLevel("")}
+        >
+          全部
+        </button>
+        {["ERROR", "WARNING", "INFO", "DEBUG"].map((lv) => (
+          <button
+            key={lv}
+            className={"syslog-chip " + LEVEL_CLASS[lv] + (onlyLevel === lv ? " active" : "")}
+            onClick={() => setOnlyLevel(onlyLevel === lv ? "" : lv)}
+          >
+            {lv} <b>{counts[lv]}</b>
+          </button>
+        ))}
+      </div>
+
       {err && <div className="import-error" style={{ marginTop: 10 }}>{err}</div>}
 
       <div className="syslog-box" ref={boxRef}>
-        {data.records.length === 0 && <div className="muted">暂无日志</div>}
-        {data.records.map((r) => (
-          <div key={r.seq} className="syslog-line">
+        {filtered.length === 0 && (
+          <div className="syslog-empty">
+            {data.records.length === 0 ? "暂无日志" : "没有匹配的日志"}
+          </div>
+        )}
+        {filtered.map((r) => (
+          <div key={r.seq} className={"syslog-line " + (LEVEL_CLASS[r.level] || "")}>
             <span className="syslog-ts">{r.ts}</span>
-            <span className={"tag " + (LEVEL_CLASS[r.level] || "")}>{r.level}</span>
+            <span className={"syslog-level " + (LEVEL_CLASS[r.level] || "")}>{r.level}</span>
             <span className="syslog-logger">{r.logger.replace(/^xiangqidao\./, "")}</span>
             <pre className="syslog-msg">{r.message}</pre>
           </div>
