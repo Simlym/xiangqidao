@@ -8,6 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from . import engine_install
 from .models import init_db
 from .ratelimit import limiter
 from .routes import (
@@ -67,6 +68,25 @@ app.include_router(games.router)
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    _setup_logging()  # 安装内存日志缓冲，等级取自数据库设置（后台可调）
+    engine_install.warm_cpu_cache()  # 后台预热 CPU 探测，使首个引擎状态请求不再卡数秒
+
+
+def _setup_logging() -> None:
+    """据数据库设置安装日志缓冲与等级；读不到则用默认 INFO。"""
+    from . import log_buffer
+    from .models import SessionLocal
+    from .settings import get_setting
+
+    level = log_buffer.DEFAULT_LEVEL
+    db = SessionLocal()
+    try:
+        level = get_setting(db, log_buffer.KEY_LOG_LEVEL, log_buffer.DEFAULT_LEVEL)
+    except Exception:
+        pass
+    finally:
+        db.close()
+    log_buffer.setup_buffer(level)
 
 
 @app.get("/api/health")

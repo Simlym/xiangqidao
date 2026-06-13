@@ -123,3 +123,15 @@ export const adminUpdateLlmSettings = (payload) =>
 export const adminTestLlmSettings = () => req("/admin/settings/llm/test", { method: "POST", body: {} });
 export const adminLogs = (limit = 100, offset = 0, event = "") =>
   req(`/admin/logs?limit=${limit}&offset=${offset}${event ? `&event=${event}` : ""}`);
+// 系统运行日志（内存缓冲）：查看、调等级、清空
+export const adminSyslog = (afterSeq = 0) => req(`/admin/syslog?after_seq=${afterSeq}`);
+export const adminSetLogLevel = (level) =>
+  req("/admin/syslog/level", { method: "PUT", body: { level } });
+export const adminClearSyslog = () => req("/admin/syslog/clear", { method: "POST", body: {} });
+// LLM 用量：汇总 + 明细
+export const adminLlmUsageSummary = () => req("/admin/llm-usage/summary");
+export const adminLlmUsage = (limit = 50, offset = 0, feature = "", userId = "") =>
+  req(
+    `/admin/llm-usage?limit=${limit}&offset=${offset}` +
+      `${feature ? `&feature=${feature}` : ""}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`
+  );

@@ -43,6 +43,7 @@ class GameSummary(BaseModel):
     result: str
     opening: str
     source: str
+    move_count: int = 0  # 总手数，便于列表区分相似对局
 
     model_config = {"from_attributes": True}
 
@@ -82,7 +83,19 @@ def list_games(
         .limit(limit)
         .all()
     )
-    return games
+    return [
+        GameSummary(
+            id=g.id,
+            played_on=g.played_on,
+            red_player=g.red_player,
+            black_player=g.black_player,
+            result=g.result,
+            opening=g.opening,
+            source=g.source,
+            move_count=len(g.moves.split()) if g.moves and g.moves.strip() else 0,
+        )
+        for g in games
+    ]
 
 
 @router.post("/import")

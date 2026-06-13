@@ -14,7 +14,7 @@ router = APIRouter(
 
 
 class InstallRequest(BaseModel):
-    variant: str | None = None  # 留空=自动挑最兼容的变体
+    variant: str | None = None  # 留空=按本机 CPU 自动挑最快变体（自检失败自动回退）
 
 
 @router.get("")

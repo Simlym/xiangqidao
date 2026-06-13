@@ -1,4 +1,5 @@
 import React from "react";
+import ReactMarkdown from "react-markdown";
 import Board from "./Board";
 import { uciToChinese } from "./xiangqi";
 import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis } from "./api";
@@ -29,6 +30,24 @@ function getMoveQuality(moveData) {
   if (moveData.is_mistake) return "mistake";
   if (moveData.move_played !== moveData.best_move) return "inaccuracy";
   return "best";
+}
+
+// 把引擎评分格式化为红方视角的展示字符串。
+// 存档的 score_cp/score_mate 为「走子方视角」（fen_before 的轮走方），
+// 黑方走子需取负，统一成红优为正、黑优为负，便于整局比较走势。
+function formatMoveScore(moveData) {
+  if (!moveData) return null;
+  const redPerspective = moveData.move_index % 2 === 0 ? 1 : -1;
+  if (moveData.score_mate != null && moveData.score_mate !== 0) {
+    const m = moveData.score_mate * redPerspective;
+    return { text: `${m > 0 ? "+" : "-"}杀${Math.abs(m)}`, positive: m > 0, mate: true };
+  }
+  if (moveData.score_cp != null) {
+    const cp = (moveData.score_cp * redPerspective) / 100;
+    const sign = cp > 0 ? "+" : cp < 0 ? "−" : "";
+    return { text: `${sign}${Math.abs(cp).toFixed(1)}`, positive: cp > 0, mate: false };
+  }
+  return null;
 }
 
 export default function Games({ onNavigateToTrain, initialGameId, onInitialGameConsumed, user, onCreditsChanged, onRequireLogin }) {
@@ -310,19 +329,18 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                 className={"game-item" + (isSelected ? " selected" : "")}
                 onClick={() => handleSelectGame(g.id)}
               >
-                <div className="game-item-players">
-                  <span className="game-red">{g.red_player || "红方"}</span>
-                  <span className="game-vs"> vs </span>
-                  <span className="game-black">{g.black_player || "黑方"}</span>
-                </div>
-                <div className="game-item-meta">
-                  <span className="game-date muted">{g.date || ""}</span>
+                <div className="game-item-top">
                   <span
                     className="game-result-tag"
                     style={{ color: rl.color, borderColor: rl.color }}
                   >
                     {rl.text}
                   </span>
+                  <div className="game-item-players">
+                    <span className="game-red">{g.red_player || "红方"}</span>
+                    <span className="game-vs">vs</span>
+                    <span className="game-black">{g.black_player || "黑方"}</span>
+                  </div>
                   <button
                     className="game-delete-btn"
                     title="删除"
@@ -330,6 +348,13 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                   >
                     ×
                   </button>
+                </div>
+                <div className="game-item-meta">
+                  {g.opening && <span className="game-opening">{g.opening}</span>}
+                  {g.move_count > 0 && (
+                    <span className="game-moves muted">{g.move_count} 手</span>
+                  )}
+                  {g.played_on && <span className="game-date muted">{g.played_on}</span>}
                 </div>
               </div>
             );
@@ -447,6 +472,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
           </div>
         ) : (
           <div className="review-content">
+           <div className="review-main-row">
             {/* Board */}
             <div className="review-board-wrap">
               {/* Analyze button row */}
@@ -527,10 +553,15 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
             {/* Move list */}
             <div className="review-moves-wrap">
               <div className="review-moves-title">着法列表</div>
+              <div className="review-moves-head">
+                <span className="move-col-num"></span>
+                <span className="move-col-side red">红方</span>
+                <span className="move-col-side black">黑方</span>
+              </div>
               <div className="review-moves-list" ref={moveListRef}>
                 {rounds.map(({ round, red, black }) => (
                   <div key={round} className="move-round">
-                    <span className="move-round-num">{round}.</span>
+                    <span className="move-round-num">{round}</span>
                     <MoveItem
                       moveIndex={red}
                       moveText={moveTexts[red] || ""}
@@ -538,7 +569,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                       analysisEntry={analysisMap[red]}
                       onClick={() => setStepIndex(red + 1)}
                     />
-                    {movesList[black] !== undefined && (
+                    {movesList[black] !== undefined ? (
                       <MoveItem
                         moveIndex={black}
                         moveText={moveTexts[black]}
@@ -546,44 +577,18 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                         analysisEntry={analysisMap[black]}
                         onClick={() => setStepIndex(black + 1)}
                       />
+                    ) : (
+                      <span className="move-item move-item-empty" />
                     )}
                   </div>
                 ))}
               </div>
+            </div>
+           </div>
 
-              {/* 综合复盘报告（LLM 生成，未配置时自动省略） */}
-              {analyzeStatus === "done" && analysisData?.report && (
-                <div className="analysis-panel">
-                  <div className="review-moves-title">📋 综合复盘报告</div>
-                  <div
-                    className="analysis-explanation"
-                    style={{ whiteSpace: "pre-wrap", marginTop: 6 }}
-                  >
-                    {analysisData.report}
-                  </div>
-                </div>
-              )}
-
-              {/* AI 复盘未启用时给出提示，避免「无报告」让人以为功能缺失 */}
-              {analyzeStatus === "done" && !analysisData?.report && analysisData?.llm_enabled === false && (
-                <div className="analysis-panel">
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    💡 已完成引擎逐步分析。开启「AI 复盘」后还能获得失误讲解与整局总评（管理员可在后台配置）。
-                  </div>
-                </div>
-              )}
-
-              {/* 历史分析未完成（中途中断）时的提示 */}
-              {analyzeStatus === "partial" && (
-                <div className="analysis-panel">
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    本局有一次未完成的分析（{progress.analyzed}/{progress.total} 步），
-                    已展示现有结果；点「继续分析」可完成剩余着法。
-                  </div>
-                </div>
-              )}
-
-              {/* Analysis detail panel */}
+            {/* 通栏：当前步分析 + 综合复盘报告（放在棋盘+着法行下方，给文字更舒适的行宽） */}
+            <div className="review-report-row">
+              {/* 当前步分析详情 */}
               {(analyzeStatus === "done" || analyzeStatus === "partial") && analysisData && (
                 <AnalysisPanel
                   summary={{ blunder_count: analysisData.blunder_count, mistake_count: analysisData.mistake_count }}
@@ -592,6 +597,35 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                   preFen={stepIndex > 0 ? positionsList[stepIndex - 1]?.fen : ""}
                   onNavigateToTrain={onNavigateToTrain}
                 />
+              )}
+
+              {/* 综合复盘报告（LLM 生成，未配置时自动省略） */}
+              {analyzeStatus === "done" && analysisData?.report && (
+                <div className="analysis-panel report-panel">
+                  <div className="review-moves-title">📋 综合复盘报告</div>
+                  <div className="report-text markdown-body">
+                    <ReactMarkdown>{analysisData.report}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
+
+              {/* AI 复盘未启用时给出提示，避免「无报告」让人以为功能缺失 */}
+              {analyzeStatus === "done" && !analysisData?.report && analysisData?.llm_enabled === false && (
+                <div className="analysis-panel report-panel">
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    💡 已完成引擎逐步分析。开启「AI 复盘」后还能获得失误讲解与整局总评（管理员可在后台配置）。
+                  </div>
+                </div>
+              )}
+
+              {/* 历史分析未完成（中途中断）时的提示 */}
+              {analyzeStatus === "partial" && (
+                <div className="analysis-panel report-panel">
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    本局有一次未完成的分析（{progress.analyzed}/{progress.total} 步），
+                    已展示现有结果；点「继续分析」可完成剩余着法。
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -608,12 +642,28 @@ function MoveItem({ moveIndex, moveText, isActive, analysisEntry, onClick }) {
   else if (quality === "mistake") extraClass = " move-mistake";
   else if (quality === "inaccuracy") extraClass = " move-inaccuracy";
 
+  const score = formatMoveScore(analysisEntry);
+  const dot =
+    quality === "blunder" ? "●" : quality === "mistake" ? "●" : quality === "inaccuracy" ? "●" : "";
+
   return (
     <span
       className={"move-item" + (isActive ? " active" : "") + extraClass}
       onClick={onClick}
     >
-      {moveText}
+      <span className={"move-flag " + (quality || "")}>{dot}</span>
+      <span className="move-item-text">{moveText}</span>
+      {score && (
+        <span
+          className={
+            "move-score" +
+            (score.mate ? " mate" : "") +
+            (score.positive ? " positive" : " negative")
+          }
+        >
+          {score.text}
+        </span>
+      )}
     </span>
   );
 }
@@ -671,8 +721,8 @@ function AnalysisPanel({ summary, moveAnalysis, stepIndex, preFen, onNavigateToT
             </div>
           )}
           {moveAnalysis.explanation && (
-            <div className="analysis-explanation">
-              {moveAnalysis.explanation}
+            <div className="analysis-explanation markdown-body">
+              <ReactMarkdown>{moveAnalysis.explanation}</ReactMarkdown>
             </div>
           )}
           {moveAnalysis.puzzle_id && (

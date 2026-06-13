@@ -1,5 +1,7 @@
 """管理员后台接口：用户与题库管理。所有接口需管理员权限。"""
 
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
@@ -13,6 +15,7 @@ from ..models import (
     CreditAccount,
     CreditLog,
     Game,
+    LLMCallLog,
     Puzzle,
     Review,
     SecurityLog,
@@ -24,6 +27,8 @@ from ..settings import (
     KEY_DEEPSEEK_API_KEY,
     KEY_DEEPSEEK_ENABLED,
     KEY_DEEPSEEK_MODEL,
+    KEY_DEEPSEEK_REASONING_EFFORT,
+    KEY_DEEPSEEK_THINKING,
     get_deepseek_config,
     set_setting,
 )
@@ -277,14 +282,18 @@ def create_puzzle(body: NewPuzzle, db: Session = Depends(get_db)):
 class LlmSettings(BaseModel):
     enabled: bool
     model: str
-    has_key: bool          # 是否已配置密钥（DB 或环境变量）
-    key_hint: str          # 密钥尾 4 位脱敏提示，如 "••••3f9a"
-    active: bool           # 当前是否真正生效（开关开 + 有密钥）
+    thinking_enabled: bool   # V4 thinking 模式开关
+    reasoning_effort: str    # "high" / "max"
+    has_key: bool            # 是否已配置密钥（DB 或环境变量）
+    key_hint: str            # 密钥尾 4 位脱敏提示，如 "••••3f9a"
+    active: bool             # 当前是否真正生效（开关开 + 有密钥）
 
 
 class LlmSettingsUpdate(BaseModel):
     enabled: bool | None = None
     model: str | None = None
+    thinking_enabled: bool | None = None
+    reasoning_effort: str | None = None
     api_key: str | None = None   # 传入则覆盖；传空串清除（回退环境变量）；不传则保留
 
 
@@ -293,6 +302,7 @@ def _llm_settings_view(db: Session) -> LlmSettings:
     hint = ("••••" + cfg.api_key[-4:]) if cfg.api_key else ""
     return LlmSettings(
         enabled=cfg.enabled, model=cfg.model,
+        thinking_enabled=cfg.thinking_enabled, reasoning_effort=cfg.reasoning_effort,
         has_key=bool(cfg.api_key), key_hint=hint, active=cfg.active,
     )
 
@@ -315,6 +325,13 @@ def update_llm_settings(body: LlmSettingsUpdate, request: Request,
     if body.model is not None:
         set_setting(db, KEY_DEEPSEEK_MODEL, body.model.strip())
         changed.append("model")
+    if body.thinking_enabled is not None:
+        set_setting(db, KEY_DEEPSEEK_THINKING, "1" if body.thinking_enabled else "0")
+        changed.append(f"thinking_enabled={body.thinking_enabled}")
+    if body.reasoning_effort is not None:
+        effort = body.reasoning_effort.strip().lower()
+        set_setting(db, KEY_DEEPSEEK_REASONING_EFFORT, effort)
+        changed.append(f"reasoning_effort={effort}")
     if body.api_key is not None:
         # 只记录「改了密钥」这一事实，绝不记录密钥本身
         set_setting(db, KEY_DEEPSEEK_API_KEY, body.api_key.strip())
@@ -327,15 +344,195 @@ def update_llm_settings(body: LlmSettingsUpdate, request: Request,
 @router.post("/settings/llm/test")
 def test_llm_settings(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     """用当前配置发一次最小请求，验证密钥是否可用。仅管理员可调用。"""
-    from ..llm import _chat
+    from ..llm import _chat_raw
 
     cfg = get_deepseek_config(db)
     if not cfg.active:
         raise HTTPException(400, "未启用或未配置密钥")
-    reply = _chat("回复\"ok\"两个字即可。", max_tokens=10, timeout=15)
+    # thinking 模式会先生成大段推理，最小请求也可能较慢，放宽超时避免误判为不可达
+    reply, err = _chat_raw("回复\"ok\"两个字即可。", max_tokens=64, timeout=60,
+                           feature="admin_test", user_id=admin.username, ref="test")
     if not reply:
-        raise HTTPException(502, "调用失败：密钥无效或网络不可达")
+        raise HTTPException(502, f"调用失败：{err or '空响应'}")
     return {"ok": True, "reply": reply.strip()[:50]}
+
+
+# 事项 key -> 中文标签（与 llm.py 各函数的 feature 对应）
+LLM_FEATURE_LABELS = {
+    "explain_mistake": "失误讲解",
+    "summarize_game": "复盘报告",
+    "coach_move": "走法点评",
+    "explain_puzzle": "题目讲解",
+    "coach_plan": "教练计划",
+    "admin_test": "连接测试",
+    "unknown": "未标记",
+}
+
+
+def _llm_usage_agg(db: Session, since: datetime | None):
+    """聚合 since 之后的 LLM 用量：调用次数、各类 token、总费用。since=None 表示全部。"""
+    q = select(
+        func.count(LLMCallLog.id),
+        func.coalesce(func.sum(LLMCallLog.prompt_tokens), 0),
+        func.coalesce(func.sum(LLMCallLog.completion_tokens), 0),
+        func.coalesce(func.sum(LLMCallLog.total_tokens), 0),
+        func.coalesce(func.sum(LLMCallLog.cost_usd), 0.0),
+    )
+    if since is not None:
+        q = q.where(LLMCallLog.ts >= since)
+    calls, prompt, completion, total, cost = db.execute(q).one()
+    return {
+        "calls": calls,
+        "prompt_tokens": int(prompt),
+        "completion_tokens": int(completion),
+        "total_tokens": int(total),
+        "cost_usd": round(float(cost), 6),
+    }
+
+
+@router.get("/llm-usage/summary")
+def llm_usage_summary(db: Session = Depends(get_db)):
+    """LLM 用量汇总：今日 / 本月 / 全部，以及按事项的费用分布。"""
+    now = datetime.utcnow()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # 按事项分组的费用/次数分布（全量）
+    rows = db.execute(
+        select(
+            LLMCallLog.feature,
+            func.count(LLMCallLog.id),
+            func.coalesce(func.sum(LLMCallLog.total_tokens), 0),
+            func.coalesce(func.sum(LLMCallLog.cost_usd), 0.0),
+        ).group_by(LLMCallLog.feature)
+        .order_by(func.sum(LLMCallLog.cost_usd).desc())
+    ).all()
+    by_feature = [
+        {
+            "feature": feat,
+            "label": LLM_FEATURE_LABELS.get(feat, feat),
+            "calls": calls,
+            "total_tokens": int(toks),
+            "cost_usd": round(float(cost), 6),
+        }
+        for feat, calls, toks, cost in rows
+    ]
+    return {
+        "today": _llm_usage_agg(db, today),
+        "month": _llm_usage_agg(db, month),
+        "all": _llm_usage_agg(db, None),
+        "by_feature": by_feature,
+    }
+
+
+class LLMUsageRow(BaseModel):
+    id: int
+    ts: str
+    feature: str
+    label: str
+    user_id: str
+    model: str
+    prompt_tokens: int
+    cached_tokens: int
+    completion_tokens: int
+    reasoning_tokens: int
+    total_tokens: int
+    cost_usd: float
+    duration_ms: int
+    success: bool
+    error: str
+    ref: str
+
+
+@router.get("/llm-usage")
+def llm_usage_list(limit: int = 50, offset: int = 0, feature: str | None = None,
+                   user_id: str | None = None, db: Session = Depends(get_db)):
+    """LLM 调用明细（分页，可按事项/用户筛选），按时间倒序。"""
+    query = select(LLMCallLog)
+    if feature:
+        query = query.where(LLMCallLog.feature == feature)
+    if user_id:
+        query = query.where(LLMCallLog.user_id == user_id)
+
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    rows = db.execute(
+        query.order_by(LLMCallLog.ts.desc()).limit(min(limit, 200)).offset(offset)
+    ).scalars().all()
+    items = [
+        LLMUsageRow(
+            id=r.id,
+            ts=r.ts.isoformat(),
+            feature=r.feature,
+            label=LLM_FEATURE_LABELS.get(r.feature, r.feature),
+            user_id=r.user_id,
+            model=r.model,
+            prompt_tokens=r.prompt_tokens,
+            cached_tokens=r.cached_tokens,
+            completion_tokens=r.completion_tokens,
+            reasoning_tokens=r.reasoning_tokens,
+            total_tokens=r.total_tokens,
+            cost_usd=round(r.cost_usd, 6),
+            duration_ms=r.duration_ms,
+            success=r.success,
+            error=r.error,
+            ref=r.ref,
+        )
+        for r in rows
+    ]
+    return {
+        "items": items,
+        "total": total,
+        "features": [
+            {"key": k, "label": v} for k, v in LLM_FEATURE_LABELS.items()
+        ],
+    }
+
+
+class LogLevelUpdate(BaseModel):
+    level: str  # DEBUG / INFO / WARNING / ERROR
+
+
+@router.get("/syslog")
+def get_syslog(after_seq: int = 0, db: Session = Depends(get_db)):
+    """读取最近的系统运行日志（内存环形缓冲，进程重启即清空）。
+
+    after_seq 用于增量轮询：只返回比上次更新的记录。与「安全审计日志 /logs」不同，
+    这里是面向排查的运行日志（含 LLM 提示词/思考/输出，等级调到 DEBUG 可见）。
+    """
+    from .. import log_buffer
+
+    return {
+        "level": log_buffer.get_level(),
+        "supported_levels": list(log_buffer.SUPPORTED_LEVELS),
+        "records": log_buffer.get_records(after_seq=after_seq),
+    }
+
+
+@router.put("/syslog/level")
+def update_log_level(body: LogLevelUpdate, request: Request,
+                     db: Session = Depends(get_db),
+                     admin: User = Depends(require_admin)):
+    """调整系统日志等级（落库持久化 + 立即生效）。DEBUG 可看到 LLM 提示词/思考/输出。"""
+    from .. import log_buffer
+
+    level = body.level.strip().upper()
+    if level not in log_buffer.SUPPORTED_LEVELS:
+        raise HTTPException(400, f"不支持的日志等级：{level}")
+    set_setting(db, log_buffer.KEY_LOG_LEVEL, level)
+    db.commit()
+    log_buffer.set_level(level)
+    admin_action(request, admin.username, "update_log_level", level, db=db)
+    return {"level": log_buffer.get_level()}
+
+
+@router.post("/syslog/clear")
+def clear_syslog(request: Request, admin: User = Depends(require_admin)):
+    """清空内存日志缓冲。"""
+    from .. import log_buffer
+
+    log_buffer.clear()
+    admin_action(request, admin.username, "clear_logs", "", db=None)
+    return {"ok": True}
 
 
 @router.delete("/puzzles/{puzzle_id}")

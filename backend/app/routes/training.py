@@ -295,7 +295,8 @@ def explain(
 
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
     side = "红方" if puzzle.side_to_move == "w" else "黑方"
-    text = explain_puzzle(puzzle.fen, solution, puzzle.category, side)
+    text = explain_puzzle(puzzle.fen, solution, puzzle.category, side,
+                          user_id=user.username, ref=f"puzzle:{puzzle.id}")
     if text:
         puzzle.ai_explanation = text
         db.commit()

@@ -1,4 +1,5 @@
 import React from "react";
+import ReactMarkdown from "react-markdown";
 import { getCoachPlan, refreshCoachPlan, getRating, getOverview } from "./api";
 
 // 建议类型 → 行动按钮文案与跳转
@@ -212,8 +213,8 @@ export default function Coach({ onPractice, onNavigate, user, credits, onCredits
           <>
             {/* LLM 教练叙述：未启用时退化为纯数据计划 */}
             {plan.plan_text ? (
-              <div className="analysis-explanation ai-explain coach-plan-text">
-                {plan.plan_text}
+              <div className="markdown-body analysis-explanation coach-plan-text">
+                <ReactMarkdown>{plan.plan_text}</ReactMarkdown>
               </div>
             ) : (
               <p className="muted">

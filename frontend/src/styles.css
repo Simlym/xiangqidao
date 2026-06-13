@@ -1,4 +1,7 @@
 * { box-sizing: border-box; }
+/* 始终保留竖向滚动条占位，避免切到内容较长的标签页（如进度统计）时
+   滚动条出现导致居中布局横向跳动（抖动） */
+html { scrollbar-gutter: stable; }
 body {
   margin: 0;
   font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -8,7 +11,11 @@ body {
 /* 触屏优化：消除 300ms 点击延迟与双击缩放（点棋盘连续落子时尤为重要） */
 button, input, select, textarea, .xq-points, nav { touch-action: manipulation; }
 button { -webkit-tap-highlight-color: transparent; }
-.app { max-width: 720px; margin: 0 auto; padding: 16px; }
+.app {
+  max-width: 720px; margin: 0 auto; padding: 16px;
+  display: flex; flex-direction: column; min-height: 100vh;
+}
+main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
 }
@@ -349,9 +356,19 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .book-move-score.neg { color: #555; }
 .book-move-rate { font-size: 12px; color: #888; font-variant-numeric: tabular-nums; }
 
-/* 对弈主区：PC 上棋盘居左、棋谱右侧伴随显示（移动端见底部媒体查询） */
+/* 对弈主区：PC 上棋盘居左、右侧侧栏常驻（移动端见底部媒体查询）。
+   棋盘区宽度固定，开关评分/云库只在侧栏内增删，棋盘不再左右或上下挪动。 */
 .play-main { display: flex; gap: 14px; align-items: flex-start; }
-.play-board-area { position: relative; flex: 1; min-width: 0; }
+.play-board-area {
+  position: relative; flex: 0 1 560px; min-width: 0;
+}
+/* 右侧常驻侧栏：固定宽度，从一开始就占好位，承载评分/云库/提示/棋谱 */
+.play-side {
+  flex: 1 1 0; min-width: 240px; max-width: 360px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.play-side .panel { margin: 0; }
+.move-log-empty { margin: 0; font-size: 13px; line-height: 1.5; }
 
 /* 对局结束：结果面板覆盖在棋盘中央，不必滚到页面底部 */
 .play-over {
@@ -379,9 +396,8 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 }
 .result button.play-over-close:hover { color: #555; background: transparent; }
 
-/* 对弈棋谱（中文着法，红黑成对）：PC 上为右侧竖排栏 */
-.play-main .move-log {
-  width: 224px; flex-shrink: 0; margin: 0;
+/* 对弈棋谱（中文着法，红黑成对）：PC 上为右侧侧栏内的竖排块 */
+.play-side .move-log {
   padding: 10px 14px;
 }
 .move-log-head {
@@ -433,7 +449,20 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .captured-diff.red { color: #c0392b; }
 
 /* 战术训练：结果/自评面板浮于棋面正中，配暖棕遮罩聚焦弹窗 */
-.trainer-board-area { position: relative; }
+.trainer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.trainer-board-area {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .board-overlay {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -572,9 +601,12 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   .play-actions { gap: 6px; }
   .play-actions .btn-newgame { flex: 1; min-width: 0; padding: 8px 6px; }
 
-  /* 对弈区回到上下堆叠：棋盘在上、棋谱横排在下 */
+  /* 对弈区回到上下堆叠：棋盘在上、评分/云库/棋谱在下 */
   .play-main { flex-direction: column; gap: 0; }
-  .play-main .move-log { width: 100%; margin: 12px 0; }
+  .play-board-area { flex: 0 0 auto; }
+  .play-side {
+    width: 100%; max-width: none; min-width: 0; margin-top: 12px; gap: 12px;
+  }
   .move-log-list {
     flex-direction: row; flex-wrap: wrap; gap: 4px 18px;
     max-height: 132px;
@@ -586,14 +618,22 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 
 .games-layout {
   display: flex;
-  gap: 16px;
+  gap: 18px;
   align-items: flex-start;
   min-height: 600px;
 }
 
+/* 复盘是三栏密集布局，在宽屏上突破 .app 的 960px 上限以获得更舒展的版面 */
+@media (min-width: 1100px) {
+  .games-layout {
+    width: min(1320px, calc(100vw - 48px));
+    margin-left: calc((100% - min(1320px, calc(100vw - 48px))) / 2);
+  }
+}
+
 /* Left panel */
 .games-list-panel {
-  width: 220px;
+  width: 248px;
   flex-shrink: 0;
   background: #fff;
   border-radius: 12px;
@@ -623,53 +663,82 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 }
 
 .game-item {
-  padding: 10px 14px;
+  padding: 11px 14px;
   cursor: pointer;
   border-bottom: 1px solid #f4f1ea;
-  transition: background .15s;
+  border-left: 3px solid transparent;
+  transition: background .15s, border-color .15s;
   position: relative;
 }
 .game-item:hover { background: #fdf8f2; }
-.game-item.selected { background: #efe6d6; }
+.game-item.selected { background: #efe6d6; border-left-color: #8a5a2b; }
+
+.game-item-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
 
 .game-item-players {
+  flex: 1;
+  min-width: 0;
   font-size: 14px;
   font-weight: 600;
-  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .game-red { color: #c0392b; }
-.game-vs  { color: #aaa; font-weight: 400; margin: 0 2px; }
+.game-vs  { color: #b3a892; font-weight: 400; margin: 0 4px; font-size: 12px; }
 .game-black { color: #333; }
 
 .game-item-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   font-size: 12px;
+  margin-top: 5px;
+  padding-left: 2px;
 }
-.game-date { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-opening {
+  color: #8a5a2b;
+  background: #f6efe4;
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 11px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-moves::before { content: "♟ "; opacity: .5; }
+.game-date::before { content: "🗓 "; opacity: .6; font-size: 10px; }
+.game-date { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .game-result-tag {
   border: 1px solid;
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 1px 6px;
   font-size: 11px;
+  font-weight: 600;
   flex-shrink: 0;
+  line-height: 1.5;
 }
 
 .game-delete-btn {
   background: none;
   border: none;
   cursor: pointer;
-  color: #ccc;
-  font-size: 16px;
+  color: #d8cdbb;
+  font-size: 17px;
   line-height: 1;
   padding: 0 2px;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity .15s, color .15s;
 }
+.game-item:hover .game-delete-btn { opacity: 1; }
 .game-delete-btn:hover { color: #c0392b; }
 
 .games-list-footer {
@@ -737,6 +806,45 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   font-size: 12px;
 }
 
+/* 引擎变体指南：按性能从高到低列出，并以颜色区分推荐/更快/更兼容三档 */
+.variant-guide {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 12px;
+}
+.variant-guide li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+  border-left: 3px solid transparent;
+  padding-left: 8px;
+}
+.variant-guide code {
+  font-size: 12px;
+}
+.variant-guide .variant-tier {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.variant-recommended {
+  border-left-color: #27ae60;
+}
+.variant-recommended .variant-tier {
+  color: #27ae60;
+}
+.variant-faster {
+  border-left-color: #e67e22;
+}
+.variant-faster .variant-tier {
+  color: #e67e22;
+}
+.variant-compatible .variant-tier {
+  color: #888;
+}
+
 .btn-import-submit {
   padding: 8px 12px;
   background: #27ae60;
@@ -753,6 +861,73 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   gap: 6px;
 }
 .btn-import-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+/* AI 复盘设置 —— 表单化布局；卡片占满宽度与对弈引擎卡对齐 */
+.ai-settings .panel-head { margin-bottom: 4px; }
+/* 宽屏下密钥/模型/思考模式三项并排成网格，铺满卡片宽度，消除右侧留白 */
+.ai-grid {
+  display: grid; gap: 16px 20px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
+}
+.ai-field-key { grid-column: 1 / -1; }   /* 密钥占整行，输入框够长 */
+.ai-settings .ai-intro {
+  font-size: 13px; color: #888; line-height: 1.6; margin: 0 0 16px;
+}
+.ai-toggle-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 14px; margin-bottom: 16px;
+  background: #faf7f1; border: 1px solid #ece3d2; border-radius: 10px;
+}
+.ai-toggle-bar .ai-switch-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 600; color: #2b2b2b; cursor: pointer;
+}
+.ai-toggle-bar input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+.ai-status {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+}
+.ai-status::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+}
+.ai-status.on  { background: #e6f4ea; color: #2e7d32; }
+.ai-status.warn { background: #fdf3e3; color: #b9791f; }
+.ai-status.off { background: #f1efe9; color: #999; }
+
+.ai-field { margin-bottom: 0; }
+.ai-field > label.ai-field-label {
+  display: block; font-size: 13px; font-weight: 600; color: #5a4a36; margin-bottom: 6px;
+}
+.ai-field .import-input { font-size: 14px; padding: 9px 11px; }
+.ai-field-hint { font-size: 12px; color: #aaa; margin: 5px 0 0; }
+.ai-field code { font-size: 12px; }
+
+.ai-think-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ai-think-row .ai-check {
+  display: flex; align-items: center; gap: 7px; font-size: 14px; color: #2b2b2b; cursor: pointer;
+}
+.ai-think-row .ai-check input { width: 15px; height: 15px; cursor: pointer; }
+.ai-think-row select.import-input { width: auto; min-width: 120px; }
+
+.ai-actions {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 20px; padding-top: 16px; border-top: 1px solid #f0ece4;
+}
+.btn-ghost {
+  padding: 8px 14px; background: #fff; color: #8a5a2b;
+  border: 1px solid #d9ccb5; border-radius: 8px; font-size: 13px;
+  cursor: pointer; white-space: nowrap;
+}
+.btn-ghost:hover:not(:disabled) { background: #fdf9f0; border-color: #8a5a2b; }
+.btn-ghost:disabled { opacity: .55; cursor: not-allowed; }
+.btn-ghost.danger { color: #c0392b; border-color: #e6c3bd; }
+.btn-ghost.danger:hover:not(:disabled) { background: #fdf1ef; border-color: #c0392b; }
+.ai-msg-ok { color: #27ae60; font-size: 13px; margin-top: 10px; }
+
+@media (max-width: 600px) {
+  .ai-actions { gap: 8px; }
+}
 
 .btn-spinner {
   display: inline-block;
@@ -791,9 +966,71 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .review-content {
   flex: 1;
   display: flex;
+  flex-direction: column;
   gap: 16px;
   padding: 16px;
+  align-items: stretch;
+}
+
+/* 棋盘 + 着法列表：保持左右并排 */
+.review-main-row {
+  display: flex;
+  gap: 16px;
   align-items: flex-start;
+}
+
+/* 复盘报告通栏：当前步分析 + 综合报告，并排放在棋盘+着法行下方 */
+.review-report-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+.review-report-row:empty { display: none; }
+/* 当前步分析卡片：给文字更舒适的宽度 */
+.review-report-row > .analysis-panel:not(.report-panel) {
+  flex: 1 1 380px;
+  margin-top: 0;
+}
+/* 综合报告：占据剩余宽度 */
+.review-report-row > .report-panel {
+  flex: 2 1 460px;
+  margin-top: 0;
+}
+.report-text {
+  font-size: 14px;
+  line-height: 1.9;
+  color: #3a3228;
+  background: #fafaf7;
+  border-left: 3px solid #d4b896;
+  padding: 12px 16px;
+  border-radius: 4px;
+}
+
+/* ── Markdown 渲染（AI 报告/讲解） ───────────────────────── */
+.markdown-body p { margin: 0 0 0.7em; }
+.markdown-body p:last-child { margin-bottom: 0; }
+.markdown-body strong { color: #8a5a2b; font-weight: 700; }
+.markdown-body ul,
+.markdown-body ol { margin: 0.4em 0 0.7em; padding-left: 1.4em; }
+.markdown-body li { margin: 0.2em 0; }
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-size: 15px; font-weight: 700; color: #8a5a2b;
+  margin: 0.8em 0 0.4em;
+}
+.markdown-body h1:first-child,
+.markdown-body h2:first-child,
+.markdown-body h3:first-child { margin-top: 0; }
+.markdown-body code {
+  background: #f0ece4; border-radius: 3px;
+  padding: 1px 5px; font-size: 0.92em;
+}
+.markdown-body blockquote {
+  margin: 0.5em 0; padding: 2px 12px;
+  border-left: 3px solid #d4b896; color: #6b5d48;
 }
 
 .review-board-wrap {
@@ -817,7 +1054,7 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 
 /* Move list */
 .review-moves-wrap {
-  flex: 1;
+  flex: 0 0 286px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -830,43 +1067,94 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   color: #8a5a2b;
 }
 
+/* 着法列表表头：固定三列与下方对齐，标明红/黑 */
+.review-moves-head {
+  display: grid;
+  grid-template-columns: 30px 1fr 1fr;
+  align-items: center;
+  padding: 0 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.move-col-side { padding-left: 8px; }
+.move-col-side.red { color: #c0392b; }
+.move-col-side.black { color: #555; }
+
 .review-moves-list {
   overflow-y: auto;
-  max-height: 480px;
+  max-height: 500px;
   border: 1px solid #f0ebe3;
-  border-radius: 8px;
-  padding: 8px;
+  border-radius: 10px;
+  padding: 5px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
+/* 每一回合一行：回合号 + 红着 + 黑着，三列网格对齐 */
 .move-round {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: 30px 1fr 1fr;
+  align-items: stretch;
   font-size: 13px;
 }
+.move-round:nth-child(even) { background: #faf7f1; border-radius: 6px; }
 
 .move-round-num {
-  color: #aaa;
-  width: 28px;
-  flex-shrink: 0;
-  text-align: right;
+  color: #b3a892;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .move-item {
-  flex: 1;
-  padding: 3px 8px;
-  border-radius: 5px;
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: background .1s;
-  font-family: monospace;
   font-size: 13px;
 }
-.move-item:hover { background: #f4f1ea; }
-.move-item.active { background: #8a5a2b; color: #fff; }
+.move-item:hover { background: #f0eadf; }
+.move-item.active { background: #8a5a2b; color: #fff; box-shadow: 0 1px 3px rgba(138,90,43,.3); }
+.move-item-empty { cursor: default; }
+.move-item-empty:hover { background: none; }
+
+.move-flag {
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
+}
+.move-flag.blunder { color: #c0392b; }
+.move-flag.mistake { color: #e67e22; }
+.move-flag.inaccuracy { color: #c9a227; }
+.move-item.active .move-flag { color: #ffd9c2; }
+
+.move-item-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.move-score {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #b3a892;
+  font-family: "SF Mono", "Consolas", monospace;
+}
+.move-score.positive { color: #c0392b; }
+.move-score.negative { color: #555; }
+.move-score.mate { font-weight: 700; }
+/* 选中行底色为深棕，分数改用浅色以保持可读 */
+.move-item.active .move-score { color: #e8e0d0; }
+.move-item.active .move-score.positive { color: #ffd9d2; }
+.move-item.active .move-score.negative { color: #e8e0d0; }
 
 /* Mobile：复盘页改为上下布局 */
 @media (max-width: 640px) {
@@ -875,19 +1163,24 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   .games-list-panel { width: 100%; }
   .games-list-scroll { max-height: 220px; }
   .games-review-panel { min-height: 0; }
-  .review-content { flex-direction: column; padding: 12px; }
+  .review-content { padding: 12px; }
+  .review-main-row { flex-direction: column; }
   .review-board-wrap { width: 100%; }
-  .review-moves-wrap { width: 100%; }
-  .review-moves-list { max-height: 200px; }
+  .review-moves-wrap { flex: 1 1 auto; width: 100%; }
+  .review-moves-list { max-height: 260px; }
+  .game-delete-btn { opacity: 1; }
 }
 
-/* 着法质量颜色 */
-.move-blunder { background: #ffebee !important; }
-.move-mistake { background: #fff3e0 !important; }
-.move-inaccuracy { background: #fffde7 !important; }
+/* 着法质量颜色：浅色底 + 同色下划线，醒目但不喧宾夺主 */
+.move-blunder { background: #fdeaea; box-shadow: inset 0 -2px 0 #e9a8a8; }
+.move-mistake { background: #fdf1e3; box-shadow: inset 0 -2px 0 #efc79a; }
+.move-inaccuracy { background: #fbf6e0; box-shadow: inset 0 -2px 0 #e3d18f; }
+.move-blunder:hover { background: #fbdede; }
+.move-mistake:hover { background: #fbe8d2; }
+.move-inaccuracy:hover { background: #f7efcf; }
 .move-item.active.move-blunder,
 .move-item.active.move-mistake,
-.move-item.active.move-inaccuracy { background: #8a5a2b !important; color: #fff; }
+.move-item.active.move-inaccuracy { background: #8a5a2b; color: #fff; box-shadow: 0 1px 3px rgba(138,90,43,.3); }
 
 /* 分析按钮 */
 .btn-analyze {
@@ -907,31 +1200,41 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 
 /* 分析详情面板 */
 .analysis-panel {
-  background: #fff; border-radius: 10px; padding: 12px;
+  background: #fff; border-radius: 12px; padding: 16px;
   margin-top: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07);
   border: 1px solid #ede8df;
 }
 .analysis-summary {
-  font-size: 13px; margin-bottom: 10px;
-  padding-bottom: 8px; border-bottom: 1px solid #f0ece4;
+  font-size: 13px; margin-bottom: 12px;
+  padding-bottom: 10px; border-bottom: 1px solid #f0ece4;
 }
 .analysis-detail-header {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
 }
 .analysis-move-label { font-weight: 600; font-size: 14px; }
 .analysis-badge {
   display: inline-block; border-radius: 6px;
-  padding: 1px 8px; font-size: 12px; font-weight: 600;
+  padding: 2px 9px; font-size: 12px; font-weight: 600;
 }
+/* 实际走法 → 最优走法：卡片化对比，红箭头居中 */
 .analysis-moves-row {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 13px; margin-bottom: 6px; flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px; margin-bottom: 10px;
 }
-.analysis-arrow { color: #aaa; }
-.analysis-eval-drop { font-size: 13px; margin-bottom: 6px; }
+.analysis-moves-row > span:first-child,
+.analysis-moves-row > span:last-child {
+  background: #faf7f1; border: 1px solid #efe8dc;
+  border-radius: 8px; padding: 7px 12px; line-height: 1.5;
+}
+.analysis-moves-row > span:last-child { background: #f0f6ec; border-color: #d9e8cd; }
+.analysis-arrow { color: #b89b6c; font-size: 16px; font-weight: 700; }
+.analysis-eval-drop { font-size: 13px; margin-bottom: 8px; }
 .analysis-explanation {
   font-size: 13px; background: #fafaf7; border-left: 3px solid #d4b896;
-  padding: 6px 10px; border-radius: 4px; margin-top: 6px; line-height: 1.6;
+  padding: 10px 14px; border-radius: 6px; margin-top: 10px; line-height: 1.7;
 }
 
 /* AI 讲解（训练题/对弈提示） */
@@ -1068,3 +1371,49 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .level-stars .star { color: #ddd; font-size: 14px; }
 .level-stars .star.on { color: #f5b301; }
 .level-prog { font-size: 12px; color: #999; font-variant-numeric: tabular-nums; }
+
+/* 系统运行日志 */
+.tag.muted { background: #f1efe9; color: #999; }
+.tag.warn { background: #fdf3e3; color: #b9791f; }
+.tag.off { background: #fdeaea; color: #c0392b; }
+.syslog-box {
+  margin-top: 12px; max-height: 480px; overflow-y: auto;
+  background: #1e1e1e; color: #ddd; border-radius: 8px; padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.syslog-line {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 4px 0; border-bottom: 1px solid #333; font-size: 12px;
+}
+.syslog-line:last-child { border-bottom: none; }
+.syslog-ts { color: #888; white-space: nowrap; }
+.syslog-line .tag { font-size: 11px; padding: 1px 6px; margin: 0; }
+.syslog-logger { color: #6cb6ff; white-space: nowrap; }
+.syslog-msg {
+  flex: 1; margin: 0; white-space: pre-wrap; word-break: break-word;
+  color: #e0e0e0; font-family: inherit; font-size: 12px; line-height: 1.5;
+}
+
+/* LLM 用量页 */
+.usage-cards {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; margin: 12px 0 8px;
+}
+.usage-card {
+  background: #f6efe3; border: 1px solid #e7ddc9; border-radius: 10px;
+  padding: 14px 16px;
+}
+.usage-card-title { font-size: 13px; color: #8a6a3b; margin-bottom: 6px; }
+.usage-card-cost {
+  font-size: 24px; font-weight: 700; color: #8a5a2b;
+  font-variant-numeric: tabular-nums;
+}
+.usage-card-sub { font-size: 12px; color: #999; margin-top: 4px; }
+.usage-feature-wrap { margin: 16px 0; }
+.usage-feature-title, .usage-detail-title {
+  font-size: 14px; font-weight: 600; color: #8a5a2b; margin: 16px 0 8px;
+}
+.usage-row-fail { background: #fdf6f6; }
+@media (max-width: 560px) {
+  .usage-cards { grid-template-columns: 1fr; }
+}

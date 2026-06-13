@@ -175,6 +175,8 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
                     score_drop_cp=eval_drop,
                     move_number=i + 1,
                     side=side,
+                    user_id=owner,
+                    ref=f"game:{game_id}",
                 )
                 if not explanation:
                     credits.refund(db, owner, "mistake_explain", f"game:{game_id}")
@@ -271,6 +273,8 @@ def _generate_report(db, game_id: int, owner: str = "default") -> None:
         human_side="",  # 复盘以客观视角，不强绑红/黑
         total_moves=total,
         mistakes=mistakes,
+        user_id=owner,
+        ref=f"game:{game_id}",
     )
     if report:
         game.report = report

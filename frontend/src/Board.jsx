@@ -12,7 +12,7 @@ const H = (ROWS - 1) * CELL; // 棋盘线区域高
 const SW = W + 2 * PAD; // SVG 总宽
 const SH = H + 2 * PAD; // SVG 总高
 const TOTAL_H = SH + 2 * COORD; // 含坐标条的整体高
-const MAX_SCALE = 1.4; // PC 端最大放大倍数（基准棋盘约 416px）
+const MAX_SCALE = 1.15; // PC 端最大放大倍数（基准棋盘约 416px，过大会超出视口）
 
 // 列坐标：上方黑方用阿拉伯数字 1-9（黑视角从右到左→屏幕从左到右）；
 // 下方红方用汉字（红视角从右到左→屏幕从左到右为 九…一）。
@@ -55,7 +55,7 @@ const MARKS = positionMarks();
 // 传入 legalMoves（UCI 数组）时，限制只能走合法着法并提示落点。
 // 传入 hintMove（UCI）时，用虚线圈标出推荐着法的起点与落点。
 // 传入 flipped 时翻转视角（黑方在下），只变换显示坐标，棋盘数据与方格名不变。
-export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped }) {
+export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped, maxHeight }) {
   const board = parseFen(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
 
@@ -73,13 +73,16 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hin
   React.useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const update = () =>
-      setScale(Math.max(0.2, Math.min(MAX_SCALE, el.clientWidth / SW)));
+    const update = () => {
+      const widthScale = el.clientWidth / SW;
+      const heightScale = maxHeight ? maxHeight / TOTAL_H : Infinity;
+      setScale(Math.max(0.2, Math.min(MAX_SCALE, widthScale, heightScale)));
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [maxHeight]);
 
   const restrict = Array.isArray(legalMoves);
   // 当前选中起点的合法落点集合

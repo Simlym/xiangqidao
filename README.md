@@ -221,7 +221,10 @@ cd backend && python -m pytest tests/ -q
 | `XQ_DB_URL` | 数据库连接串 | `sqlite:///./data/puzzles.db` |
 | `XQ_ENGINE_DIR` | 管理后台一键安装 Pikafish 的受管目录（发现引擎时优先于 PATH）| `./data/engine` |
 | `XQ_TZ` | 积分体系（签到 / 每日赚取上限）按此时区切换「一天」，应与目标用户群一致 | `Asia/Shanghai` |
-| `DEEPSEEK_API_KEY` | AI 教练（可选）：个性化训练计划叙述 + 复盘逐步失误讲解 + 整局综合复盘报告 + 训练题「AI 讲解」+ 对弈提示「AI 详解」；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
+| `DEEPSEEK_API_KEY` | DeepSeek API Key（可选）：AI 教练/复盘/讲解/对弈提示；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
+| `DEEPSEEK_MODEL` | 默认模型，只支持 V4：`deepseek-v4-flash`（默认）、`deepseek-v4-pro` | `deepseek-v4-flash` |
+| `DEEPSEEK_THINKING` | 是否开启 V4 思考模式：`1`（默认，更严谨但 token 更多）、`0` | `1` |
+| `DEEPSEEK_REASONING_EFFORT` | 思考强度：`high`（默认）、`max` | `high` |
 
 ## 公网部署安全清单
 

@@ -513,6 +513,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
 
   const capt = capturedPieces(fen);          // 双方被吃的子与子力差
   const totalMs = timesLog.reduce((a, b) => a + b, 0); // 全局累计用时
+  const evalInfo = describeEval(evalData || {}, humanSide); // 评估条展示信息
 
   return (
     <div className="play">
@@ -613,92 +614,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         </div>
       </div>
 
-      {showEval && (() => {
-        const info = describeEval(evalData || {}, humanSide);
-        return (
-          <div className="panel eval-bar-wrap">
-            <div className="eval-bar">
-              <div className="eval-bar-red" style={{ width: `${info.redPct}%` }} />
-              <span className="eval-bar-value">{evalLoading && !evalData ? "…" : info.value}</span>
-            </div>
-            <div className="eval-bar-label">
-              <span className="muted">{evalLoading ? "评估中…" : info.label}</span>
-            </div>
-          </div>
-        );
-      })()}
-
-      {hint && (
-        <div className="panel hint-strip">
-          💡 推荐：<strong>{hint.text}</strong>
-          <span className="muted">（{hint.source}）</span>
-          {!coach && (
-            <button
-              className="btn-newgame hint-coach-btn"
-              onClick={requestCoach}
-              disabled={coachLoading}
-            >
-              {coachLoading ? "AI 思考中…" : "🤖 AI 详解"}
-            </button>
-          )}
-          {coach?.text && (
-            <div className="analysis-explanation ai-explain">{coach.text}</div>
-          )}
-          {coach?.disabled && (
-            <div className="muted" style={{ marginTop: 6 }}>
-              未启用 AI 点评（管理员可在后台配置大模型）
-            </div>
-          )}
-          {coach?.error && (
-            <div className="import-error" style={{ marginTop: 6 }}>{coach.error}</div>
-          )}
-        </div>
-      )}
-
-      {showBook && (
-        <div className="panel book-panel">
-          <div className="book-panel-head">
-            <strong>云库着法</strong>
-            <span className="muted">
-              {bookLoading
-                ? "查询中…"
-                : !bookData || !bookData.available
-                ? "云库暂不可用"
-                : bookData.moves.length === 0
-                ? "云库未收录此局面"
-                : "点击着法直接走子（评分为走子方视角）"}
-            </span>
-          </div>
-          {bookData?.available && bookData.moves.length > 0 && (
-            <div className="book-moves">
-              {bookData.moves.slice(0, 8).map((m) => {
-                const playable = yourTurn && !thinking && !over && legalMoves.includes(m.uci);
-                return (
-                  <button
-                    key={m.uci}
-                    className="book-move"
-                    disabled={!playable}
-                    onClick={() => playable && onMove(m.uci)}
-                    title={m.note || m.uci}
-                  >
-                    <span className="book-move-name">{uciToChinese(fen, m.uci)}</span>
-                    {m.score != null && (
-                      <span className={"book-move-score" + (m.score >= 0 ? " pos" : " neg")}>
-                        {m.score > 0 ? "+" : ""}{m.score}
-                      </span>
-                    )}
-                    {m.winrate != null && (
-                      <span className="book-move-rate">{m.winrate.toFixed(0)}%</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* PC：棋盘居左、棋谱在右侧伴随显示；移动端自动堆叠回上下布局 */}
+      {/* PC：棋盘居左、右侧侧栏常驻（评分/云库/棋谱都在其中），
+          开关评分、云库只在侧栏内增删，不再推动棋盘上移或下移；移动端堆叠 */}
       <div className="play-main">
         <div className="play-board-area">
           <Board
@@ -763,7 +680,92 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           )}
         </div>
 
-        {moveLog.length > 0 && (
+        {/* 右侧常驻侧栏：宽度固定，从对局一开始就占好位置，棋盘不再左右挪动。
+            评分、云库、提示、棋谱都在栏内，开关时只在栏内增删，不影响棋盘位置。 */}
+        <div className="play-side">
+          {showEval && (
+            <div className="panel eval-bar-wrap">
+              <div className="eval-bar">
+                <div className="eval-bar-red" style={{ width: `${evalInfo.redPct}%` }} />
+                <span className="eval-bar-value">{evalLoading && !evalData ? "…" : evalInfo.value}</span>
+              </div>
+              <div className="eval-bar-label">
+                <span className="muted">{evalLoading ? "评估中…" : evalInfo.label}</span>
+              </div>
+            </div>
+          )}
+
+          {showBook && (
+            <div className="panel book-panel">
+              <div className="book-panel-head">
+                <strong>云库着法</strong>
+                <span className="muted">
+                  {bookLoading
+                    ? "查询中…"
+                    : !bookData || !bookData.available
+                    ? "云库暂不可用"
+                    : bookData.moves.length === 0
+                    ? "云库未收录此局面"
+                    : "点击直接走子（评分为走子方视角）"}
+                </span>
+              </div>
+              {bookData?.available && bookData.moves.length > 0 && (
+                <div className="book-moves">
+                  {bookData.moves.slice(0, 8).map((m) => {
+                    const playable = yourTurn && !thinking && !over && legalMoves.includes(m.uci);
+                    return (
+                      <button
+                        key={m.uci}
+                        className="book-move"
+                        disabled={!playable}
+                        onClick={() => playable && onMove(m.uci)}
+                        title={m.note || m.uci}
+                      >
+                        <span className="book-move-name">{uciToChinese(fen, m.uci)}</span>
+                        {m.score != null && (
+                          <span className={"book-move-score" + (m.score >= 0 ? " pos" : " neg")}>
+                            {m.score > 0 ? "+" : ""}{m.score}
+                          </span>
+                        )}
+                        {m.winrate != null && (
+                          <span className="book-move-rate">{m.winrate.toFixed(0)}%</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {hint && (
+            <div className="panel hint-strip">
+              💡 推荐：<strong>{hint.text}</strong>
+              <span className="muted">（{hint.source}）</span>
+              {!coach && (
+                <button
+                  className="btn-newgame hint-coach-btn"
+                  onClick={requestCoach}
+                  disabled={coachLoading}
+                >
+                  {coachLoading ? "AI 思考中…" : "🤖 AI 详解"}
+                </button>
+              )}
+              {coach?.text && (
+                <div className="analysis-explanation ai-explain">{coach.text}</div>
+              )}
+              {coach?.disabled && (
+                <div className="muted" style={{ marginTop: 6 }}>
+                  未启用 AI 点评（管理员可在后台配置大模型）
+                </div>
+              )}
+              {coach?.error && (
+                <div className="import-error" style={{ marginTop: 6 }}>{coach.error}</div>
+              )}
+            </div>
+          )}
+
+          {/* 棋谱：常驻显示，无着法时给出占位提示，避免出现后挤动棋盘 */}
           <div className="panel move-log">
             <div className="move-log-head">
               <strong>棋谱</strong>
@@ -771,27 +773,31 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
                 {fenCopied ? "已复制" : "复制 FEN"}
               </button>
             </div>
-            <ol className="move-log-list" ref={logRef}>
-              {moveLogItems(moveLog).map((pair, i) => (
-                <li key={i}>
-                  <span className="move-log-no">{i + 1}.</span>
-                  <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 ? " latest" : "")}>
-                    {pair[0] || "…"}
-                    {timesLog[i * 2] != null && (
-                      <i className="move-time">{fmtMoveTime(timesLog[i * 2])}</i>
-                    )}
-                  </span>
-                  <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 + 1 ? " latest" : "")}>
-                    {pair[1] || ""}
-                    {pair[1] && timesLog[i * 2 + 1] != null && (
-                      <i className="move-time">{fmtMoveTime(timesLog[i * 2 + 1])}</i>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ol>
+            {moveLog.length === 0 ? (
+              <p className="move-log-empty muted">尚无着法，落子后这里会逐步记录中文棋谱。</p>
+            ) : (
+              <ol className="move-log-list" ref={logRef}>
+                {moveLogItems(moveLog).map((pair, i) => (
+                  <li key={i}>
+                    <span className="move-log-no">{i + 1}.</span>
+                    <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 ? " latest" : "")}>
+                      {pair[0] || "…"}
+                      {timesLog[i * 2] != null && (
+                        <i className="move-time">{fmtMoveTime(timesLog[i * 2])}</i>
+                      )}
+                    </span>
+                    <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 + 1 ? " latest" : "")}>
+                      {pair[1] || ""}
+                      {pair[1] && timesLog[i * 2 + 1] != null && (
+                        <i className="move-time">{fmtMoveTime(timesLog[i * 2 + 1])}</i>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

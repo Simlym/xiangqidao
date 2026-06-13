@@ -198,7 +198,7 @@ def generate_plan(db: Session, user: str, trigger: str = "manual") -> CoachPlan:
     text = ""
     # 教练叙述由大模型生成，需消耗积分；能扣则生成，扣不动则降级为纯数据计划。
     if get_deepseek_config(db).active and credits.try_spend(db, user, "coach_plan", "coach"):
-        text = write_coach_plan(profile, recs, progress)
+        text = write_coach_plan(profile, recs, progress, user_id=user, ref="coach")
         if not text:
             credits.refund(db, user, "coach_plan", "coach")  # 调用失败退回积分
     plan = CoachPlan(

@@ -233,3 +233,30 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+class LLMCallLog(Base):
+    """LLM 调用流水（append-only）：审计每一次大模型调用的 token 与费用。
+
+    LLM 是按量计费的额外开销，必须可逐笔追溯：何时、什么事项、谁触发、用了哪个模型、
+    各类 token 用量、折算费用（USD）、耗时与成败。供后台「LLM 用量」页查询与按月对账。
+    """
+
+    __tablename__ = "llm_call_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    feature: Mapped[str] = mapped_column(String(40), index=True)   # explain_mistake / coach_move / ...
+    user_id: Mapped[str] = mapped_column(String(40), default="", index=True)  # 触发者，空串=系统/未知
+    model: Mapped[str] = mapped_column(String(40), default="")
+    # token 用量：prompt 再细分缓存命中/未命中（DeepSeek 单价不同，决定费用）
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cached_tokens: Mapped[int] = mapped_column(Integer, default=0)   # prompt 中命中缓存的部分
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, default=0)  # thinking 思考 token（计入 completion）
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)      # 按内置价格表折算的美元费用
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)    # 端到端耗时（毫秒）
+    success: Mapped[bool] = mapped_column(Boolean, default=True)
+    error: Mapped[str] = mapped_column(String(200), default="")     # 失败原因（成功为空）
+    ref: Mapped[str] = mapped_column(String(80), default="")        # 关联对象，如 game:45 / puzzle:123

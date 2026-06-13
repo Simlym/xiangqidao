@@ -175,7 +175,7 @@ def coach(
             f"积分不足，AI 走法点评需 {credits.cost(db, 'play_coach')} 积分。可通过签到、对弈、做题获取。",
         )
     side = "红方" if side_to_move(req.fen) == "w" else "黑方"
-    text = coach_move(req.fen, req.move, side)
+    text = coach_move(req.fen, req.move, side, user_id=user.username, ref="play")
     if not text:
         credits.refund(db, user.username, "play_coach", "play")
     return CoachResponse(enabled=True, text=text)
