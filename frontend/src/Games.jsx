@@ -83,8 +83,7 @@ function formatMoveScore(moveData) {
 
 export default function Games({ onNavigateToTrain, initialGameId, onInitialGameConsumed, user, onCreditsChanged, onRequireLogin }) {
   // 棋盘下方还有「上一步/下一步」导航行，预留其高度避免被挤出视口
-  const boardAreaRef = React.useRef(null);
-  const boardMaxHeight = useBoardMaxHeight(boardAreaRef, 56);
+  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight(56);
   const [games, setGames] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState(null);
