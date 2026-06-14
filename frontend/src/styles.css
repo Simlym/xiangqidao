@@ -655,6 +655,8 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   .cards { grid-template-columns: repeat(2, 1fr); }
   .rating-btns { grid-template-columns: repeat(2, 1fr); }
   .panel { padding: 12px; }
+  /* 棋盘上方的状态栏收紧外边距与间距，把竖向空间让给棋盘 */
+  .play-status-bar { margin: 8px 0; gap: 8px; padding: 10px 12px; }
   .play-setup-row { gap: 8px; }
   .seg-btn { padding: 9px 12px; font-size: 14px; }
   .bar-label { width: 60px; font-size: 13px; }
@@ -1483,6 +1485,10 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .reminder-banner .reminder-x {
   margin-left: auto; border: none; background: transparent; cursor: pointer;
   color: #b89b5a; font-size: 18px; line-height: 1; padding: 0 4px;
+}
+/* 窄屏收窄横幅，少占棋盘上方空间 */
+@media (max-width: 640px) {
+  .reminder-banner { gap: 8px; padding: 8px 12px; margin: 8px 0; font-size: 13px; }
 }
 
 /* ── ELO 评分面板 ─────────────────────────────────────────── */
