@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import Board from "./Board";
 import { uciToChinese } from "./xiangqi";
 import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis } from "./api";
+import { splitPlayedOn } from "./datetime";
 
 const RESULT_LABELS = {
   "1-0": { text: "红胜", color: "#c0392b" },
@@ -84,9 +85,9 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
   const [games, setGames] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState(null);
-  // 移动端：选中棋局后把列表收起为一行，腾出竖向空间给棋盘；点击可再展开换局。
-  // PC 端列表常驻左侧，此状态不影响其显示（仅移动端样式生效）。
-  const [listExpanded, setListExpanded] = React.useState(true);
+  // 复盘页两段式：未选棋局=列表页（满宽棋局列表，无棋盘）；选中=分析页（顶部切换栏 + 棋盘/分析）。
+  // switcherOpen 控制分析页顶部「当前棋局」栏展开为快速换局下拉。
+  const [switcherOpen, setSwitcherOpen] = React.useState(false);
   const [positions, setPositions] = React.useState(null);
   const [posLoading, setPosLoading] = React.useState(false);
   const [stepIndex, setStepIndex] = React.useState(0);
@@ -148,8 +149,8 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
   React.useEffect(() => {
     if (initialGameId) {
       pendingAutoAnalyze.current = initialGameId;
-      setSelectedId(initialGameId);
-      setListExpanded(false); // 跳转直达复盘：列表收起，优先看棋盘
+      setSelectedId(initialGameId); // 跳转直达分析页
+      setSwitcherOpen(false);
       loadGames(); // 刷新列表以纳入刚结束的对局
       onInitialGameConsumed?.();
     }
@@ -331,11 +332,22 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
       ? currentMoveAnalysis.best_move
       : null;
 
+  // 列表页点击棋局：进入分析页
   function handleSelectGame(id) {
-    const next = id === selectedId ? null : id;
-    setSelectedId(next);
-    // 选中棋局即收起列表（移动端）；取消选中则展开，方便再选
-    setListExpanded(next === null);
+    setSelectedId(id);
+    setSwitcherOpen(false);
+  }
+
+  // 分析页顶部下拉里换局：切到新局并收起下拉
+  function handleSwitchGame(id) {
+    setSelectedId(id);
+    setSwitcherOpen(false);
+  }
+
+  // 返回棋局列表页
+  function handleBackToList() {
+    setSelectedId(null);
+    setSwitcherOpen(false);
   }
 
   function handleFormChange(e) {
@@ -374,7 +386,10 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
     e.stopPropagation();
     if (!window.confirm("确认删除这局棋局？")) return;
     await deleteGame(id);
-    if (selectedId === id) setSelectedId(null);
+    if (selectedId === id) {
+      setSelectedId(null);
+      setSwitcherOpen(false);
+    }
     loadGames();
   }
 
@@ -400,90 +415,30 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
 
   const selectedGame = games.find((g) => g.id === selectedId) || null;
 
-  return (
-    <div className="games-layout">
-      {/* Left: game list */}
-      <div className={"games-list-panel" + (listExpanded ? " expanded" : " collapsed")}>
-        {/* 移动端：选中棋局后列表收起为一行（当前棋局摘要 + 切换）。点击展开换局。 */}
-        {selectedGame && (
-          <button
-            className="games-list-collapsed-bar"
-            onClick={() => setListExpanded((v) => !v)}
-            aria-expanded={listExpanded}
-          >
-            <span className={"collapsed-caret" + (listExpanded ? " open" : "")}>▾</span>
-            <span
-              className="game-result-tag"
-              style={{
-                color: resultLabel(selectedGame.result).color,
-                borderColor: resultLabel(selectedGame.result).color,
-              }}
-            >
-              {resultLabel(selectedGame.result).text}
-            </span>
-            <span className="collapsed-players">
-              <span className="game-red">{selectedGame.red_player || "红方"}</span>
-              <span className="game-vs"> vs </span>
-              <span className="game-black">{selectedGame.black_player || "黑方"}</span>
-            </span>
-            {selectedGame.move_count > 0 && (
-              <span className="collapsed-moves muted">{selectedGame.move_count}手</span>
-            )}
-            <span className="collapsed-action">{listExpanded ? "收起" : "切换"}</span>
-          </button>
-        )}
-
-        <div className="games-list-header">
+  // 列表页：满宽棋局卡片网格（无棋盘），点卡片进入分析页
+  if (!selectedId) {
+    return (
+      <div className="games-page">
+        <div className="games-page-head">
           <span className="games-list-title">棋局列表</span>
           {loading && <span className="muted"> 加载中…</span>}
         </div>
-
-        <div className="games-list-scroll">
-          {games.length === 0 && !loading && (
-            <div className="muted" style={{ padding: "12px" }}>
-              暂无棋局，先去对弈产生对局吧
-            </div>
-          )}
-          {games.map((g) => {
-            const rl = resultLabel(g.result);
-            const isSelected = g.id === selectedId;
-            return (
-              <div
+        {games.length === 0 && !loading ? (
+          <div className="muted" style={{ padding: "24px 12px" }}>
+            暂无棋局，先去对弈产生对局吧
+          </div>
+        ) : (
+          <div className="games-grid">
+            {games.map((g) => (
+              <GameCard
                 key={g.id}
-                className={"game-item" + (isSelected ? " selected" : "")}
-                onClick={() => handleSelectGame(g.id)}
-              >
-                <div className="game-item-top">
-                  <span
-                    className="game-result-tag"
-                    style={{ color: rl.color, borderColor: rl.color }}
-                  >
-                    {rl.text}
-                  </span>
-                  <div className="game-item-players">
-                    <span className="game-red">{g.red_player || "红方"}</span>
-                    <span className="game-vs">vs</span>
-                    <span className="game-black">{g.black_player || "黑方"}</span>
-                  </div>
-                  <button
-                    className="game-delete-btn"
-                    title="删除"
-                    onClick={(e) => handleDelete(e, g.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="game-item-meta">
-                  {g.opening && <span className="game-opening">{g.opening}</span>}
-                  {g.move_count > 0 && (
-                    <span className="game-moves muted">{g.move_count} 手</span>
-                  )}
-                  {g.played_on && <span className="game-date muted">{g.played_on}</span>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                game={g}
+                onSelect={() => handleSelectGame(g.id)}
+                onDelete={(e) => handleDelete(e, g.id)}
+              />
+            ))}
+          </div>
+        )}
 
         {/* 导入功能已隐藏：大部分场景用不上，且手动填写较繁琐。
             如需恢复，取消下方代码块的注释即可。 */}
@@ -581,14 +536,90 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
         )}
         */}
       </div>
+    );
+  }
 
-      {/* Right: review area */}
+  // 分析页：顶部「返回列表 + 当前棋局（可下拉换局）」切换栏 + 棋盘/分析
+  return (
+    <div className="games-page review-mode">
+      <div className="review-switcher">
+        <button className="review-back-btn" onClick={handleBackToList} title="返回棋局列表">
+          ← 返回列表
+        </button>
+        <div className="review-current">
+          <button
+            className="review-current-bar"
+            onClick={() => setSwitcherOpen((v) => !v)}
+            aria-expanded={switcherOpen}
+          >
+            {selectedGame ? (
+              <>
+                <span
+                  className="game-result-tag"
+                  style={{
+                    color: resultLabel(selectedGame.result).color,
+                    borderColor: resultLabel(selectedGame.result).color,
+                  }}
+                >
+                  {resultLabel(selectedGame.result).text}
+                </span>
+                <span className="review-current-players">
+                  <span className="game-red">{selectedGame.red_player || "红方"}</span>
+                  <span className="game-vs"> vs </span>
+                  <span className="game-black">{selectedGame.black_player || "黑方"}</span>
+                </span>
+                {selectedGame.move_count > 0 && (
+                  <span className="collapsed-moves muted">{selectedGame.move_count}手</span>
+                )}
+              </>
+            ) : (
+              <span className="muted">当前棋局</span>
+            )}
+            <span className={"collapsed-caret" + (switcherOpen ? " open" : "")}>▾</span>
+          </button>
+
+          {switcherOpen && (
+            <>
+              <div className="review-switcher-backdrop" onClick={() => setSwitcherOpen(false)} />
+              <div className="review-switcher-menu">
+                {games.length === 0 && <div className="muted" style={{ padding: 10 }}>暂无棋局</div>}
+                {games.map((g) => {
+                  const rl = resultLabel(g.result);
+                  const { date, time } = splitPlayedOn(g.played_on);
+                  return (
+                    <button
+                      key={g.id}
+                      className={"review-switcher-item" + (g.id === selectedId ? " active" : "")}
+                      onClick={() => handleSwitchGame(g.id)}
+                    >
+                      <span
+                        className="game-result-tag"
+                        style={{ color: rl.color, borderColor: rl.color }}
+                      >
+                        {rl.text}
+                      </span>
+                      <span className="review-switcher-players">
+                        <span className="game-red">{g.red_player || "红方"}</span>
+                        <span className="game-vs"> vs </span>
+                        <span className="game-black">{g.black_player || "黑方"}</span>
+                      </span>
+                      {(date || time) && (
+                        <span className="review-switcher-time muted">
+                          {date}
+                          {time ? ` ${time}` : ""}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
       <div className="games-review-panel">
-        {!selectedId ? (
-          <div className="games-empty">
-            <span>请从左侧选择一局棋局</span>
-          </div>
-        ) : posLoading ? (
+        {posLoading ? (
           <div className="games-empty">
             <span className="muted">加载中…</span>
           </div>
@@ -781,6 +812,44 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                 )}
               </div>
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 列表页棋局卡片：突出胜负配色（左色条 + 大号结果标签），展示对手/手数/开局/日期时分秒。
+function GameCard({ game, onSelect, onDelete }) {
+  const rl = resultLabel(game.result);
+  const { date, time } = splitPlayedOn(game.played_on);
+  return (
+    <div
+      className="game-card"
+      style={{ "--result-color": rl.color }}
+      onClick={onSelect}
+    >
+      <button className="game-delete-btn" title="删除" onClick={onDelete}>
+        ×
+      </button>
+      <div className="game-card-result" style={{ color: rl.color, borderColor: rl.color }}>
+        {rl.text}
+      </div>
+      <div className="game-card-body">
+        <div className="game-card-players">
+          <span className="game-red">{game.red_player || "红方"}</span>
+          <span className="game-vs">vs</span>
+          <span className="game-black">{game.black_player || "黑方"}</span>
+        </div>
+        <div className="game-card-meta">
+          {game.opening && <span className="game-opening">{game.opening}</span>}
+          {game.move_count > 0 && <span className="game-moves muted">{game.move_count} 手</span>}
+          {game.source && <span className="game-source muted">{game.source}</span>}
+        </div>
+        {(date || time) && (
+          <div className="game-card-time muted">
+            <span className="game-date">{date}</span>
+            {time && <span className="game-time">{time}</span>}
           </div>
         )}
       </div>

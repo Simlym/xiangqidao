@@ -12,7 +12,7 @@ const H = (ROWS - 1) * CELL; // 棋盘线区域高
 const SW = W + 2 * PAD; // SVG 总宽
 const SH = H + 2 * PAD; // SVG 总高
 const TOTAL_H = SH + 2 * COORD; // 含坐标条的整体高
-const MAX_SCALE = 1.15; // PC 端最大放大倍数（基准棋盘约 416px，过大会超出视口）
+const MAX_SCALE = 1.3; // PC 端最大放大倍数（基准棋盘约 416px；复盘页容器给定更大宽度时可放大到此）
 
 // 列坐标：上方黑方用阿拉伯数字 1-9（黑视角从右到左→屏幕从左到右）；
 // 下方红方用汉字（红视角从右到左→屏幕从左到右为 九…一）。

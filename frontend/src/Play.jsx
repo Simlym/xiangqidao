@@ -7,6 +7,7 @@ import {
 } from "./api";
 import { localEval, localEngineReady } from "./localEngine";
 import { useBoardMaxHeight } from "./useBoardMaxHeight";
+import { formatLocalTimestamp } from "./datetime";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
@@ -330,7 +331,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         source: "人机对弈",
         [me]: "我",
         [foe]: `引擎·${lvlLabel}`,
-        played_on: new Date().toISOString().slice(0, 10),
+        // 存完整本地时间戳（YYYY-MM-DD HH:MM:SS），复盘列表可精确到秒区分对局
+        played_on: formatLocalTimestamp(new Date()),
       });
       setSaved(true);
       setSavedGameId(res.id);

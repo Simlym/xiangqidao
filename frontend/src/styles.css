@@ -498,76 +498,130 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .captured-diff { margin-left: auto; font-size: 12px; color: #285f96; font-weight: 600; }
 .captured-diff.red { color: #c0392b; }
 
-/* 战术训练：结果/自评面板浮于棋面正中，配暖棕遮罩聚焦弹窗 */
+/* ===== 战术训练：三栏布局（左成长 / 中棋盘 / 右解题）===== */
 .trainer {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
+/* 大屏：突破 .app 880/1040 容器宽度，左右铺开三栏，吃掉竖长棋盘两侧留白。
+   负 margin 仅作用于训练页，其他标签页布局不受影响。 */
+@media (min-width: 1024px) {
+  .trainer-3col {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 18px;
+    width: calc(100% + 280px);
+    margin-left: -140px;
+    margin-right: -140px;
+  }
+  .trainer-side {
+    flex: 0 0 248px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    overflow-y: auto;
+  }
+  .trainer-main {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;       /* 棋盘 + 轮次条作为一组在中栏水平居中 */
+    justify-content: flex-start;/* 顶部对齐：棋盘贴顶与两侧卡片齐平，消除棋盘上方留白 */
+  }
+}
+/* 中等及以下：回退为纵向，侧栏跟随主轴堆叠 */
+@media (max-width: 1023px) {
+  .trainer-side { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
+  .trainer-side.growth { flex-direction: row; }       /* 进度环与 ELO 卡并排成一条带 */
+  .trainer-side.growth > .growth-card { flex: 1 1 0; }
+}
+
+.trainer-main { min-height: 0; }
 .trainer-board-area {
   position: relative;
-  flex: 1 1 0;
+  flex: 0 1 auto;          /* 由棋盘内容定高，不再吞满竖向空间把轮次条顶到栏底 */
   min-height: 0;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.board-overlay {
-  position: absolute; inset: 0;
+
+/* 棋盘下方一行：轮到谁走 + 多步进度 + 计时 */
+.turn-bar {
   display: flex; align-items: center; justify-content: center;
-  padding: 16px;
-  pointer-events: none;
-  background: rgba(60, 36, 12, .26);
-  border-radius: 8px;            /* 与棋盘圆角一致 */
-  animation: overlay-fade .18s ease-out;
+  flex-wrap: wrap; gap: 10px; margin-top: 10px;
 }
-@keyframes overlay-fade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+.turn-chip {
+  padding: 5px 14px; border-radius: 16px; font-size: 15px;
+  background: #f6efe3; border: 1px solid #e7ddc9; color: #6b4a2b;
 }
-.board-overlay > .panel {
-  pointer-events: auto;
+.turn-chip.red   { border-color: #e0b4ac; background: #fbeeec; }
+.turn-chip.red b { color: #c0392b; }
+.turn-chip.black b { color: #285f96; }
+.turn-step { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #777; }
+
+/* ── 右栏：解题工作区卡片 ── */
+.solve-card {
   margin: 0;
-  width: 100%;
-  max-width: 400px;
-  max-height: 100%;
-  overflow-y: auto;
-  background: #fffdf7;                          /* 暖白，呼应米色主题 */
-  border: 1px solid #e0cfa8;                    /* 暖棕描边 */
-  border-radius: 14px;
-  box-shadow: 0 14px 40px rgba(60, 36, 12, .38);
-  animation: overlay-pop .2s ease-out;
+  background: #fffdf7;
+  border: 1px solid #e0cfa8;
+  box-shadow: 0 6px 22px rgba(60, 36, 12, .12);
 }
-@keyframes overlay-pop {
-  from { transform: scale(.94); opacity: 0; }
-  to   { transform: scale(1); opacity: 1; }
-}
+.solve-prompt { margin: 10px 0 4px; font-size: 15px; color: #4a4a4a; }
+.btn-giveup.wide { flex: none; width: 100%; margin-top: 10px; }
 
-/* 结果面板：标题按对错着色 */
-.result.ok h3 { color: #2e7d32; margin: 0 0 8px; }
-.result.bad h3 { color: #c0392b; margin: 0 0 8px; }
-
-/* 完成面板内的「回看棋局」收起按钮 */
+/* 结果块：标题按对错着色，内容内联在右栏（不再浮层） */
 .result { position: relative; }
-.overlay-collapse-btn {
-  position: absolute; top: 8px; right: 10px;
-  padding: 4px 10px; border: 1px solid #d4b896; border-radius: 14px;
-  background: #fdf9f0; color: #8a5a2b; font-size: 12px; cursor: pointer;
-}
-.overlay-collapse-btn:hover { background: #f5ecd8; }
+.result.ok h3 { color: #2e7d32; margin: 4px 0 8px; }
+.result.bad h3 { color: #c0392b; margin: 4px 0 8px; }
+.result .hint { display: block; margin: 6px 0; }
 
-/* 收起后浮于棋盘底部的「展开结果」按钮 */
-.overlay-restore-btn {
-  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
-  z-index: 2; pointer-events: auto;
-  padding: 8px 18px; border: 1px solid #8a5a2b; border-radius: 20px;
-  background: rgba(255, 253, 247, .96); color: #8a5a2b;
-  font-size: 14px; font-weight: 600; cursor: pointer;
-  box-shadow: 0 6px 18px rgba(60, 36, 12, .28);
-  animation: overlay-fade .18s ease-out;
+/* ── 左栏成长卡：暖棕木质卡片 ── */
+.growth-card {
+  margin: 0;
+  background: #fffdf7;
+  border: 1px solid #e0cfa8;
+  box-shadow: 0 6px 22px rgba(60, 36, 12, .12);
+  text-align: center;
 }
-.overlay-restore-btn:hover { background: #fff; }
+.growth-title {
+  font-size: 13px; font-weight: 700; color: #8a5a2b;
+  letter-spacing: 1px; margin-bottom: 10px;
+}
+.ring-wrap { position: relative; width: 96px; height: 96px; margin: 0 auto 12px; }
+.ring-svg { width: 96px; height: 96px; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: #efe6d6; stroke-width: 8; }
+.ring-fg {
+  fill: none; stroke: #e67e22; stroke-width: 8; stroke-linecap: round;
+  transition: stroke-dashoffset .5s ease;
+}
+.ring-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.ring-num { font-size: 26px; font-weight: 800; color: #8a5a2b; line-height: 1; }
+.ring-den { font-size: 12px; color: #999; margin-top: 2px; }
+.growth-rows { display: flex; flex-direction: column; gap: 6px; }
+.growth-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; color: #777; padding: 2px 4px;
+}
+.growth-row b { color: #5a3d22; font-size: 14px; }
+
+/* ELO 卡 */
+.elo-main { display: flex; align-items: baseline; justify-content: center; gap: 8px; }
+.elo-num { font-size: 34px; font-weight: 800; color: #8a5a2b; line-height: 1; }
+.elo-delta { font-size: 15px; font-weight: 700; }
+.elo-title {
+  display: inline-block; margin: 6px auto 10px;
+  font-size: 12px; color: #a87b3e; background: #f6efe3;
+  border-radius: 10px; padding: 2px 10px;
+}
 
 .btn-row { display: flex; gap: 10px; margin-top: 8px; }
 .btn-retry {
@@ -579,9 +633,9 @@ nav .nav-ico, nav .nav-label-short { display: none; }
   background: #eee; color: #666; font-size: 14px; cursor: pointer;
 }
 
-/* 四档自评按钮 */
+/* 四档自评按钮：右栏较窄，2×2 排布避免横向溢出 */
 .rating-btns {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px;
 }
 .btn-rate {
   display: flex; flex-direction: column; align-items: center;
@@ -702,27 +756,160 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
    避免标签切换时容器宽度跳动 */
 .app { max-width: 1040px; padding-left: 16px; padding-right: 16px; }
 
-.games-layout {
-  display: flex;
-  gap: 18px;
-  align-items: flex-start;
+/* 两段式复盘：列表页（满宽卡片网格）与分析页共用 .games-page 外壳 */
+.games-page {
   min-height: 600px;
 }
 
-/* Left panel */
-.games-list-panel {
-  width: 200px;
-  flex-shrink: 0;
+/* 列表页头部 */
+.games-page-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+/* 棋局卡片网格：PC 多列、移动端单列 */
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+/* 单张棋局卡片：左侧胜负色条 + 大号结果标签，一眼可扫红胜/黑胜/和棋 */
+.game-card {
+  position: relative;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  border-left: 5px solid var(--result-color, #ddd);
+  padding: 14px 16px 14px 14px;
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  transition: box-shadow .15s, transform .1s;
+}
+.game-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,.12); transform: translateY(-1px); }
+
+.game-card-result {
+  flex-shrink: 0;
+  border: 1.5px solid;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  min-width: 44px;
+  text-align: center;
 }
 
-/* 移动端「选中后收起为一行」的折叠条：PC 端从不显示（列表常驻） */
-.games-list-collapsed-bar { display: none; }
+.game-card-body { flex: 1; min-width: 0; }
+
+.game-card-players {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.game-source { color: #b08a55; }
+
+.game-card-time {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.game-card-time .game-date::before { content: "🗓 "; opacity: .6; font-size: 10px; }
+.game-card-time .game-time::before { content: "🕘 "; opacity: .6; font-size: 10px; }
+
+/* ===== 分析页顶部切换栏 ===== */
+.review-switcher {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.review-back-btn {
+  flex-shrink: 0;
+  background: #fff;
+  border: 1px solid #e6ded0;
+  border-radius: 10px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #8a5a2b;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.review-back-btn:hover { background: #fdf8f2; }
+
+/* 当前棋局栏（点击下拉换局） */
+.review-current { position: relative; flex: 1; min-width: 0; }
+.review-current-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: #fff;
+  border: 1px solid #e6ded0;
+  border-radius: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.review-current-bar:hover { background: #fdf8f2; }
+.review-current-players {
+  flex: 1; min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 下拉菜单：浮层覆盖在棋盘之上，配合 backdrop 点击关闭 */
+.review-switcher-backdrop {
+  position: fixed; inset: 0; z-index: 30;
+}
+.review-switcher-menu {
+  position: absolute; z-index: 31;
+  top: calc(100% + 4px); left: 0; right: 0;
+  max-height: 360px; overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e6ded0;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.16);
+  padding: 4px;
+}
+.review-switcher-item {
+  width: 100%;
+  display: flex; align-items: center; gap: 9px;
+  background: none; border: none; cursor: pointer;
+  padding: 9px 10px; border-radius: 8px; text-align: left;
+  font-size: 13px;
+}
+.review-switcher-item:hover { background: #fdf8f2; }
+.review-switcher-item.active { background: #efe6d6; }
+.review-switcher-players {
+  flex: 1; min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.review-switcher-time { flex-shrink: 0; font-size: 11px; }
+
+/* 当前棋局栏内的小元素（原移动端折叠条复用） */
+.collapsed-caret { color: #b08a55; transition: transform .15s; flex-shrink: 0; }
+.collapsed-caret.open { transform: rotate(180deg); }
+.collapsed-moves { flex-shrink: 0; font-size: 12px; }
 
 .games-list-header {
   padding: 12px 14px 8px;
@@ -1131,6 +1318,9 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+  /* 复盘页给棋盘区固定一个略大于基准(416px)的宽度，棋盘据此等比放大到 MAX_SCALE 上限 */
+  width: 500px;
+  max-width: 52%;
 }
 
 .review-nav {
@@ -1181,7 +1371,7 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .review-moves-head {
   display: grid;
   grid-template-columns: 30px 1fr 1fr;
-  column-gap: 8px;
+  column-gap: 24px;
   align-items: center;
   padding: 0 12px 4px;
   font-size: 11px;
@@ -1202,11 +1392,12 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   gap: 1px;
 }
 
-/* 每一回合一行：回合号 + 红着 + 黑着，三列网格对齐，红黑之间留间隔 */
+/* 每一回合一行：回合号 + 红着 + 黑着，三列网格对齐。
+   红黑两列间留较宽间隔，避免红方分数与黑方步号视觉粘连。 */
 .move-round {
   display: grid;
   grid-template-columns: 30px 1fr 1fr;
-  column-gap: 8px;
+  column-gap: 24px;
   align-items: stretch;
   font-size: 13px;
   padding: 1px 2px;
@@ -1222,16 +1413,21 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   font-variant-numeric: tabular-nums;
 }
 
+/* 旗标 + 着法 + 分数，定宽子栅格让每行的着法、分数都纵向对齐：
+   着法列定宽承载「炮二平五」等4字、分数列定宽承载「−0.0」，二者间留固定间距；
+   整组靠左、不撑满，剩余空白 + .move-round 列间距作为红黑两栏分隔。 */
 .move-item {
   display: grid;
-  grid-template-columns: 12px 1fr auto;
+  grid-template-columns: 12px 5em 2.6em;
+  justify-content: start;
   align-items: center;
-  gap: 4px;
+  column-gap: 10px;
   padding: 4px 8px;
   border-radius: 6px;
   cursor: pointer;
   transition: background .1s;
   font-size: 13px;
+  min-width: 0;
 }
 .move-item:hover { background: #f0eadf; }
 .move-item.active { background: #8a5a2b; color: #fff; box-shadow: 0 1px 3px rgba(138,90,43,.3); }
@@ -1277,41 +1473,12 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
      反过来按棋盘的固定像素宽撑大 → 棋盘卡片比视口还宽、右侧列被裁掉。
      关键修复：移动端把这两层改成 align-items:stretch，并配合 min-width:0，
      让每层都收窄到视口宽，棋盘据此测得正确宽度、完整可见。 */
-  .games-layout { flex-direction: column; align-items: stretch; min-height: 0; min-width: 0; }
-  .games-list-panel { width: 100%; min-width: 0; }
-  /* 选中棋局后列表是次要的，压低高度把竖向空间让给棋盘 */
-  .games-list-scroll { max-height: 150px; }
-
-  /* 选中棋局后：列表收起为一行折叠条，隐藏完整列表，把竖向空间让给棋盘 */
-  .games-list-collapsed-bar {
-    display: flex; align-items: center; gap: 7px; width: 100%;
-    padding: 10px 12px; border: none; background: #fff; cursor: pointer;
-    font-size: 13px; text-align: left; border-radius: 12px;
-  }
-  .games-list-panel.collapsed { background: transparent; box-shadow: none; }
-  .games-list-panel.collapsed .games-list-collapsed-bar {
-    box-shadow: 0 1px 4px rgba(0,0,0,.06);
-  }
-  /* 收起态：隐藏标题、列表、导入按钮区，只留折叠条 */
-  .games-list-panel.collapsed .games-list-header,
-  .games-list-panel.collapsed .games-list-scroll,
-  .games-list-panel.collapsed .games-list-footer,
-  .games-list-panel.collapsed .import-form { display: none; }
-  /* 展开态：折叠条作为「收起」开关置顶，下方仍是完整列表 */
-  .games-list-panel.expanded .games-list-collapsed-bar {
-    border-bottom: 1px solid #f0ebe3; border-radius: 12px 12px 0 0;
-  }
-  .collapsed-caret { color: #b08a55; transition: transform .15s; flex-shrink: 0; }
-  .collapsed-caret.open { transform: rotate(180deg); }
-  .collapsed-players {
-    flex: 1; min-width: 0; font-weight: 600;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .collapsed-moves { flex-shrink: 0; font-size: 12px; }
-  .collapsed-action {
-    flex-shrink: 0; color: #8a5a2b; font-weight: 600; font-size: 12px;
-    background: #f6efe3; padding: 3px 10px; border-radius: 12px;
-  }
+  .games-page { min-width: 0; }
+  /* 列表页：单列卡片 */
+  .games-grid { grid-template-columns: 1fr; }
+  /* 分析页顶部切换栏：返回按钮 + 当前棋局栏一行 */
+  .review-back-btn { padding: 8px 12px; font-size: 13px; }
+  .review-current-bar { padding: 8px 12px; }
   .games-review-panel { width: 100%; min-height: 0; min-width: 0; }
   .review-content { padding: 12px; flex-direction: column; align-items: stretch; min-width: 0; }
   .review-board-wrap { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; }
@@ -1464,7 +1631,7 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 
 /* ── 失误列表（红/黑分列，可点击跳转） ──────────────────── */
 .blunder-cols {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
   margin-bottom: 12px; padding-bottom: 12px;
   border-bottom: 1px solid #f0ece4;
 }
@@ -1504,9 +1671,10 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 .blunder-chip.blunder .blunder-chip-dot { color: #c0392b; }
 .blunder-chip.mistake .blunder-chip-dot { color: #e67e22; }
 .blunder-chip-step { color: #b3a892; }
-.blunder-chip-move { font-weight: 600; flex: 1; }
+/* 着法与失分紧跟成组，不再用 flex:1 / margin-left:auto 把失分顶到栏最右 */
+.blunder-chip-move { font-weight: 600; }
 .blunder-chip-drop {
-  color: #c0392b; font-weight: 600; font-size: 11px; margin-left: auto;
+  color: #c0392b; font-weight: 600; font-size: 11px;
   font-family: "SF Mono", "Consolas", monospace;
 }
 
