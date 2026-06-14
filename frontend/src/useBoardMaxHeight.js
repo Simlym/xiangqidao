@@ -52,7 +52,8 @@ export function useBoardMaxHeight(reserveBottom = 12) {
     window.addEventListener("resize", update);
     const vv = window.visualViewport;
     vv?.addEventListener("resize", update);   // 缩放 / 地址栏显隐
-    vv?.addEventListener("scroll", update);    // 缩放后平移
+    // 注意：不监听 visualViewport 的 scroll —— 否则滚动页面（如复盘）时棋盘顶部
+    // 位置随滚动变化会被反复重算，棋盘边滚边变大小。
 
     cleanupRef.current = () => {
       cancelAnimationFrame(raf);
@@ -60,7 +61,6 @@ export function useBoardMaxHeight(reserveBottom = 12) {
       ro.disconnect();
       window.removeEventListener("resize", update);
       vv?.removeEventListener("resize", update);
-      vv?.removeEventListener("scroll", update);
     };
   }, [reserveBottom]);
 

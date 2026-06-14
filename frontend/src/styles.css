@@ -668,16 +668,20 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   }
 
   /* 操作按钮加大触控目标 */
-  .btn-newgame, .btn-link { padding: 8px 14px; }
-  /* 工具栏按钮按内容宽度自然换行，避免 7 个按钮挤成一行、文字折行 */
-  .play-actions { gap: 8px; }
+  .btn-link { padding: 8px 14px; }
+  /* 工具栏按钮按内容宽度自然换行；适当收紧高度，把竖向空间让给棋盘 */
+  .play-actions { gap: 6px; }
   .play-actions .btn-newgame {
-    flex: 0 1 auto; padding: 8px 12px; white-space: nowrap;
+    flex: 0 1 auto; padding: 6px 10px; font-size: 13px; white-space: nowrap;
   }
+  .play-status-line { min-height: 0; }
+  .play-status-line .tag { font-size: 12px; padding: 2px 7px; }
 
   /* 对弈区回到上下堆叠：棋盘在上、评分/云库/棋谱在下 */
   .play-main { flex-direction: column; gap: 0; }
   .play-board-area { flex: 0 0 auto; }
+  /* 棋盘按高度受限变窄时水平居中，避免右侧单边留白；宽度足够时仍占满 */
+  .play-board-area .xq-board-measure { display: flex; justify-content: center; }
   .play-side {
     width: 100%; max-width: none; min-width: 0; margin-top: 12px; gap: 12px;
   }
