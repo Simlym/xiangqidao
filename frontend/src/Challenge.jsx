@@ -2,10 +2,13 @@ import React from "react";
 import Board from "./Board";
 import { applyMove, uciToChinese } from "./xiangqi";
 import { getLevels, getLevel, checkMove, submitChallenge } from "./api";
+import { useBoardMaxHeight } from "./useBoardMaxHeight";
 
 // 闯关：关卡网格 → 选关进入解题器，依次解完本关全部题目。
 
 export default function Challenge() {
+  const boardAreaRef = React.useRef(null);
+  const boardMaxHeight = useBoardMaxHeight(boardAreaRef);
   const [levels, setLevels] = React.useState(null);
   const [active, setActive] = React.useState(null); // 当前关卡详情
   const [loading, setLoading] = React.useState(false);
@@ -223,7 +226,9 @@ function LevelSolver({ level, onExit }) {
         </div>
       </div>
 
-      <Board fen={fen} onMove={onMove} lastMove={lastMove} disabled={phase !== "thinking"} />
+      <div className="challenge-board-area" ref={boardAreaRef}>
+        <Board fen={fen} onMove={onMove} lastMove={lastMove} disabled={phase !== "thinking"} maxHeight={boardMaxHeight} />
+      </div>
 
       {phase === "wrong" && (
         <div className="panel result bad">

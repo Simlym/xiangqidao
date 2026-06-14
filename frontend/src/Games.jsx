@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import Board from "./Board";
 import { uciToChinese } from "./xiangqi";
 import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis } from "./api";
+import { useBoardMaxHeight } from "./useBoardMaxHeight";
 
 const RESULT_LABELS = {
   "1-0": { text: "红胜", color: "#c0392b" },
@@ -81,6 +82,9 @@ function formatMoveScore(moveData) {
 }
 
 export default function Games({ onNavigateToTrain, initialGameId, onInitialGameConsumed, user, onCreditsChanged, onRequireLogin }) {
+  // 棋盘下方还有「上一步/下一步」导航行，预留其高度避免被挤出视口
+  const boardAreaRef = React.useRef(null);
+  const boardMaxHeight = useBoardMaxHeight(boardAreaRef, 56);
   const [games, setGames] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState(null);
@@ -559,7 +563,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
         ) : (
           <div className="review-content">
             {/* 左：棋盘常驻 */}
-            <div className="review-board-wrap">
+            <div className="review-board-wrap" ref={boardAreaRef}>
               {currentFen ? (
                 <Board
                   fen={currentFen}
@@ -568,6 +572,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                   arrowMove={recommendArrow}
                   gradeBadge={currentGrade}
                   disabled={true}
+                  maxHeight={boardMaxHeight}
                 />
               ) : (
                 <div className="muted">无棋盘数据</div>

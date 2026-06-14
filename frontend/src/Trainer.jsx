@@ -2,6 +2,7 @@ import React from "react";
 import Board from "./Board";
 import { applyMove, uciToChinese } from "./xiangqi";
 import { getNext, getTrainingPuzzle, checkMove, submitRating, explainPuzzle } from "./api";
+import { useBoardMaxHeight } from "./useBoardMaxHeight";
 
 // 训练状态机
 // phase: 'loading' | 'thinking' | 'step_ok' | 'wrong' | 'rating' | 'done' | 'empty'
@@ -48,28 +49,9 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [elapsed, setElapsed] = React.useState(0);  // 秒
   const solveMs               = React.useRef(0);     // 完成时定格的用时
 
-  // 棋盘区可用高度：取视口底部到棋盘区顶部的剩余空间，防止上方数字坐标被挤出、
-  // 下方最后一行被截断。注意不能用棋盘区自身的 clientHeight——它由棋盘内容撑高，
-  // 会形成「越量越大」的循环，根本起不到限高作用。
+  // 棋盘区可用高度：防止上方数字坐标被挤出、下方最后一行被截断。
   const boardAreaRef = React.useRef(null);
-  const [boardMaxHeight, setBoardMaxHeight] = React.useState(null);
-  React.useLayoutEffect(() => {
-    const el = boardAreaRef.current;
-    if (!el) return;
-    const update = () => {
-      const top = el.getBoundingClientRect().top;
-      const avail = window.innerHeight - top - 12; // 底部留 12px 余量
-      setBoardMaxHeight(Math.max(120, avail));
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    window.addEventListener("resize", update);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", update);
-    };
-  }, []);
+  const boardMaxHeight = useBoardMaxHeight(boardAreaRef);
 
   // 解题进行中实时计时；完成/答错面板出现后停表
   React.useEffect(() => {
