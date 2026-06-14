@@ -50,8 +50,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const solveMs               = React.useRef(0);     // 完成时定格的用时
 
   // 棋盘区可用高度：防止上方数字坐标被挤出、下方最后一行被截断。
-  const boardAreaRef = React.useRef(null);
-  const boardMaxHeight = useBoardMaxHeight(boardAreaRef);
+  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight();
 
   // 解题进行中实时计时；完成/答错面板出现后停表
   React.useEffect(() => {

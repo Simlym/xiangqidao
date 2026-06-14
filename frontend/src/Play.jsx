@@ -127,8 +127,7 @@ function fmtDuration(ms) {
 }
 
 export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin }) {
-  const boardAreaRef = React.useRef(null);
-  const boardMaxHeight = useBoardMaxHeight(boardAreaRef);
+  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight();
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);

@@ -7,8 +7,7 @@ import { useBoardMaxHeight } from "./useBoardMaxHeight";
 // 闯关：关卡网格 → 选关进入解题器，依次解完本关全部题目。
 
 export default function Challenge() {
-  const boardAreaRef = React.useRef(null);
-  const boardMaxHeight = useBoardMaxHeight(boardAreaRef);
+  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight();
   const [levels, setLevels] = React.useState(null);
   const [active, setActive] = React.useState(null); // 当前关卡详情
   const [loading, setLoading] = React.useState(false);
