@@ -7,6 +7,8 @@ body {
   font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
   background: #f4f1ea;
   color: #2b2b2b;
+  /* 兜底：任何元素都不应撑出横向滚动条导致整页右移错位 */
+  overflow-x: hidden;
 }
 /* 触屏优化：消除 300ms 点击延迟与双击缩放（点棋盘连续落子时尤为重要） */
 button, input, select, textarea, .xq-points, nav { touch-action: manipulation; }
@@ -19,7 +21,7 @@ button { -webkit-tap-highlight-color: transparent; }
 @media (min-width: 1280px) {
   .app { max-width: 1040px; }
 }
-main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+main { flex: 1 1 0; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
 }
@@ -156,8 +158,8 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 }
 
 /* 棋盘（交叉点制） */
-.xq-board-measure { width: 100%; }
-.xq-board-wrap { margin: 0 auto; overflow: hidden; }
+.xq-board-measure { width: 100%; max-width: 100%; min-width: 0; }
+.xq-board-wrap { margin: 0 auto; overflow: hidden; max-width: 100%; }
 .xq-board-scale {
   display: flex;
   flex-direction: column;
@@ -678,8 +680,12 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   .play-status-line .tag { font-size: 12px; padding: 2px 7px; }
 
   /* 对弈区回到上下堆叠：棋盘在上、评分/云库/棋谱在下 */
-  .play-main { flex-direction: column; gap: 0; }
-  .play-board-area { flex: 0 0 auto; }
+  /* 对弈区上下堆叠。基础样式 align-items:flex-start 会让棋盘区按棋盘固定像素宽
+     撑大、溢出右侧（与复盘同因）；改 stretch + 全宽 + min-width:0，棋盘据此测得正确宽度。 */
+  .play-main { flex-direction: column; align-items: stretch; gap: 0; }
+  .play-board-area {
+    flex: 0 0 auto; width: 100%; max-width: 100%; min-width: 0; overflow: hidden;
+  }
   /* 棋盘按高度受限变窄时水平居中，避免右侧单边留白；宽度足够时仍占满 */
   .play-board-area .xq-board-measure { display: flex; justify-content: center; }
   .play-side {
@@ -714,6 +720,9 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
   flex-direction: column;
   overflow: hidden;
 }
+
+/* 移动端「选中后收起为一行」的折叠条：PC 端从不显示（列表常驻） */
+.games-list-collapsed-bar { display: none; }
 
 .games-list-header {
   padding: 12px 14px 8px;
@@ -1263,15 +1272,51 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
 /* Mobile：复盘页改为上下布局 */
 @media (max-width: 640px) {
   .app { max-width: 100%; }
-  .games-layout { flex-direction: column; min-height: 0; }
-  .games-list-panel { width: 100%; }
+  /* 复盘棋盘宽度是 JS 按容器测得后写成的固定像素值。竖向 flex 列里若容器不「拉伸」
+     到视口宽（games-layout/review-content 基础样式是 align-items:flex-start），子项会
+     反过来按棋盘的固定像素宽撑大 → 棋盘卡片比视口还宽、右侧列被裁掉。
+     关键修复：移动端把这两层改成 align-items:stretch，并配合 min-width:0，
+     让每层都收窄到视口宽，棋盘据此测得正确宽度、完整可见。 */
+  .games-layout { flex-direction: column; align-items: stretch; min-height: 0; min-width: 0; }
+  .games-list-panel { width: 100%; min-width: 0; }
   /* 选中棋局后列表是次要的，压低高度把竖向空间让给棋盘 */
   .games-list-scroll { max-height: 150px; }
-  .games-review-panel { min-height: 0; }
-  .review-content { padding: 12px; flex-direction: column; }
-  .review-board-wrap { width: 100%; }
-  .review-side { width: 100%; }
-  .review-moves-wrap { flex: 1 1 auto; width: 100%; }
+
+  /* 选中棋局后：列表收起为一行折叠条，隐藏完整列表，把竖向空间让给棋盘 */
+  .games-list-collapsed-bar {
+    display: flex; align-items: center; gap: 7px; width: 100%;
+    padding: 10px 12px; border: none; background: #fff; cursor: pointer;
+    font-size: 13px; text-align: left; border-radius: 12px;
+  }
+  .games-list-panel.collapsed { background: transparent; box-shadow: none; }
+  .games-list-panel.collapsed .games-list-collapsed-bar {
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  /* 收起态：隐藏标题、列表、导入按钮区，只留折叠条 */
+  .games-list-panel.collapsed .games-list-header,
+  .games-list-panel.collapsed .games-list-scroll,
+  .games-list-panel.collapsed .games-list-footer,
+  .games-list-panel.collapsed .import-form { display: none; }
+  /* 展开态：折叠条作为「收起」开关置顶，下方仍是完整列表 */
+  .games-list-panel.expanded .games-list-collapsed-bar {
+    border-bottom: 1px solid #f0ebe3; border-radius: 12px 12px 0 0;
+  }
+  .collapsed-caret { color: #b08a55; transition: transform .15s; flex-shrink: 0; }
+  .collapsed-caret.open { transform: rotate(180deg); }
+  .collapsed-players {
+    flex: 1; min-width: 0; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .collapsed-moves { flex-shrink: 0; font-size: 12px; }
+  .collapsed-action {
+    flex-shrink: 0; color: #8a5a2b; font-weight: 600; font-size: 12px;
+    background: #f6efe3; padding: 3px 10px; border-radius: 12px;
+  }
+  .games-review-panel { width: 100%; min-height: 0; min-width: 0; }
+  .review-content { padding: 12px; flex-direction: column; align-items: stretch; min-width: 0; }
+  .review-board-wrap { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; }
+  .review-side { width: 100%; min-width: 0; }
+  .review-moves-wrap { flex: 1 1 auto; width: 100%; min-width: 0; }
   .review-moves-list { max-height: 260px; }
   .game-delete-btn { opacity: 1; }
 }

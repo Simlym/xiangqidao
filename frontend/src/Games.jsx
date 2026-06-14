@@ -84,6 +84,9 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
   const [games, setGames] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState(null);
+  // 移动端：选中棋局后把列表收起为一行，腾出竖向空间给棋盘；点击可再展开换局。
+  // PC 端列表常驻左侧，此状态不影响其显示（仅移动端样式生效）。
+  const [listExpanded, setListExpanded] = React.useState(true);
   const [positions, setPositions] = React.useState(null);
   const [posLoading, setPosLoading] = React.useState(false);
   const [stepIndex, setStepIndex] = React.useState(0);
@@ -146,6 +149,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
     if (initialGameId) {
       pendingAutoAnalyze.current = initialGameId;
       setSelectedId(initialGameId);
+      setListExpanded(false); // 跳转直达复盘：列表收起，优先看棋盘
       loadGames(); // 刷新列表以纳入刚结束的对局
       onInitialGameConsumed?.();
     }
@@ -328,7 +332,10 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
       : null;
 
   function handleSelectGame(id) {
-    setSelectedId(id === selectedId ? null : id);
+    const next = id === selectedId ? null : id;
+    setSelectedId(next);
+    // 选中棋局即收起列表（移动端）；取消选中则展开，方便再选
+    setListExpanded(next === null);
   }
 
   function handleFormChange(e) {
@@ -391,10 +398,41 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
     startPolling(selectedId);
   }
 
+  const selectedGame = games.find((g) => g.id === selectedId) || null;
+
   return (
     <div className="games-layout">
       {/* Left: game list */}
-      <div className="games-list-panel">
+      <div className={"games-list-panel" + (listExpanded ? " expanded" : " collapsed")}>
+        {/* 移动端：选中棋局后列表收起为一行（当前棋局摘要 + 切换）。点击展开换局。 */}
+        {selectedGame && (
+          <button
+            className="games-list-collapsed-bar"
+            onClick={() => setListExpanded((v) => !v)}
+            aria-expanded={listExpanded}
+          >
+            <span className={"collapsed-caret" + (listExpanded ? " open" : "")}>▾</span>
+            <span
+              className="game-result-tag"
+              style={{
+                color: resultLabel(selectedGame.result).color,
+                borderColor: resultLabel(selectedGame.result).color,
+              }}
+            >
+              {resultLabel(selectedGame.result).text}
+            </span>
+            <span className="collapsed-players">
+              <span className="game-red">{selectedGame.red_player || "红方"}</span>
+              <span className="game-vs"> vs </span>
+              <span className="game-black">{selectedGame.black_player || "黑方"}</span>
+            </span>
+            {selectedGame.move_count > 0 && (
+              <span className="collapsed-moves muted">{selectedGame.move_count}手</span>
+            )}
+            <span className="collapsed-action">{listExpanded ? "收起" : "切换"}</span>
+          </button>
+        )}
+
         <div className="games-list-header">
           <span className="games-list-title">棋局列表</span>
           {loading && <span className="muted"> 加载中…</span>}
@@ -403,7 +441,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
         <div className="games-list-scroll">
           {games.length === 0 && !loading && (
             <div className="muted" style={{ padding: "12px" }}>
-              暂无棋局，请导入
+              暂无棋局，先去对弈产生对局吧
             </div>
           )}
           {games.map((g) => {
@@ -447,7 +485,9 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
           })}
         </div>
 
-        {/* Import button */}
+        {/* 导入功能已隐藏：大部分场景用不上，且手动填写较繁琐。
+            如需恢复，取消下方代码块的注释即可。 */}
+        {/*
         <div className="games-list-footer">
           <button
             className="btn-import"
@@ -457,7 +497,6 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
           </button>
         </div>
 
-        {/* Import form */}
         {showImport && (
           <form className="import-form" onSubmit={handleImport}>
             <label className="import-label">
@@ -540,6 +579,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
             </button>
           </form>
         )}
+        */}
       </div>
 
       {/* Right: review area */}
