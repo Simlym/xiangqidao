@@ -45,6 +45,8 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [aiText, setAiText]         = React.useState("");
   const [aiLoading, setAiLoading]   = React.useState(false);
   const [aiDisabled, setAiDisabled] = React.useState(false); // 后端未配置 AI
+  // 完成面板：默认折叠评分/用时/复习/AI 等次要信息，移动端做减法
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
 
   // 计时训练
   const [timed, setTimed]   = React.useState(true);
@@ -95,6 +97,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     setElapsed(0);
     setAiText("");
     setAiLoading(false);
+    setDetailsOpen(false);
   }, []);
 
   const beginPuzzle = React.useCallback((p) => {
@@ -181,7 +184,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
         setStepMsg("");
         setLastMove(null);
         setPhase("thinking");
-      }, 1100);
+      }, 1500);
     }
   }
 
@@ -337,7 +340,6 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
               第 {step + 1} / {totalSteps} 步
             </span>
           )}
-          {timed && <span className="tag timer">⏱ {elapsed}s</span>}
         </div>
       </div>
 
@@ -346,26 +348,35 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
         {/* 题目信息卡 */}
         <div className="panel solve-card">
           <div className="info-top">
-            {activeCategory && (
-              <span className="tag" style={{ background: "#fff3e0", color: "#e67e22" }}>
-                弱点专项
+            {/* 核心只留 3 个 tag：类目、难度、步数 */}
+            <div className="info-tags">
+              {activeCategory && (
+                <span className="tag" style={{ background: "#fff3e0", color: "#e67e22" }}>
+                  弱点专项
+                </span>
+              )}
+              {puzzle.kind && puzzle.kind !== puzzle.category && (
+                <span className="tag" style={{ background: "#e8f0fe", color: "#2980b9" }}>
+                  {puzzle.kind}
+                </span>
+              )}
+              <span className="tag">{puzzle.category}</span>
+              <span className="tag">难度 {"★".repeat(puzzle.difficulty)}</span>
+              {totalSteps > 1 && <span className="tag">共 {totalSteps} 步</span>}
+            </div>
+            {/* 计时器与到期数收到右上角，不挤压核心 tag */}
+            <div className="info-corner">
+              {dueCount > 0 && (
+                <span className="tag due-tag" title="到期复习题数">到期 {dueCount}</span>
+              )}
+              <span
+                className="tag clickable timer-toggle"
+                onClick={() => setTimed((v) => !v)}
+                title="切换计时模式"
+              >
+                {timed ? `⏱ ${elapsed}s` : "计时关"}
               </span>
-            )}
-            {puzzle.kind && puzzle.kind !== puzzle.category && (
-              <span className="tag" style={{ background: "#e8f0fe", color: "#2980b9" }}>
-                {puzzle.kind}
-              </span>
-            )}
-            <span className="tag">{puzzle.category}</span>
-            <span className="tag">难度 {"★".repeat(puzzle.difficulty)}</span>
-            {totalSteps > 1 && <span className="tag">共 {totalSteps} 步</span>}
-            <span
-              className="tag clickable"
-              onClick={() => setTimed((v) => !v)}
-              title="切换计时模式"
-            >
-              计时{timed ? "开" : "关"}
-            </span>
+            </div>
           </div>
 
           {/* 解题进行中：目标说明 + 反馈槽 + 放弃 */}
@@ -377,7 +388,6 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
               </p>
               <div className="feedback-slot">
                 {hint && <span className="hint">提示：{hint}</span>}
-                {stepMsg && <span className="step-msg">{stepMsg}</span>}
               </div>
               <button className="btn-giveup wide" onClick={onGiveUp}>看不出？查看答案</button>
             </>
@@ -418,36 +428,53 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
             </div>
           )}
 
-          {/* 完成：正解 + ELO 变化 + AI 讲解 + 下一题 */}
+          {/* 完成：默认只显示正解 + 下一题；评分/用时/复习/AI 折叠，点到再看 */}
           {phase === "done" && (
             <div className="result ok">
               <h3>{ratingChange?.delta >= 0 ? "✓ 完成！" : "已查看答案"}</h3>
               <p>正解：<code>{solutionText}</code></p>
-              {ratingChange && (
-                <p>评分 {ratingChange.old} →{" "}
-                  <b>{ratingChange.new}</b>{" "}
-                  <span className={ratingChange.delta >= 0 ? "delta-up" : "delta-down"}>
-                    ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
-                  </span>
-                </p>
-              )}
-              {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
-              <p className="muted">下次复习：{nextReview}</p>
-              {aiText && (
-                <div className="analysis-explanation ai-explain">{aiText}</div>
-              )}
-              {!aiDisabled && !aiText && (
-                <button className="btn-ai" onClick={onAiExplain} disabled={aiLoading}>
-                  {aiLoading ? "AI 思考中…" : "🤖 AI 讲解这道题"}
+              <div className="done-actions">
+                <button className="btn-next" onClick={() => load(activeCategory)}>
+                  {activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
                 </button>
+                <button
+                  className="btn-detail-toggle"
+                  onClick={() => setDetailsOpen((o) => !o)}
+                >
+                  {detailsOpen ? "收起详情 ▴" : "评分 · 详情 ▾"}
+                </button>
+              </div>
+              {detailsOpen && (
+                <div className="done-details">
+                  {ratingChange && (
+                    <p>评分 {ratingChange.old} →{" "}
+                      <b>{ratingChange.new}</b>{" "}
+                      <span className={ratingChange.delta >= 0 ? "delta-up" : "delta-down"}>
+                        ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
+                      </span>
+                    </p>
+                  )}
+                  {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
+                  <p className="muted">下次复习：{nextReview}</p>
+                  {aiText && (
+                    <div className="analysis-explanation ai-explain">{aiText}</div>
+                  )}
+                  {!aiDisabled && !aiText && (
+                    <button className="btn-ai" onClick={onAiExplain} disabled={aiLoading}>
+                      {aiLoading ? "AI 思考中…" : "🤖 AI 讲解这道题"}
+                    </button>
+                  )}
+                </div>
               )}
-              <button onClick={() => load(activeCategory)}>
-                {activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
-              </button>
             </div>
           )}
         </div>
       </aside>
+
+      {/* 走棋反馈：底部 toast 滑入，1.5 秒自动消失，避免被手指遮挡、不占棋盘空间 */}
+      {stepMsg && (
+        <div className="move-toast" role="status" aria-live="polite">{stepMsg}</div>
+      )}
     </div>
   );
 }

@@ -132,8 +132,16 @@ nav .nav-ico, nav .nav-label-short { display: none; }
   float: right; font-size: 13px; color: #999;
 }
 
-/* 题目信息 */
-.info-top { display: flex; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+/* 题目信息：左侧核心 tag（类目/难度/步数），右上角收纳计时器与到期数 */
+.info-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 8px; margin-bottom: 8px;
+}
+.info-tags { display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; min-width: 0; }
+.info-corner { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.info-corner .tag { margin-right: 0; }
+.due-tag { background: #e6efe0; color: #2e7d32; }
+.timer-toggle { font-variant-numeric: tabular-nums; }
 .step-bar {
   display: flex; gap: 6px; margin: 8px 0;
 }
@@ -152,9 +160,6 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .hint {
   background: #fffbe6; border-left: 3px solid #f0b429;
   padding: 6px 10px; border-radius: 4px; font-size: 14px;
-}
-.step-msg {
-  color: #27ae60; font-weight: 600; font-size: 15px;
 }
 
 /* 棋盘（交叉点制） */
@@ -580,6 +585,36 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .result.ok h3 { color: #2e7d32; margin: 4px 0 8px; }
 .result.bad h3 { color: #c0392b; margin: 4px 0 8px; }
 .result .hint { display: block; margin: 6px 0; }
+
+/* 完成面板：主操作（下一题）突出，详情折叠为次要文字按钮 */
+.done-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin-top: 10px; }
+.btn-next, .result button.btn-next { width: 100%; margin-top: 0; padding: 11px; font-weight: 600; }
+.btn-detail-toggle, .result button.btn-detail-toggle {
+  align-self: center; margin-top: 2px; padding: 4px 8px;
+  background: none; color: #8a5a2b; border: none;
+  font-size: 13px; text-decoration: underline; cursor: pointer;
+}
+.btn-detail-toggle:hover, .result button.btn-detail-toggle:hover { color: #6b4a2b; }
+.done-details { margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; }
+.done-details p { margin: 6px 0; }
+
+/* 走棋反馈底部 toast：滑入、自动消失，浮在底部导航之上 */
+.move-toast {
+  position: fixed; left: 50%; z-index: 60;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: 90vw; text-align: center;
+  background: rgba(39, 174, 96, .96); color: #fff;
+  font-size: 15px; font-weight: 600;
+  padding: 10px 18px; border-radius: 22px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .22);
+  pointer-events: none;
+  animation: move-toast-in .22s ease;
+}
+@keyframes move-toast-in {
+  from { opacity: 0; transform: translate(-50%, 14px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
 
 /* ── 左栏成长卡：暖棕木质卡片 ── */
 .growth-card {
