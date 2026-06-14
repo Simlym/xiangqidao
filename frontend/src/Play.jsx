@@ -6,6 +6,7 @@ import {
   getPlayEngine, getBookMoves, getHint, coachHintMove,
 } from "./api";
 import { localEval, localEngineReady } from "./localEngine";
+import { useBoardMaxHeight } from "./useBoardMaxHeight";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
@@ -126,6 +127,8 @@ function fmtDuration(ms) {
 }
 
 export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin }) {
+  const boardAreaRef = React.useRef(null);
+  const boardMaxHeight = useBoardMaxHeight(boardAreaRef);
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);
@@ -617,7 +620,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
       {/* PC：棋盘居左、右侧侧栏常驻（评分/云库/棋谱都在其中），
           开关评分、云库只在侧栏内增删，不再推动棋盘上移或下移；移动端堆叠 */}
       <div className="play-main">
-        <div className="play-board-area">
+        <div className="play-board-area" ref={boardAreaRef}>
           <Board
             fen={fen}
             onMove={onMove}
@@ -626,6 +629,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             legalMoves={over ? [] : legalMoves}
             hintMove={hint?.move || null}
             flipped={humanSide === "b"}
+            maxHeight={boardMaxHeight}
           />
 
           {/* 被吃子展示：有吃子后出现，直观看出物质差 */}
