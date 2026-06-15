@@ -14,10 +14,13 @@ import React from "react";
 //    棋盘顶部位置，只观察棋盘区自身是测不到的）。
 //
 // reserveBottom 棋盘下方需常驻可见的控件高度（如导航按钮），从可用高度中再扣除。
+// mobileReserve 移动端（底栏固定）专用的扣除高度——棋盘下方往往还要露出解题卡/操作区，
+//   需比 PC 留更多空间；不传则与 reserveBottom 一致。
 // 返回 [measureRef, maxHeight]：把 measureRef 挂到棋盘区容器的 ref 上。
-export function useBoardMaxHeight(reserveBottom = 12) {
+export function useBoardMaxHeight(reserveBottom = 12, mobileReserve = reserveBottom) {
   const [maxHeight, setMaxHeight] = React.useState(null);
   const cleanupRef = React.useRef(null);
+  const measuredRef = React.useRef(false); // 是否已测得过有效高度
 
   const measureRef = React.useCallback((el) => {
     // 节点卸载或更换时，先清理上一次的监听
@@ -25,20 +28,29 @@ export function useBoardMaxHeight(reserveBottom = 12) {
       cleanupRef.current();
       cleanupRef.current = null;
     }
+    measuredRef.current = false;
     if (!el) return;
 
     const update = () => {
+      // 仅在页面回到顶部时测量：一旦向下滚动，el.top 会随滚动变化，移动端地址栏显隐
+      // 又会改变可用高度，二者叠加会让棋盘「边滚边忽大忽小」。锁定在顶部测一次后，
+      // 滚动过程中保持不变（首次尚未测得时仍允许测量，避免挂载时已滚动而拿不到值）。
+      if (measuredRef.current && window.scrollY > 8) return;
+
       const top = el.getBoundingClientRect().top;
       // 移动端底部导航栏是 position:fixed，会盖住棋盘下沿——以它的「实际渲染顶边」为
       // 可用区底界（已含地址栏/缩放的影响）；非固定（PC）时退回 visualViewport/视口底。
-      let bottomLimit;
+      let bottomLimit, reserve;
       const nav = document.querySelector("header nav");
       if (nav && getComputedStyle(nav).position === "fixed") {
         bottomLimit = nav.getBoundingClientRect().top;
+        reserve = mobileReserve;
       } else {
         bottomLimit = window.visualViewport?.height ?? window.innerHeight;
+        reserve = reserveBottom;
       }
-      setMaxHeight(Math.max(120, bottomLimit - top - reserveBottom));
+      setMaxHeight(Math.max(120, bottomLimit - top - reserve));
+      measuredRef.current = true;
     };
 
     // 初次测 + 回流落定后补测（移动端地址栏/换行常在挂载后才稳定）
@@ -62,7 +74,7 @@ export function useBoardMaxHeight(reserveBottom = 12) {
       window.removeEventListener("resize", update);
       vv?.removeEventListener("resize", update);
     };
-  }, [reserveBottom]);
+  }, [reserveBottom, mobileReserve]);
 
   return [measureRef, maxHeight];
 }

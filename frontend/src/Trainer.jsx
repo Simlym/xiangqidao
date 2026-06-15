@@ -59,7 +59,9 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [solvedToday, setSolvedToday] = React.useState(0);   // 本会话已完成题数
 
   // 棋盘区可用高度：防止上方数字坐标被挤出、下方最后一行被截断。
-  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight();
+  // 移动端多留出空间（轮次条 + 解题卡顶部的「查看答案」等操作），避免棋盘铺满到底栏、
+  // 把答案/操作按钮顶到屏幕外。
+  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight(12, 150);
 
   // 拉取 ELO 档案与连续打卡（挂载一次；每题完成后刷新）
   const refreshGrowth = React.useCallback(async () => {
