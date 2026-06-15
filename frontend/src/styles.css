@@ -784,6 +784,44 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
     flex-direction: row; flex-wrap: wrap; gap: 4px 18px;
     max-height: 132px;
   }
+
+  /* ── 训练页成长卡：移动端压扁成一条窄带，把竖向空间让给棋盘与解题区 ── */
+  /* 进度环与 ELO 卡内部改为「圆环/数字在左 + 标题与明细在右」的横排，显著降低高度 */
+  .trainer-side.growth { gap: 10px; margin: 6px 0 8px; }
+  .trainer-side.growth .growth-card {
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 10px;
+    text-align: left;
+  }
+  .trainer-side.growth .growth-title {
+    grid-column: 2; grid-row: 1; align-self: end;
+    margin-bottom: 0; font-size: 12px; letter-spacing: 0;
+  }
+  .trainer-side.growth .growth-rows {
+    grid-column: 2; grid-row: 2; align-self: start;
+    gap: 2px;
+  }
+  .trainer-side.growth .growth-row { font-size: 11px; padding: 0; }
+  .trainer-side.growth .growth-row b { font-size: 12px; }
+  /* 圆环占据左列、跨两行，缩到 52px */
+  .trainer-side.growth .ring-wrap {
+    grid-column: 1; grid-row: 1 / span 2;
+    width: 52px; height: 52px; margin: 0;
+  }
+  .trainer-side.growth .ring-svg { width: 52px; height: 52px; }
+  .trainer-side.growth .ring-bg, .trainer-side.growth .ring-fg { stroke-width: 6; }
+  .trainer-side.growth .ring-num { font-size: 17px; }
+  .trainer-side.growth .ring-den { font-size: 10px; margin-top: 0; }
+  /* ELO 大号数字占左列、跨两行 */
+  .trainer-side.growth .elo-card .elo-main {
+    grid-column: 1; grid-row: 1 / span 2; justify-content: flex-start;
+  }
+  .trainer-side.growth .elo-num { font-size: 28px; }
+  .trainer-side.growth .elo-card .elo-title { display: none; } /* 段位徽标在窄带里省略 */
 }
 
 /* ===== 棋局复盘 ===== */
