@@ -510,6 +510,8 @@ nav .nav-ico, nav .nav-label-short { display: none; }
   flex-direction: column;
   min-height: 0;
 }
+/* 移动端专用数据带：PC/平板隐藏，仅 ≤640px 显示（见移动端媒体查询） */
+.trainer-topbar { display: none; }
 /* 大屏：突破 .app 880/1040 容器宽度，左右铺开三栏，吃掉竖长棋盘两侧留白。
    负 margin 仅作用于训练页，其他标签页布局不受影响。 */
 @media (min-width: 1024px) {
@@ -785,43 +787,29 @@ code { background: #f4f1ea; padding: 2px 6px; border-radius: 4px; font-size: 13p
     max-height: 132px;
   }
 
-  /* ── 训练页成长卡：移动端压扁成一条窄带，把竖向空间让给棋盘与解题区 ── */
-  /* 进度环与 ELO 卡内部改为「圆环/数字在左 + 标题与明细在右」的横排，显著降低高度 */
-  .trainer-side.growth { gap: 10px; margin: 6px 0 8px; }
-  .trainer-side.growth .growth-card {
-    padding: 10px 12px;
-    display: grid;
-    grid-template-columns: auto 1fr;
-    grid-template-rows: auto auto;
-    align-items: center;
-    column-gap: 10px;
-    text-align: left;
+  /* ── 训练页移动端：信息做减法，与 PC 三栏布局解耦 ──
+     PC 的左侧成长栏（进度环 + ELO 卡）在移动端整列隐藏，改用棋盘上方一条
+     极简数据带（评分 / 今日 / 到期 / 打卡），把竖向空间几乎全部让给棋盘与解题区。 */
+  .trainer-side.growth { display: none; }
+  .trainer-topbar {
+    display: flex; justify-content: space-around; align-items: stretch;
+    gap: 6px; margin: 2px 0 8px; padding: 7px 6px;
+    background: #fffdf7; border: 1px solid #e0cfa8; border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(60, 36, 12, .08);
   }
-  .trainer-side.growth .growth-title {
-    grid-column: 2; grid-row: 1; align-self: end;
-    margin-bottom: 0; font-size: 12px; letter-spacing: 0;
+  .tb-item {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    flex: 1 1 0; min-width: 0;
   }
-  .trainer-side.growth .growth-rows {
-    grid-column: 2; grid-row: 2; align-self: start;
-    gap: 2px;
-  }
-  .trainer-side.growth .growth-row { font-size: 11px; padding: 0; }
-  .trainer-side.growth .growth-row b { font-size: 12px; }
-  /* 圆环占据左列、跨两行，缩到 52px */
-  .trainer-side.growth .ring-wrap {
-    grid-column: 1; grid-row: 1 / span 2;
-    width: 52px; height: 52px; margin: 0;
-  }
-  .trainer-side.growth .ring-svg { width: 52px; height: 52px; }
-  .trainer-side.growth .ring-bg, .trainer-side.growth .ring-fg { stroke-width: 6; }
-  .trainer-side.growth .ring-num { font-size: 17px; }
-  .trainer-side.growth .ring-den { font-size: 10px; margin-top: 0; }
-  /* ELO 大号数字占左列、跨两行 */
-  .trainer-side.growth .elo-card .elo-main {
-    grid-column: 1; grid-row: 1 / span 2; justify-content: flex-start;
-  }
-  .trainer-side.growth .elo-num { font-size: 28px; }
-  .trainer-side.growth .elo-card .elo-title { display: none; } /* 段位徽标在窄带里省略 */
+  .tb-item + .tb-item { border-left: 1px solid #efe6d6; }
+  .tb-val { font-size: 17px; font-weight: 800; color: #8a5a2b; line-height: 1.15; }
+  .tb-val .tb-den { font-size: 12px; font-weight: 600; color: #b09a78; }
+  .tb-label { font-size: 11px; color: #999; }
+
+  /* 棋盘：移动端不再按高度受限缩放（见 Trainer 传 maxHeight=null），仅按宽度铺满，
+     上下滑动 / 地址栏显隐都不会改变其大小。窄屏居中。 */
+  .trainer-board-area .xq-board-measure { display: flex; justify-content: center; }
+  .trainer-main { width: 100%; }
 }
 
 /* ===== 棋局复盘 ===== */

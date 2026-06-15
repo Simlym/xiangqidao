@@ -58,10 +58,11 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [streakDays, setStreakDays] = React.useState(0);
   const [solvedToday, setSolvedToday] = React.useState(0);   // 本会话已完成题数
 
-  // 棋盘区可用高度：防止上方数字坐标被挤出、下方最后一行被截断。
-  // 移动端多留出空间（轮次条 + 解题卡顶部的「查看答案」等操作），避免棋盘铺满到底栏、
-  // 把答案/操作按钮顶到屏幕外。
-  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight(12, 150);
+  // 棋盘区可用高度：防止上方数字坐标被挤出、下方最后一行被截断（仅 PC/平板用）。
+  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight();
+  // 移动端：棋盘只按宽度自适应、不按高度受限缩放——这样上下滑动、地址栏显隐都不会
+  // 让棋盘忽大忽小；棋盘下方的解题区随页面自然滚动、不被底栏遮挡。
+  const isMobile = useIsMobile();
 
   // 拉取 ELO 档案与连续打卡（挂载一次；每题完成后刷新）
   const refreshGrowth = React.useCallback(async () => {
@@ -305,8 +306,30 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const solvedGoal = solvedToday + dueCount; // 进度环分母：本会话已做 + 到期堆积，至少 DAILY_GOAL
   const ringGoal = Math.max(DAILY_GOAL, solvedGoal);
 
+  const eloNow = ratingInfo?.rating ?? 1200;
+
   return (
     <div className="trainer trainer-3col">
+      {/* ── 移动端数据带：评分 / 今日 / 到期 / 打卡（PC 隐藏，改用左侧成长栏）── */}
+      <div className="trainer-topbar">
+        <div className="tb-item">
+          <span className="tb-val">{eloNow}</span>
+          <span className="tb-label">战术评分</span>
+        </div>
+        <div className="tb-item">
+          <span className="tb-val">{solvedToday}<span className="tb-den"> / {ringGoal}</span></span>
+          <span className="tb-label">今日训练</span>
+        </div>
+        <div className="tb-item">
+          <span className="tb-val">{dueCount}</span>
+          <span className="tb-label">到期复习</span>
+        </div>
+        <div className="tb-item">
+          <span className="tb-val">🔥{streakDays}</span>
+          <span className="tb-label">连续打卡</span>
+        </div>
+      </div>
+
       {/* ── 左栏：成长面板（今日进度环 + ELO 卡）────────────────── */}
       <aside className="trainer-side growth">
         <ProgressRing solved={solvedToday} goal={ringGoal} due={dueCount} streak={streakDays} />
@@ -321,7 +344,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
             onMove={onMove}
             lastMove={lastMove}
             disabled={boardDisabled}
-            maxHeight={boardMaxHeight}
+            maxHeight={isMobile ? null : boardMaxHeight}
           />
         </div>
         {/* 轮到谁走 + 多步进度，压在棋盘正下方一行 */}
@@ -479,6 +502,21 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
       )}
     </div>
   );
+}
+
+// 是否移动端窄屏：用于在棋盘缩放策略、布局上与 PC 解耦
+function useIsMobile(query = "(max-width: 640px)") {
+  const [match, setMatch] = React.useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches
+  );
+  React.useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatch(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [query]);
+  return match;
 }
 
 // ── 左栏：今日进度环 ────────────────────────────────────────────
