@@ -5,7 +5,12 @@ import {
   newPlayGame, playMove, importGame, analyzeGame, evalPosition,
   getPlayEngine, getBookMoves, getHint, coachHintMove,
 } from "./api";
-import { localEval, localEngineReady } from "./localEngine";
+import { createEngineManager } from "./core/engine/createEngineManager";
+import {
+  getNativeEngineProfile,
+  saveNativeEngineProfile,
+} from "./core/engine/TauriEngineAdapter";
+import { RUNTIME, runtime } from "./platform/runtime";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
@@ -21,6 +26,56 @@ const SIDES = [
   { key: "w", label: "执红先手" },
   { key: "b", label: "执黑后手" },
 ];
+
+// 当前为 Web：WASM 优先，失败后自动降级 FastAPI。
+// Tauri 接入后只在工厂中增加原生适配器，页面无需出现平台分支。
+const positionEngine = createEngineManager({ remoteEvaluate: evalPosition });
+
+function NativeEngineSettings({ onReady }) {
+  const [path, setPath] = React.useState(() => getNativeEngineProfile()?.path || "");
+  const [checking, setChecking] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+
+  if (runtime !== RUNTIME.TAURI) return null;
+
+  async function saveAndCheck() {
+    const normalized = path.trim();
+    if (!normalized) {
+      setMessage("请输入 Pikafish 可执行文件的绝对路径");
+      return;
+    }
+    saveNativeEngineProfile({ path: normalized, args: [] });
+    setChecking(true);
+    setMessage("");
+    try {
+      const kinds = await positionEngine.availableKinds();
+      const ready = kinds.includes("native");
+      setMessage(ready ? "原生引擎连接成功" : "原生引擎启动失败，将自动使用云端引擎");
+      onReady(ready, ready ? "native" : null);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="native-engine-settings">
+      <strong>PC 本地分析引擎</strong>
+      <p className="muted">填写标准象棋 Pikafish 的绝对路径；NNUE 请与程序放在同一目录。</p>
+      <div className="native-engine-input">
+        <input
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+          placeholder="例如 D:\\engines\\pikafish.exe"
+          spellCheck={false}
+        />
+        <button onClick={saveAndCheck} disabled={checking}>
+          {checking ? "检测中…" : "保存并检测"}
+        </button>
+      </div>
+      {message && <div className={message.includes("成功") ? "import-ok" : "import-error"}>{message}</div>}
+    </div>
+  );
+}
 
 // 把红方视角的评分（cp/mate）转成评估条所需的展示信息。
 // humanSide: "w"/"b"，用于给出「你/对方」相对优劣的措辞。
@@ -143,6 +198,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const [evalLoading, setEvalLoading] = React.useState(false);
   const [engineInfo, setEngineInfo] = React.useState(null); // {engine,label,available}
   const [localReady, setLocalReady] = React.useState(false); // 浏览器本地引擎是否就绪
+  const [localRuntime, setLocalRuntime] = React.useState(null); // native | wasm | null
   const [showBook, setShowBook] = React.useState(false);  // 云库参考面板开关
   const [bookData, setBookData] = React.useState(null);   // {available, moves}
   const [bookLoading, setBookLoading] = React.useState(false);
@@ -190,7 +246,13 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   // 同时探测浏览器本地引擎（public/engine/ 下有产物即启用，评分不再占用服务器）
   React.useEffect(() => {
     getPlayEngine().then(setEngineInfo).catch(() => {});
-    localEngineReady().then(setLocalReady).catch(() => {});
+    positionEngine.availableKinds()
+      .then((kinds) => {
+        const kind = kinds.includes("native") ? "native" : kinds.includes("wasm") ? "wasm" : null;
+        setLocalRuntime(kind);
+        setLocalReady(Boolean(kind));
+      })
+      .catch(() => {});
   }, []);
 
   // 开启评分后，每当局面稳定（轮到你/对局结束、引擎不在思考）就拉取一次评估。
@@ -199,9 +261,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     if (!showEval || !fen || thinking) return;
     const id = ++evalReqId.current;
     setEvalLoading(true);
-    const request = localReady
-      ? localEval(fen).catch(() => evalPosition(fen))
-      : evalPosition(fen);
+    const request = positionEngine.evaluate(fen);
     request
       .then((d) => { if (id === evalReqId.current) setEvalData(d); })
       .catch(() => { if (id === evalReqId.current) setEvalData(null); })
@@ -232,7 +292,12 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
       let source = "";
       if (localReady) {
         try {
-          const r = await localEval(fen, { depth: 14 });
+          // 提示只在这里尝试 WASM；失败后走 getHint，以保留服务端云库优先策略。
+          const r = await positionEngine.evaluate(
+            fen,
+            { depth: 14 },
+            { onlyKinds: ["wasm"] },
+          );
           move = r.bestMove;
           source = "本地引擎";
         } catch { /* 降级到服务器 */ }
@@ -482,6 +547,12 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             ))}
           </div>
         </div>
+        <NativeEngineSettings
+          onReady={(ready, kind) => {
+            setLocalReady(ready);
+            setLocalRuntime(kind);
+          }}
+        />
         <button className="btn-start" onClick={() => start(humanSide, level)}>
           开始对弈
         </button>
@@ -513,8 +584,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             </span>
           )}
           {localReady && (
-            <span className="tag" title="评估/提示在你的浏览器内计算，不占用服务器">
-              ⚡ 本地分析
+            <span className="tag" title="评估/提示在本机计算，不占用服务器">
+              ⚡ {localRuntime === "native" ? "PC 原生分析" : "本地分析"}
             </span>
           )}
           <span className="play-turn">

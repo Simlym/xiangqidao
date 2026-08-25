@@ -50,6 +50,21 @@ npm install
 npm run dev      # 打开 http://localhost:5173（已代理 /api 到 8000）
 ```
 
+### PC 桌面端（开发中）
+
+桌面端使用 Tauri 2 包装同一套 React 前端，仍通过 FastAPI 使用账号、训练和 AI 服务；
+局面评分会按“PC 原生 Pikafish → 浏览器 WASM → FastAPI”顺序自动降级。
+
+```bash
+cd frontend
+npm install
+npm run tauri dev
+```
+
+首次进入桌面端“人机对弈”页面，可填写标准象棋 Pikafish 可执行文件的绝对路径并检测。
+请将对应的 NNUE 文件放在引擎同一目录。当前阶段原生引擎已用于评分与提示，完整人机应着仍走
+现有 FastAPI 对弈接口；后续会迁移到统一引擎会话。
+
 ### 安装 Pikafish（可选，强力引擎）
 
 不装也能用：对弈与评分会自动回退到内置 negamax 搜索。装上 [Pikafish](https://github.com/official-pikafish/Pikafish)（顶尖开源象棋引擎）后，**人机对弈棋力、局面评分、复盘分析都会显著变强更准**。

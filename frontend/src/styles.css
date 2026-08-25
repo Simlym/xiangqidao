@@ -281,6 +281,16 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .play-setup h2 { margin: 0 0 6px; color: #8a5a2b; }
 .play-setup-row { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
 .play-setup-label { width: 56px; color: #666; font-size: 14px; }
+.native-engine-settings {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #decdb8;
+  border-radius: 8px;
+  background: #fffaf3;
+}
+.native-engine-settings p { margin: 5px 0 10px; }
+.native-engine-input { display: flex; gap: 8px; }
+.native-engine-input input { flex: 1; min-width: 0; }
 .seg { display: inline-flex; border: 1px solid #d9ccb5; border-radius: 8px; overflow: hidden; }
 .seg-btn {
   border: none; background: #fff; padding: 8px 16px; cursor: pointer;
