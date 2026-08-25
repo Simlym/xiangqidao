@@ -2,7 +2,7 @@ import React from "react";
 import Board from "./Board";
 import { applyMove, uciToChinese, parseFen, INITIAL_FEN } from "./xiangqi";
 import {
-  newPlayGame, playMove, importGame, analyzeGame, evalPosition,
+  newPlayGame, playMove, getPositionState, importGame, analyzeGame, evalPosition,
   getPlayEngine, getBookMoves, getHint, coachHintMove,
 } from "./api";
 import { createEngineManager } from "./core/engine/createEngineManager";
@@ -30,6 +30,13 @@ const SIDES = [
 // 当前为 Web：WASM 优先，失败后自动降级 FastAPI。
 // Tauri 接入后只在工厂中增加原生适配器，页面无需出现平台分支。
 const positionEngine = createEngineManager({ remoteEvaluate: evalPosition });
+const PLAY_DEPTH = { easy: 6, medium: 10, hard: 14 };
+
+function terminalResult(status, winner) {
+  if (status === "checkmate") return { game_over: true, winner };
+  if (status === "stalemate") return { game_over: true, winner: "draw" };
+  return { game_over: false, winner: null };
+}
 
 function NativeEngineSettings({ onReady }) {
   const [path, setPath] = React.useState(() => getNativeEngineProfile()?.path || "");
@@ -292,11 +299,11 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
       let source = "";
       if (localReady) {
         try {
-          // 提示只在这里尝试 WASM；失败后走 getHint，以保留服务端云库优先策略。
+          // 提示只尝试当前本地运行时；失败后走 getHint，以保留服务端云库优先策略。
           const r = await positionEngine.evaluate(
             fen,
             { depth: 14 },
-            { onlyKinds: ["wasm"] },
+            { onlyKinds: [localRuntime] },
           );
           move = r.bestMove;
           source = "本地引擎";
@@ -357,7 +364,32 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     moveTimes.current = [];
     history.current = [];
     const t0 = Date.now();
-    const d = await newPlayGame({ human_side: side, level: lvl });
+    let d;
+    if (side === "b" && localRuntime) {
+      try {
+        const initialState = await getPositionState(INITIAL_FEN);
+        const analysis = await positionEngine.evaluate(
+          INITIAL_FEN,
+          { depth: PLAY_DEPTH[lvl] },
+          { onlyKinds: [localRuntime] },
+        );
+        if (!analysis.bestMove || !initialState.legal_moves.includes(analysis.bestMove)) {
+          throw new Error("本地引擎返回了不合法着法");
+        }
+        const nextFen = applyMove(INITIAL_FEN, analysis.bestMove);
+        const nextState = await getPositionState(nextFen);
+        d = {
+          fen: nextFen,
+          engine_move: analysis.bestMove,
+          status: nextState.status,
+          legal_moves: nextState.legal_moves,
+        };
+      } catch {
+        d = await newPlayGame({ human_side: side, level: lvl });
+      }
+    } else {
+      d = await newPlayGame({ human_side: side, level: lvl });
+    }
     setFen(d.fen);
     setLegalMoves(d.legal_moves || []);
     setLastMove(d.engine_move || null);
@@ -423,7 +455,49 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     playSound(isCapture(fen, move) ? "capture" : "move");
     try {
       const t0 = Date.now();
-      const d = await playMove({ fen, move, level });
+      let d;
+      if (localRuntime) {
+        try {
+          const afterHumanFen = applyMove(fen, move);
+          const afterHuman = await getPositionState(afterHumanFen);
+          const humanResult = terminalResult(afterHuman.status, "human");
+          if (humanResult.game_over) {
+            d = {
+              fen: afterHumanFen,
+              engine_move: null,
+              status: afterHuman.status,
+              legal_moves: [],
+              your_turn: false,
+              ...humanResult,
+            };
+          } else {
+            const analysis = await positionEngine.evaluate(
+              afterHumanFen,
+              { depth: PLAY_DEPTH[level] },
+              { onlyKinds: [localRuntime] },
+            );
+            if (!analysis.bestMove || !afterHuman.legal_moves.includes(analysis.bestMove)) {
+              throw new Error("本地引擎返回了不合法着法");
+            }
+            const afterEngineFen = applyMove(afterHumanFen, analysis.bestMove);
+            const afterEngine = await getPositionState(afterEngineFen);
+            const engineResult = terminalResult(afterEngine.status, "engine");
+            d = {
+              fen: afterEngineFen,
+              engine_move: analysis.bestMove,
+              status: afterEngine.status,
+              legal_moves: engineResult.game_over ? [] : afterEngine.legal_moves,
+              your_turn: true,
+              ...engineResult,
+            };
+          }
+        } catch {
+          // 本地进程、WASM 或规则校验任一失败，都用原始局面整步回退服务器。
+          d = await playMove({ fen, move, level });
+        }
+      } else {
+        d = await playMove({ fen, move, level });
+      }
       moves.current.push(move);                          // 记录人走的着法
       moveTimes.current.push(humanMs);
       if (d.engine_move) {

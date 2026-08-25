@@ -91,6 +91,7 @@ export const getAnalysis = (gameId) => req(`/games/${gameId}/analysis`);
 // ── 对弈 ────────────────────────────────────────────────
 export const newPlayGame = (payload) => req("/play/new", { method: "POST", body: payload });
 export const playMove = (payload) => req("/play/move", { method: "POST", body: payload });
+export const getPositionState = (fen) => req("/play/state", { method: "POST", body: { fen } });
 export const evalPosition = (fen) => req("/play/eval", { method: "POST", body: { fen } });
 export const getPlayEngine = () => req("/play/engine");
 export const getBookMoves = (fen) => req(`/play/book?fen=${encodeURIComponent(fen)}`);

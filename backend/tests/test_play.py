@@ -27,6 +27,14 @@ def test_new_game_human_red():
     assert len(data["legal_moves"]) == 44
 
 
+def test_position_state_does_not_run_engine():
+    r = client.post("/api/play/state", json={"fen": INITIAL_FEN})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ongoing"
+    assert len(data["legal_moves"]) == 44
+
+
 def test_new_game_human_black_engine_moves_first():
     r = client.post("/api/play/new", json={"human_side": "b", "level": "easy"})
     assert r.status_code == 200

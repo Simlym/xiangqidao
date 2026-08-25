@@ -64,6 +64,26 @@ class EvalResponse(BaseModel):
     mate: int | None = None  # 红方视角几步杀，正=红方可杀、负=黑方可杀
 
 
+class StateRequest(BaseModel):
+    fen: str = Field(max_length=_FEN_MAX)
+
+
+class StateResponse(BaseModel):
+    status: str
+    legal_moves: list[str]
+
+
+@router.post("/state", response_model=StateResponse)
+@limiter.limit("240/minute")
+def position_state(request: Request, req: StateRequest):
+    """只校验局面并返回合法着法，不启动引擎。
+
+    PC/WASM 在本地计算引擎应着后通过该接口复用服务端权威棋规；计算失败时
+    客户端仍可整步降级到原有 /move 接口。
+    """
+    return StateResponse(status=game_status(req.fen), legal_moves=legal_moves_uci(req.fen))
+
+
 @router.post("/eval", response_model=EvalResponse)
 @limiter.limit("60/minute")
 def eval_position(request: Request, req: EvalRequest):
