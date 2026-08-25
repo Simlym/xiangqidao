@@ -249,6 +249,16 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 }
 .xq-piece.red   { color: #c0392b; }
 .xq-piece.black { color: #1a1a1a; }
+.xq-piece .xq-dark-piece {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  color: #5a3d22;
+  font-size: .72em;
+  background: radial-gradient(circle at 38% 30%, #efd2a0, #bb8045);
+}
 .xq-piece.selected {
   box-shadow: 0 0 0 3px rgba(255, 200, 0, .9), 0 1px 3px rgba(0, 0, 0, .35);
 }

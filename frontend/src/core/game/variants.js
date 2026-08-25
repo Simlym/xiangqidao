@@ -1,4 +1,11 @@
 import * as xiangqi from "../../xiangqi";
+import {
+  JIEQI_INITIAL_FEN,
+  applyJieqiMove,
+  jieqiStatus,
+  legalJieqiMoves,
+  parseJieqiBoard,
+} from "./jieqi";
 
 export const VARIANT_IDS = Object.freeze({
   XIANGQI: "xiangqi",
@@ -15,6 +22,16 @@ const variants = {
     applyMove: xiangqi.applyMove,
     formatMove: xiangqi.uciToChinese,
   }),
+  [VARIANT_IDS.JIEQI]: Object.freeze({
+    id: VARIANT_IDS.JIEQI,
+    name: "揭棋",
+    initialFen: JIEQI_INITIAL_FEN,
+    parseFen: parseJieqiBoard,
+    applyMove: applyJieqiMove,
+    legalMoves: legalJieqiMoves,
+    status: jieqiStatus,
+    formatMove: (_fen, move) => move,
+  }),
 };
 
 export function getGameVariant(id = VARIANT_IDS.XIANGQI) {
@@ -26,4 +43,3 @@ export function getGameVariant(id = VARIANT_IDS.XIANGQI) {
 export function listGameVariants() {
   return Object.values(variants);
 }
-

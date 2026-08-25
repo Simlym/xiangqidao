@@ -55,8 +55,11 @@ const MARKS = positionMarks();
 // 传入 legalMoves（UCI 数组）时，限制只能走合法着法并提示落点。
 // 传入 hintMove（UCI）时，用虚线圈标出推荐着法的起点与落点。
 // 传入 flipped 时翻转视角（黑方在下），只变换显示坐标，棋盘数据与方格名不变。
-export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped }) {
-  const board = parseFen(fen);
+export default function Board({
+  fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped,
+  parsePosition = parseFen,
+}) {
+  const board = parsePosition(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
 
   // 显示坐标变换：翻转时上下左右同时镜像（相当于把棋盘旋转 180°）
@@ -223,7 +226,7 @@ export default function Board({ fen, onMove, lastMove, disabled, legalMoves, hin
                         : undefined
                     }
                   >
-                    {cell.glyph}
+                    {cell.hidden ? <span className="xq-dark-piece">暗</span> : cell.glyph}
                   </span>
                 )}
               </div>
