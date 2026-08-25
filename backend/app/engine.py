@@ -132,7 +132,10 @@ class Engine:
                             score_mate = int(sc_mate.group(1))
                             score_cp = None
                         if pv_m:
-                            pv_line = re.findall(r"[a-i][0-9][a-i][0-9]", pv_m.group(1))
+                            pv_line = re.findall(
+                                r"[a-i][0-9][a-i][0-9][a-zA-Z]{0,2}",
+                                pv_m.group(1),
+                            )
                         else:
                             pv_line = None
 

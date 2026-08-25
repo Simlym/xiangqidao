@@ -6,11 +6,7 @@ import {
   getPlayEngine, getBookMoves, getHint, coachHintMove,
 } from "./api";
 import { createEngineManager } from "./core/engine/createEngineManager";
-import {
-  getNativeEngineProfile,
-  saveNativeEngineProfile,
-} from "./core/engine/TauriEngineAdapter";
-import { RUNTIME, runtime } from "./platform/runtime";
+import NativeEngineSettings from "./components/NativeEngineSettings";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
@@ -36,52 +32,6 @@ function terminalResult(status, winner) {
   if (status === "checkmate") return { game_over: true, winner };
   if (status === "stalemate") return { game_over: true, winner: "draw" };
   return { game_over: false, winner: null };
-}
-
-function NativeEngineSettings({ onReady }) {
-  const [path, setPath] = React.useState(() => getNativeEngineProfile()?.path || "");
-  const [checking, setChecking] = React.useState(false);
-  const [message, setMessage] = React.useState("");
-
-  if (runtime !== RUNTIME.TAURI) return null;
-
-  async function saveAndCheck() {
-    const normalized = path.trim();
-    if (!normalized) {
-      setMessage("请输入 Pikafish 可执行文件的绝对路径");
-      return;
-    }
-    saveNativeEngineProfile({ path: normalized, args: [] });
-    setChecking(true);
-    setMessage("");
-    try {
-      const kinds = await positionEngine.availableKinds();
-      const ready = kinds.includes("native");
-      setMessage(ready ? "原生引擎连接成功" : "原生引擎启动失败，将自动使用云端引擎");
-      onReady(ready, ready ? "native" : null);
-    } finally {
-      setChecking(false);
-    }
-  }
-
-  return (
-    <div className="native-engine-settings">
-      <strong>PC 本地分析引擎</strong>
-      <p className="muted">填写标准象棋 Pikafish 的绝对路径；NNUE 请与程序放在同一目录。</p>
-      <div className="native-engine-input">
-        <input
-          value={path}
-          onChange={(event) => setPath(event.target.value)}
-          placeholder="例如 D:\\engines\\pikafish.exe"
-          spellCheck={false}
-        />
-        <button onClick={saveAndCheck} disabled={checking}>
-          {checking ? "检测中…" : "保存并检测"}
-        </button>
-      </div>
-      {message && <div className={message.includes("成功") ? "import-ok" : "import-error"}>{message}</div>}
-    </div>
-  );
 }
 
 // 把红方视角的评分（cp/mate）转成评估条所需的展示信息。
@@ -622,6 +572,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           </div>
         </div>
         <NativeEngineSettings
+          manager={positionEngine}
           onReady={(ready, kind) => {
             setLocalReady(ready);
             setLocalRuntime(kind);

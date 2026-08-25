@@ -4,6 +4,7 @@ import Coach from "./Coach";
 import Stats from "./Stats";
 import Games from "./Games";
 import Play from "./Play";
+import JieqiPlay from "./JieqiPlay";
 import Challenge from "./Challenge";
 import Auth from "./Auth";
 import Admin from "./Admin";
@@ -128,6 +129,7 @@ export default function App() {
             { key: "stats", icon: "📊", label: "进度统计", short: "统计" },
             { key: "games", icon: "📋", label: "棋局复盘", short: "复盘" },
             { key: "play", icon: "♟️", label: "人机对弈", short: "对弈" },
+            { key: "jieqi", icon: "◉", label: "揭棋", short: "揭棋" },
             ...(user?.role === "admin"
               ? [{ key: "admin", icon: "⚙️", label: "管理后台", short: "后台" }]
               : []),
@@ -195,6 +197,7 @@ export default function App() {
             onRequireLogin={requireLogin}
           />
         )}
+        {tab === "jieqi" && <JieqiPlay />}
         {tab === "admin" && user?.role === "admin" && <Admin />}
         {tab === "games" && (
           <Games

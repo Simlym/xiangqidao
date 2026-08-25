@@ -98,6 +98,10 @@ export const getBookMoves = (fen) => req(`/play/book?fen=${encodeURIComponent(fe
 export const getHint = (fen) => req("/play/hint", { method: "POST", body: { fen } });
 export const coachHintMove = (fen, move) =>
   req("/play/coach", { method: "POST", body: { fen, move } });
+export const evalJieqiPosition = async (fen, { depth = 12 } = {}) => {
+  const result = await req("/variants/jieqi/eval", { method: "POST", body: { fen, depth } });
+  return { ...result, bestMove: result.best_move };
+};
 
 // ── 后台 ────────────────────────────────────────────────
 export const adminOverview = () => req("/admin/overview");

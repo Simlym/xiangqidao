@@ -8,20 +8,26 @@
 // 通信协议为标准 UCI 文本（Web Worker postMessage 一行一条），与主流
 // WASM 引擎构建（Emscripten + worker 包装）兼容。
 
-const ENGINE_DIR = "/engine";
-const ENGINE_JS = `${ENGINE_DIR}/pikafish.js`;
-const ENGINE_NNUE = `${ENGINE_DIR}/pikafish.nnue`;
 const INIT_TIMEOUT = 20000; // 首次加载含 wasm 编译 + 网络权重，放宽些
 const GO_TIMEOUT = 15000;
 
-let probePromise = null; // null=未探测；Promise<Worker|null>
-let queue = Promise.resolve(); // 串行化分析请求（单引擎进程）
+const runtimes = new Map();
+
+function filesFor(variant) {
+  const dir = variant === "jieqi" ? "/engine/jieqi" : "/engine";
+  return { js: `${dir}/pikafish.js`, nnue: `${dir}/pikafish.nnue` };
+}
+
+function getRuntime(variant) {
+  if (!runtimes.has(variant)) runtimes.set(variant, { probePromise: null, queue: Promise.resolve() });
+  return runtimes.get(variant);
+}
 
 // 探测引擎文件是否就位。生产环境常见 SPA 兜底会把任意路径重写到
 // index.html 并返回 200，因此还要校验 Content-Type 确实是脚本。
-async function engineFilesPresent() {
+async function engineFilesPresent(engineJs) {
   try {
-    const r = await fetch(ENGINE_JS, { method: "HEAD" });
+    const r = await fetch(engineJs, { method: "HEAD" });
     if (!r.ok) return false;
     const ct = r.headers.get("content-type") || "";
     return /javascript|ecmascript|wasm|octet-stream/i.test(ct);
@@ -31,11 +37,12 @@ async function engineFilesPresent() {
 }
 
 // 启动 worker 并完成 UCI 握手，失败返回 null。
-function bootWorker() {
+function bootWorker(variant) {
   return new Promise((resolve) => {
+    const files = filesFor(variant);
     let worker;
     try {
-      worker = new Worker(ENGINE_JS);
+      worker = new Worker(files.js);
     } catch {
       resolve(null);
       return;
@@ -55,7 +62,7 @@ function bootWorker() {
       if (line.startsWith("uciok")) {
         uciok = true;
         // 权重文件由引擎自行加载；构建若已内嵌网络则该选项被忽略
-        worker.postMessage(`setoption name EvalFile value ${ENGINE_NNUE}`);
+        worker.postMessage(`setoption name EvalFile value ${files.nnue}`);
         worker.postMessage("isready");
       } else if (uciok && line.startsWith("readyok")) {
         clearTimeout(timer);
@@ -67,20 +74,22 @@ function bootWorker() {
 }
 
 // 返回就绪的 worker 或 null（不可用）。整个会话只探测/启动一次。
-export function getLocalEngine() {
-  if (!probePromise) {
-    probePromise = (async () => {
+export function getLocalEngine(variant = "xiangqi") {
+  const state = getRuntime(variant);
+  if (!state.probePromise) {
+    state.probePromise = (async () => {
+      const files = filesFor(variant);
       if (typeof Worker === "undefined" || typeof WebAssembly === "undefined") return null;
-      if (!(await engineFilesPresent())) return null;
-      return bootWorker();
+      if (!(await engineFilesPresent(files.js))) return null;
+      return bootWorker(variant);
     })();
   }
-  return probePromise;
+  return state.probePromise;
 }
 
 // 是否可用（用于界面徽标展示）
-export async function localEngineReady() {
-  return (await getLocalEngine()) !== null;
+export async function localEngineReady(variant = "xiangqi") {
+  return (await getLocalEngine(variant)) !== null;
 }
 
 // 解析 "info ... score cp 35 ... pv h2e2 ..." 行
@@ -98,9 +107,10 @@ function parseInfo(line) {
 
 // 分析一个局面，返回**红方视角**的 {cp, mate, bestMove, pv}（与服务器
 // /play/eval 语义一致，调用方无需区分本地/远端）。失败时抛错，由调用方降级。
-export function localEval(fen, { depth = 12 } = {}) {
+export function localEval(fen, { depth = 12, variant = "xiangqi" } = {}) {
+  const state = getRuntime(variant);
   const run = async () => {
-    const worker = await getLocalEngine();
+    const worker = await getLocalEngine(variant);
     if (!worker) throw new Error("本地引擎不可用");
     return new Promise((resolve, reject) => {
       const sign = (fen.split(/\s+/)[1] || "w") === "w" ? 1 : -1; // 走子方 → 红方视角
@@ -135,7 +145,7 @@ export function localEval(fen, { depth = 12 } = {}) {
     });
   };
   // 串行执行：上一个请求失败也不阻塞下一个
-  const task = queue.then(run, run);
-  queue = task.catch(() => {});
+  const task = state.queue.then(run, run);
+  state.queue = task.catch(() => {});
   return task;
 }

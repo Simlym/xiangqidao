@@ -11,6 +11,14 @@
 | `pikafish.wasm` | 引擎本体 |
 | `pikafish.nnue` | 评估网络权重（从 official-pikafish/Networks 获取） |
 
+揭棋引擎使用独立子目录，避免与标准象棋引擎和 NNUE 混用：
+
+```text
+engine/jieqi/pikafish.js
+engine/jieqi/pikafish.wasm
+engine/jieqi/pikafish.nnue
+```
+
 获取方式：
 
 1. 用 Emscripten 自行编译 Pikafish（`make build ARCH=wasm` 风格的社区构建脚本），

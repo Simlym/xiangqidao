@@ -22,6 +22,7 @@ from .routes import (
     play,
     stats,
     training,
+    variants,
 )
 
 _IS_PROD = os.environ.get("XQ_ENV", "").lower() in ("prod", "production")
@@ -59,6 +60,7 @@ app.include_router(stats.router)
 app.include_router(coach.router)
 app.include_router(credits.router)
 app.include_router(play.router)
+app.include_router(variants.router)
 # analysis 必须在 games 前注册：/games/{id}/analyze 否则被 games 的 DELETE /{id} 拦截
 app.include_router(analysis.router)
 app.include_router(games.router)

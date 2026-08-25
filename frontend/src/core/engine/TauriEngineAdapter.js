@@ -1,13 +1,15 @@
 import { EngineAdapter } from "./EngineAdapter";
 import { RUNTIME, runtime } from "../../platform/runtime";
 
-const PROFILE_KEY = "xq.nativeEngine.xiangqi";
+const profileKey = (variant) => `xq.nativeEngine.${variant}`;
 const INIT_TIMEOUT = 10000;
 const GO_TIMEOUT = 30000;
+let activeNativeVariant = null;
 
 export class TauriEngineAdapter extends EngineAdapter {
-  constructor() {
+  constructor(variant = "xiangqi") {
     super("native");
+    this.variant = variant;
     this.started = false;
     this.startPromise = null;
     this.listeners = new Set();
@@ -18,7 +20,7 @@ export class TauriEngineAdapter extends EngineAdapter {
   getProfile() {
     if (runtime !== RUNTIME.TAURI) return null;
     try {
-      return JSON.parse(localStorage.getItem(PROFILE_KEY)) || null;
+      return JSON.parse(localStorage.getItem(profileKey(this.variant))) || null;
     } catch {
       return null;
     }
@@ -43,7 +45,7 @@ export class TauriEngineAdapter extends EngineAdapter {
   }
 
   async start() {
-    if (this.started) return;
+    if (this.started && activeNativeVariant === this.variant) return;
     if (this.startPromise) return this.startPromise;
     this.startPromise = this.boot();
     try {
@@ -66,6 +68,7 @@ export class TauriEngineAdapter extends EngineAdapter {
     await this.waitFor("uciok", () => invoke("send_to_engine", { command: "uci" }), INIT_TIMEOUT);
     await this.waitFor("readyok", () => invoke("send_to_engine", { command: "isready" }), INIT_TIMEOUT);
     this.started = true;
+    activeNativeVariant = this.variant;
   }
 
   waitFor(prefix, action, timeout) {
@@ -143,16 +146,17 @@ export class TauriEngineAdapter extends EngineAdapter {
     this.unlisten?.();
     this.unlisten = null;
     this.started = false;
+    if (activeNativeVariant === this.variant) activeNativeVariant = null;
   }
 }
 
-export function saveNativeEngineProfile(profile) {
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+export function saveNativeEngineProfile(profile, variant = "xiangqi") {
+  localStorage.setItem(profileKey(variant), JSON.stringify(profile));
 }
 
-export function getNativeEngineProfile() {
+export function getNativeEngineProfile(variant = "xiangqi") {
   try {
-    return JSON.parse(localStorage.getItem(PROFILE_KEY)) || null;
+    return JSON.parse(localStorage.getItem(profileKey(variant))) || null;
   } catch {
     return null;
   }

@@ -301,6 +301,8 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .native-engine-settings p { margin: 5px 0 10px; }
 .native-engine-input { display: flex; gap: 8px; }
 .native-engine-input input { flex: 1; min-width: 0; }
+.jieqi-move-list { margin: 8px 0 0; padding-left: 24px; font-family: ui-monospace, monospace; }
+.jieqi-move-list li { padding: 3px 0; }
 .seg { display: inline-flex; border: 1px solid #d9ccb5; border-radius: 8px; overflow: hidden; }
 .seg-btn {
   border: none; background: #fff; padding: 8px 16px; cursor: pointer;
