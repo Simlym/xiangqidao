@@ -9,7 +9,7 @@ import {
   legalJieqiMoves,
   parseJieqiBoard,
 } from "./core/game/jieqi";
-import { evalJieqiPosition } from "./api";
+import { evalJieqiPosition, importGame } from "./api";
 
 const LEVELS = [
   { key: "easy", label: "入门", depth: 6 },
@@ -35,6 +35,9 @@ export default function JieqiPlay() {
   const [runtimeKind, setRuntimeKind] = React.useState(null);
   const [error, setError] = React.useState("");
   const [moves, setMoves] = React.useState([]);
+  const [saved, setSaved] = React.useState(false);
+  const positionsRef = React.useRef([]);
+  const movesRef = React.useRef([]);
 
   React.useEffect(() => {
     jieqiEngine.availableKinds().then((kinds) => {
@@ -58,13 +61,18 @@ export default function JieqiPlay() {
     setError("");
     setWinner(null);
     setMoves([]);
+    setSaved(false);
+    movesRef.current = [];
+    positionsRef.current = [JIEQI_INITIAL_FEN];
     try {
       let position = JIEQI_INITIAL_FEN;
       if (humanSide === "b") {
         const reply = await engineTurn(position, "engine");
         position = reply.fen;
         setLastMove(reply.move);
-        setMoves([reply.move]);
+        movesRef.current = [reply.move];
+        positionsRef.current.push(position);
+        setMoves([...movesRef.current]);
       } else {
         setLastMove(null);
       }
@@ -78,6 +86,28 @@ export default function JieqiPlay() {
     }
   }
 
+  async function saveGame(finalWinner) {
+    if (!movesRef.current.length) return;
+    const redWon = finalWinner === "human" ? humanSide === "w" : humanSide === "b";
+    const result = finalWinner === "draw" ? "和棋" : redWon ? "红胜" : "黑胜";
+    try {
+      await importGame({
+        variant: "jieqi",
+        initial_fen: JIEQI_INITIAL_FEN,
+        moves: movesRef.current.join(" "),
+        positions: positionsRef.current,
+        result,
+        source: "揭棋人机对弈",
+        red_player: humanSide === "w" ? "我" : "揭棋引擎",
+        black_player: humanSide === "b" ? "我" : "揭棋引擎",
+        played_on: new Date().toISOString().slice(0, 10),
+      });
+      setSaved(true);
+    } catch {
+      setSaved(false);
+    }
+  }
+
   async function onMove(move) {
     if (thinking || winner || !legalMoves.includes(move)) return;
     const previous = fen;
@@ -87,19 +117,25 @@ export default function JieqiPlay() {
       const afterHuman = applyJieqiMove(previous, move);
       const humanWinner = winnerFor(jieqiStatus(afterHuman), "human");
       if (humanWinner) {
+        movesRef.current.push(move);
+        positionsRef.current.push(afterHuman);
         setFen(afterHuman);
         setLastMove(move);
-        setMoves((items) => [...items, move]);
+        setMoves([...movesRef.current]);
         setLegalMoves([]);
         setWinner(humanWinner);
+        saveGame(humanWinner);
         return;
       }
       const reply = await engineTurn(afterHuman, "engine");
+      movesRef.current.push(move, reply.move);
+      positionsRef.current.push(afterHuman, reply.fen);
       setFen(reply.fen);
       setLastMove(reply.move);
-      setMoves((items) => [...items, move, reply.move]);
+      setMoves([...movesRef.current]);
       setWinner(reply.winner);
       setLegalMoves(reply.winner ? [] : legalJieqiMoves(reply.fen));
+      if (reply.winner) saveGame(reply.winner);
     } catch (reason) {
       setFen(previous);
       setError(`${reason.message || "引擎应着失败"}，本步已回退`);
@@ -149,6 +185,7 @@ export default function JieqiPlay() {
           <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
           <span className="tag">{runtimeKind === "native" ? "⚡ PC 原生引擎" : runtimeKind === "wasm" ? "⚡ WASM 引擎" : "☁ 云端引擎"}</span>
           <span className="play-turn">{winner ? (winner === "human" ? "你赢了" : winner === "draw" ? "和棋" : "引擎获胜") : thinking ? "引擎思考中…" : "轮到你走"}</span>
+          {winner && <span className="tag">{saved ? "已存入复盘" : "正在保存…"}</span>}
         </div>
         <div className="play-actions">
           <button className="btn-newgame" onClick={() => setFen(null)}>新对局</button>
@@ -175,4 +212,3 @@ export default function JieqiPlay() {
     </div>
   );
 }
-

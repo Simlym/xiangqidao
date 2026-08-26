@@ -43,6 +43,7 @@ class Puzzle(Base):
     __tablename__ = "puzzles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    variant: Mapped[str] = mapped_column(String(12), default="xiangqi", index=True)
     fen: Mapped[str] = mapped_column(String(120), nullable=False)
     solution: Mapped[str] = mapped_column(Text, nullable=False)
     side_to_move: Mapped[str] = mapped_column(String(1), default="w")  # w=红 b=黑
@@ -101,7 +102,10 @@ class Game(Base):
     __tablename__ = "games"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    variant: Mapped[str] = mapped_column(String(12), default="xiangqi", index=True)
     user_id: Mapped[str] = mapped_column(String(40), default="default", index=True)  # 棋局归属，匿名回退 default
+    initial_fen: Mapped[str] = mapped_column(Text, default="")
+    positions_json: Mapped[str] = mapped_column(Text, default="")
     played_on: Mapped[str] = mapped_column(String(20), nullable=True)
     red_player: Mapped[str] = mapped_column(String(80), default="")
     black_player: Mapped[str] = mapped_column(String(80), default="")

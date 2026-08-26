@@ -41,6 +41,7 @@ def _ensure_columns() -> None:
         "reviews": [("created_at", "DATE")],
         "attempts": [("had_retry", "BOOLEAN DEFAULT 0")],
         "puzzles": [
+            ("variant", "VARCHAR(12) DEFAULT 'xiangqi'"),
             ("user_id", "VARCHAR(40) DEFAULT 'default'"),
             ("rating", "INTEGER"),
             ("kind", "VARCHAR(10) DEFAULT '杀法'"),
@@ -48,7 +49,10 @@ def _ensure_columns() -> None:
             ("ai_explanation", "TEXT DEFAULT ''"),
         ],
         "games": [
+            ("variant", "VARCHAR(12) DEFAULT 'xiangqi'"),
             ("user_id", "VARCHAR(40) DEFAULT 'default'"),
+            ("initial_fen", "TEXT DEFAULT ''"),
+            ("positions_json", "TEXT DEFAULT ''"),
             ("report", "TEXT DEFAULT ''"),
         ],
         "coach_plans": [

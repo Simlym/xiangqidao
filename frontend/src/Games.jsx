@@ -1,6 +1,7 @@
 import React from "react";
 import Board from "./Board";
 import { uciToChinese } from "./xiangqi";
+import { parseJieqiBoard } from "./core/game/jieqi";
 import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis } from "./api";
 
 const RESULT_LABELS = {
@@ -198,9 +199,11 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
       positionsList
         .slice(1)
         .map((p, i) =>
-          positionsList[i]?.fen ? uciToChinese(positionsList[i].fen, p.move) : p.move
+          positions?.variant === "jieqi"
+            ? p.move
+            : positionsList[i]?.fen ? uciToChinese(positionsList[i].fen, p.move) : p.move
         ),
-    [positionsList]
+    [positionsList, positions?.variant]
   );
 
   // Group moves into rounds (pair of moves)
@@ -464,6 +467,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                     ? "继续分析"
                     : "分析此局"}
                 </button>
+                {positions.variant === "jieqi" && <span className="tag">揭棋棋谱</span>}
                 {analyzeStatus === "done" && (
                   <span className="tag" style={{ background: "#e6efe0", color: "#2e7d32" }}>
                     ✓ 已分析（结果已保存）
@@ -494,6 +498,7 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                   onMove={() => {}}
                   lastMove={lastMove}
                   disabled={true}
+                  parsePosition={positions.variant === "jieqi" ? parseJieqiBoard : undefined}
                 />
               ) : (
                 <div className="muted">无棋盘数据</div>

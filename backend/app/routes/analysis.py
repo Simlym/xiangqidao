@@ -1,5 +1,7 @@
 """棋局分析路由。"""
 
+import json
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,7 @@ from ..auth import current_user, current_user_id
 from ..deps import get_db
 from ..ratelimit import limiter
 from ..engine import get_shared_engine
+from ..jieqi_engine import get_shared_jieqi_engine
 from ..llm import explain_mistake, summarize_game
 from ..models import Game, GameAnalysis, Puzzle, User
 from ..play_engine import builtin_evaluate, game_status
@@ -105,19 +108,27 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
         if not move_list:
             return
 
-        engine = get_shared_engine()
+        is_jieqi = (game.variant or "xiangqi") == "jieqi"
+        engine = get_shared_jieqi_engine() if is_jieqi else get_shared_engine()
+        if is_jieqi and engine is None:
+            return
         if engine is not None:
             engine.new_game()  # 每局开头清一次置换表即可，不在每个局面重复
 
         # 构建各局面 FEN
-        fens: list[str] = [INITIAL_FEN]
-        fen = INITIAL_FEN
-        for move in move_list:
-            try:
-                fen = apply_move(fen, move)
-            except Exception:
-                fen = fens[-1]  # 如果走法非法，保持上一局面
-            fens.append(fen)
+        if is_jieqi and game.positions_json:
+            fens = json.loads(game.positions_json)
+            if len(fens) != len(move_list) + 1:
+                return
+        else:
+            fens = [game.initial_fen or INITIAL_FEN]
+            fen = fens[0]
+            for move in move_list:
+                try:
+                    fen = apply_move(fen, move)
+                except Exception:
+                    fen = fens[-1]  # 如果走法非法，保持上一局面
+                fens.append(fen)
 
         # 删除旧分析记录（upsert 实现：先删后插）
         db.query(GameAnalysis).filter(GameAnalysis.game_id == game_id).delete()
@@ -181,7 +192,7 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
 
             # 对大漏着创建练习题
             puzzle_id: int | None = None
-            if is_blunder and best_move and best_move != move:
+            if not is_jieqi and is_blunder and best_move and best_move != move:
                 # 判断 FEN 中走方
                 fen_parts = fen_before.split()
                 side_to_move = fen_parts[1] if len(fen_parts) > 1 else "w"
@@ -189,6 +200,7 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
                 trimmed = _trim_pv(fen_before, best_pv)
                 solution = ",".join(trimmed) if len(trimmed) >= 1 else best_move
                 puzzle = Puzzle(
+                    variant="xiangqi",
                     fen=fen_before,
                     solution=solution,
                     side_to_move=side_to_move,
@@ -296,6 +308,8 @@ def analyze_game(
     game = db.get(Game, game_id)
     if not game or game.user_id != user.username:
         raise HTTPException(status_code=404, detail="棋局不存在")
+    if (game.variant or "xiangqi") == "jieqi" and get_shared_jieqi_engine() is None:
+        raise HTTPException(status_code=503, detail="服务器尚未配置揭棋 Pikafish")
 
     background_tasks.add_task(_run_analysis, game_id, user.username)
     return {"status": "analyzing", "game_id": game_id}
