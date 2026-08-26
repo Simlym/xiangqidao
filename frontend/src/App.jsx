@@ -8,7 +8,7 @@ import JieqiPlay from "./JieqiPlay";
 import Challenge from "./Challenge";
 import Auth from "./Auth";
 import Admin from "./Admin";
-import { fetchMe, getToken, setToken, getCredits, checkinCredits } from "./api";
+import { fetchMe, getToken, setToken, getCredits, checkinCredits, getEntitlements } from "./api";
 import { useReminders } from "./reminders";
 
 // 顶部积分徽标 + 每日签到。积分用于兑换 AI（大模型）功能权益。
@@ -58,6 +58,7 @@ export default function App() {
   const [reviewGameId, setReviewGameId] = React.useState(null);
   const [user, setUser] = React.useState(null); // {username, role}
   const [credits, setCredits] = React.useState(null); // {balance, checkin_today, costs, ...}
+  const [entitlements, setEntitlements] = React.useState(null);
   const [authOpen, setAuthOpen] = React.useState(false);
 
   // 拉取积分余额；登录态下调用，未登录清空
@@ -67,6 +68,13 @@ export default function App() {
       return;
     }
     getCredits().then(setCredits).catch(() => {});
+  }, []);
+  const refreshEntitlements = React.useCallback(() => {
+    if (!getToken()) {
+      setEntitlements(null);
+      return;
+    }
+    getEntitlements().then(setEntitlements).catch(() => setEntitlements(null));
   }, []);
   // 到期复习提醒（本地通知 + 顶部横幅）
   const reminders = useReminders(user);
@@ -93,23 +101,26 @@ export default function App() {
         .then((u) => {
           setUser(u);
           refreshCredits();
+          refreshEntitlements();
         })
         .catch(() => setToken(null));
     }
-  }, [refreshCredits]);
+  }, [refreshCredits, refreshEntitlements]);
 
   function onAuth(res) {
     setToken(res.token);
     setUser({ username: res.username, role: res.role });
     setAuthOpen(false);
     refreshCredits();
+    refreshEntitlements();
   }
 
   function logout() {
     setToken(null);
     setUser(null);
     setCredits(null);
-    if (tab === "admin") setTab("train");
+    setEntitlements(null);
+    if (tab === "admin" || tab === "coach") setTab("train");
   }
 
   // 登录态失效（如收到 401）时，清理并弹出登录框
@@ -124,7 +135,9 @@ export default function App() {
         <nav>
           {[
             { key: "train", icon: "🎯", label: "战术训练", short: "训练" },
-            { key: "coach", icon: "🧑‍🏫", label: "AI 教练", short: "教练" },
+            ...(entitlements?.features?.includes("ai_training")
+              ? [{ key: "coach", icon: "🧑‍🏫", label: "AI 教练", short: "教练" }]
+              : []),
             { key: "challenge", icon: "🏯", label: "闯关", short: "闯关" },
             { key: "stats", icon: "📊", label: "进度统计", short: "统计" },
             { key: "games", icon: "📋", label: "棋局复盘", short: "复盘" },
@@ -149,6 +162,7 @@ export default function App() {
           {user ? (
             <>
               <CreditsBadge credits={credits} onCheckin={refreshCredits} />
+              {entitlements?.active && <span className="member-badge">PRO</span>}
               <span className="user-name">{user.username}</span>
               <button className="btn-link" onClick={logout}>退出</button>
             </>

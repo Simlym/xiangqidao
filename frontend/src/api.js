@@ -42,6 +42,7 @@ export const register = (username, password) =>
 export const login = (username, password) =>
   req("/auth/login", { method: "POST", body: { username, password } });
 export const fetchMe = () => req("/auth/me");
+export const getEntitlements = () => req("/account/entitlements");
 
 // ── 训练 ────────────────────────────────────────────────
 export const getNext = (category, kind) => {
@@ -107,6 +108,8 @@ export const evalJieqiPosition = async (fen, { depth = 12 } = {}) => {
 export const adminOverview = () => req("/admin/overview");
 export const adminUsers = () => req("/admin/users");
 export const adminDeleteUser = (id) => req(`/admin/users/${id}`, { method: "DELETE" });
+export const adminUpdateMembership = (id, days) =>
+  req(`/admin/users/${id}/membership`, { method: "PUT", body: { days } });
 export const adminPuzzles = ({ limit = 20, offset = 0, category = "", difficulty = 0, q = "" } = {}) =>
   req(`/admin/puzzles?limit=${limit}&offset=${offset}&difficulty=${difficulty}` +
       `&category=${encodeURIComponent(category)}&q=${encodeURIComponent(q)}`);

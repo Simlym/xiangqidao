@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import cloudbook, credits
 from ..auth import current_user
+from ..entitlements import require_ai_member
 from ..deps import get_db
 from ..llm import coach_move
 from ..models import User
@@ -179,7 +180,7 @@ def coach(
     request: Request,
     req: CoachRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(require_ai_member),
 ):
     """AI 教练点评一步推荐着法的意图，供「提示」面板的「AI 详解」按钮调用。
 

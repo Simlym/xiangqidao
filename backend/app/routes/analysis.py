@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from .. import credits
 from ..auth import current_user, current_user_id
+from ..entitlements import require_ai_member
 from ..deps import get_db
 from ..ratelimit import limiter
 from ..engine import get_shared_engine
@@ -298,7 +299,7 @@ def analyze_game(
     game_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(require_ai_member),
 ):
     """触发棋局分析（后台执行）。
 

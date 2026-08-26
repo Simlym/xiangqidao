@@ -28,6 +28,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[str] = mapped_column(String(10), default="user")
+    plan: Mapped[str] = mapped_column(String(12), default="free")
+    membership_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

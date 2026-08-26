@@ -11,6 +11,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from .models import init_db
 from .ratelimit import limiter
 from .routes import (
+    account,
     admin,
     analysis,
     auth,
@@ -52,6 +53,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(account.router)
 app.include_router(admin.router)
 app.include_router(engine_admin.router)
 app.include_router(training.router)

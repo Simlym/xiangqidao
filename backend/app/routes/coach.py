@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import credits
 from ..auth import current_user, current_user_id
+from ..entitlements import require_ai_member
 from ..coach import generate_plan
 from ..deps import get_db
 from ..models import CoachPlan, User
@@ -75,7 +76,7 @@ def latest_plan(db: Session = Depends(get_db), user: str = Depends(current_user_
 def refresh_plan(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(require_ai_member),
 ):
     """按当前数据重新生成训练计划（LLM 可用时附教练叙述，调用较慢）。
 

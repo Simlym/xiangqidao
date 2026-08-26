@@ -1,7 +1,9 @@
-"""管理员后台接口：用户与题库管理。所有接口需管理员权限。"""
+"""管理员后台接口：用户、会员与题库管理。所有接口需管理员权限。"""
+
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -24,6 +26,8 @@ class AdminUser(BaseModel):
     id: int
     username: str
     role: str
+    plan: str
+    membership_expires_at: datetime | None
     attempts: int
     learned: int
 
@@ -39,6 +43,10 @@ class AdminPuzzle(BaseModel):
     steps: int
     source: str
     verified: bool
+
+
+class MembershipUpdate(BaseModel):
+    days: int = Field(ge=0, le=3650)
 
 
 class AdminPuzzleList(BaseModel):
@@ -89,8 +97,41 @@ def list_users(db: Session = Depends(get_db)):
             select(func.count()).select_from(Review).where(Review.user_id == u.username)
         ) or 0
         out.append(AdminUser(id=u.id, username=u.username, role=u.role,
+                             plan=u.plan or "free",
+                             membership_expires_at=u.membership_expires_at,
                              attempts=attempts, learned=learned))
     return out
+
+
+@router.put("/users/{user_id}/membership", response_model=AdminUser)
+def update_membership(user_id: int, body: MembershipUpdate, request: Request,
+                      db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """开通/续期会员；days=0 表示立即取消。"""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "用户不存在")
+    now = datetime.utcnow()
+    if body.days == 0:
+        user.plan = "free"
+        user.membership_expires_at = None
+        action = "cancel_membership"
+    else:
+        base = user.membership_expires_at if user.membership_expires_at and user.membership_expires_at > now else now
+        user.plan = "pro"
+        user.membership_expires_at = base + timedelta(days=body.days)
+        action = "extend_membership"
+    db.commit()
+    db.refresh(user)
+    admin_action(request, admin.username, action, user.username, db=db)
+    attempts = db.scalar(
+        select(func.count()).select_from(Attempt).where(Attempt.user_id == user.username)
+    ) or 0
+    learned = db.scalar(
+        select(func.count()).select_from(Review).where(Review.user_id == user.username)
+    ) or 0
+    return AdminUser(id=user.id, username=user.username, role=user.role,
+                     plan=user.plan, membership_expires_at=user.membership_expires_at,
+                     attempts=attempts, learned=learned)
 
 
 @router.delete("/users/{user_id}")

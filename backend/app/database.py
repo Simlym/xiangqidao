@@ -38,6 +38,10 @@ def _ensure_columns() -> None:
         return
     insp = inspect(engine)
     additions = {
+        "users": [
+            ("plan", "VARCHAR(12) DEFAULT 'free'"),
+            ("membership_expires_at", "DATETIME"),
+        ],
         "reviews": [("created_at", "DATE")],
         "attempts": [("had_retry", "BOOLEAN DEFAULT 0")],
         "puzzles": [

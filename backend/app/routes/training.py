@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import credits, ratings, repository as repo
 from ..auth import current_user, current_user_id
+from ..entitlements import require_ai_member
 from ..deps import get_db
 from ..importer.verify_mate import FILES, parse_fen
 from ..llm import explain_puzzle
@@ -273,7 +274,7 @@ def explain(
     request: Request,
     req: ExplainRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(require_ai_member),
 ):
     """AI 讲解一道题的解题思路。需登录；首次生成消耗积分，结果缓存后复用免费。"""
     puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user.username)

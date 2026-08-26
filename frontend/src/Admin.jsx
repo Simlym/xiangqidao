@@ -12,6 +12,7 @@ import {
   adminRemoveEngine,
   adminTestLlmSettings,
   adminUpdateLlmSettings,
+  adminUpdateMembership,
   adminUsers,
 } from "./api";
 
@@ -43,6 +44,15 @@ export default function Admin() {
     if (!window.confirm("删除该用户及其训练数据？")) return;
     try {
       await adminDeleteUser(id);
+      reload();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function setMembership(user, days) {
+    try {
+      await adminUpdateMembership(user.id, days);
       reload();
     } catch (e) {
       alert(e.message);
@@ -94,7 +104,7 @@ export default function Admin() {
         <h3>用户管理</h3>
         <div className="admin-table-wrap"><table className="admin-table">
           <thead>
-            <tr><th>ID</th><th>用户名</th><th>角色</th><th>作答</th><th>已学</th><th></th></tr>
+            <tr><th>ID</th><th>用户名</th><th>角色</th><th>会员</th><th>作答</th><th>已学</th><th></th></tr>
           </thead>
           <tbody>
             {users.map((u) => (
@@ -102,6 +112,13 @@ export default function Admin() {
                 <td>{u.id}</td>
                 <td>{u.username}</td>
                 <td>{u.role === "admin" ? <span className="tag">管理员</span> : "用户"}</td>
+                <td>
+                  {u.plan === "pro" ? (
+                    <><span className="tag">PRO</span>{" "}<button className="btn-link" onClick={() => setMembership(u, 0)}>取消</button></>
+                  ) : (
+                    <button className="btn-link" onClick={() => setMembership(u, 30)}>开通30天</button>
+                  )}
+                </td>
                 <td>{u.attempts}</td>
                 <td>{u.learned}</td>
                 <td>
