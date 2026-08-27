@@ -1,6 +1,6 @@
 # 象棋道 Xiangqidao
 
-一套循序渐进辅助提升中国象棋水平的训练系统。第一版聚焦**战术题训练 + 间隔重复（SM-2）**——
+一套覆盖 Web、Windows PC 与 Android 的象棋/揭棋训练系统。第一版聚焦**战术题训练 + 间隔重复（SM-2）**——
 针对业余棋手最大的失分点「漏算」，用可量化的方式回答「我到底有没有进步」。
 
 ## 为什么这样设计
@@ -19,11 +19,14 @@
 | 层 | 技术 | 说明 |
 |----|------|------|
 | 前端 | React + Vite (PWA) | 交叉点棋盘（含楚河汉界/九宫）；训练 / 闯关 / 统计 / 复盘 / 对弈 / 后台；可安装到桌面/主屏 |
+| 多端壳 | Tauri 2 | PC 与 Android 复用同一套 React 代码；PC 可在独立子进程加载原生 Pikafish |
+| 棋类核心 | Variant + Engine Adapter | 标准象棋/揭棋规则隔离；分别配置原生、WASM、云端引擎并自动降级 |
 | 后端 | FastAPI | 训练调度 / 闯关 / ELO 评分 / 作答 / 统计 / 对弈 / 鉴权 / 后台管理 API |
 | 数据 | SQLite（可配置） | `users` `puzzles`(含 ELO `rating`) `reviews`(SM-2) `attempts` `games`(含归属/复盘报告) `game_analysis` `user_stats`(ELO 评分档案)；连接串经 `XQ_DB_URL` 配置 |
 | 数据访问 | database + repository 层 | `app/database.py` 管引擎/会话/建表，`app/repository.py` 封装查询，业务路由与 ORM 解耦 |
 | 复习 | SM-2 | `backend/app/srs.py` |
 | 鉴权 | 标准库自实现 | PBKDF2 密码哈希 + HMAC 签名 token，无第三方依赖（`app/auth.py`）|
+| 会员 | 服务端权益校验 | 客户端统一打包 AI 界面代码；登录后按 `/api/account/entitlements` 显示，服务端再次校验，积分作为调用额度 |
 | 杀法校验 | 内置规则引擎 | `app/importer/verify_mate.py` 判定将军/将死，校验一步杀题，无需 Pikafish |
 | 对弈引擎 | 云库 + 内置 negamax / Pikafish | 开局优先查云库（秒回、省 CPU），其后 Pikafish，未装则回退内置 alpha-beta 搜索（`app/play_engine.py` `app/cloudbook.py`）|
 | 分析引擎 | Pikafish (可选) | 复盘逐步分析；导入题库时校验正解 |
@@ -62,8 +65,17 @@ npm run tauri dev
 ```
 
 首次进入桌面端“人机对弈”页面，可填写标准象棋 Pikafish 可执行文件的绝对路径并检测。
+揭棋页面使用独立的揭棋 Pikafish 路径，两个引擎配置互不覆盖。默认只给引擎使用不超过
+4 个线程与 256MB 哈希，也可在界面调整；搜索在独立子进程执行，前端只异步收取 UCI 输出。
 请将对应的 NNUE 文件放在引擎同一目录。原生引擎可负责人机应着、评分与提示；FastAPI
 提供权威棋规校验，且在本地引擎异常时自动接管整步计算。
+
+```bash
+cd frontend
+npm run tauri build   # 产物位于 src-tauri/target/release/bundle
+```
+
+更完整的边界、降级链与性能保障见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ### 安装 Pikafish（可选，强力引擎）
 

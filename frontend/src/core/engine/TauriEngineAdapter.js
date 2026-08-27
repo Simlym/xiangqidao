@@ -6,6 +6,16 @@ const INIT_TIMEOUT = 10000;
 const GO_TIMEOUT = 30000;
 let activeNativeVariant = null;
 
+function safeProfile(profile) {
+  const cpuCount = Number(globalThis.navigator?.hardwareConcurrency) || 4;
+  return {
+    ...profile,
+    args: Array.isArray(profile?.args) ? profile.args : [],
+    threads: Math.max(1, Math.min(8, Number(profile?.threads) || Math.min(4, Math.ceil(cpuCount / 2)))),
+    hashMb: Math.max(32, Math.min(2048, Number(profile?.hashMb) || 256)),
+  };
+}
+
 export class TauriEngineAdapter extends EngineAdapter {
   constructor(variant = "xiangqi") {
     super("native");
@@ -20,7 +30,8 @@ export class TauriEngineAdapter extends EngineAdapter {
   getProfile() {
     if (runtime !== RUNTIME.TAURI) return null;
     try {
-      return JSON.parse(localStorage.getItem(profileKey(this.variant))) || null;
+      const profile = JSON.parse(localStorage.getItem(profileKey(this.variant))) || null;
+      return profile ? safeProfile(profile) : null;
     } catch {
       return null;
     }
@@ -66,6 +77,10 @@ export class TauriEngineAdapter extends EngineAdapter {
     });
     await invoke("spawn_engine", { path: profile.path, args: profile.args || [] });
     await this.waitFor("uciok", () => invoke("send_to_engine", { command: "uci" }), INIT_TIMEOUT);
+    await invoke("send_to_engine", { command: `setoption name Threads value ${profile.threads}` });
+    await invoke("send_to_engine", { command: `setoption name Hash value ${profile.hashMb}` });
+    await invoke("send_to_engine", { command: "setoption name MultiPV value 1" });
+    await invoke("send_to_engine", { command: "ucinewgame" });
     await this.waitFor("readyok", () => invoke("send_to_engine", { command: "isready" }), INIT_TIMEOUT);
     this.started = true;
     activeNativeVariant = this.variant;
@@ -151,12 +166,13 @@ export class TauriEngineAdapter extends EngineAdapter {
 }
 
 export function saveNativeEngineProfile(profile, variant = "xiangqi") {
-  localStorage.setItem(profileKey(variant), JSON.stringify(profile));
+  localStorage.setItem(profileKey(variant), JSON.stringify(safeProfile(profile)));
 }
 
 export function getNativeEngineProfile(variant = "xiangqi") {
   try {
-    return JSON.parse(localStorage.getItem(profileKey(variant))) || null;
+    const profile = JSON.parse(localStorage.getItem(profileKey(variant))) || null;
+    return profile ? safeProfile(profile) : null;
   } catch {
     return null;
   }

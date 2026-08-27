@@ -11,7 +11,10 @@ export default function NativeEngineSettings({
   variant = "xiangqi",
   label = "标准象棋 Pikafish",
 }) {
-  const [path, setPath] = React.useState(() => getNativeEngineProfile(variant)?.path || "");
+  const initial = React.useMemo(() => getNativeEngineProfile(variant), [variant]);
+  const [path, setPath] = React.useState(() => initial?.path || "");
+  const [threads, setThreads] = React.useState(() => initial?.threads || 2);
+  const [hashMb, setHashMb] = React.useState(() => initial?.hashMb || 256);
   const [checking, setChecking] = React.useState(false);
   const [message, setMessage] = React.useState("");
 
@@ -23,7 +26,7 @@ export default function NativeEngineSettings({
       setMessage("请输入 Pikafish 可执行文件的绝对路径");
       return;
     }
-    saveNativeEngineProfile({ path: normalized, args: [] }, variant);
+    saveNativeEngineProfile({ path: normalized, args: [], threads, hashMb }, variant);
     setChecking(true);
     setMessage("");
     try {
@@ -51,8 +54,12 @@ export default function NativeEngineSettings({
           {checking ? "检测中…" : "保存并检测"}
         </button>
       </div>
+      <div className="native-engine-limits">
+        <label>线程 <input type="number" min="1" max="8" value={threads} onChange={(event) => setThreads(Number(event.target.value))} /></label>
+        <label>哈希内存(MB) <input type="number" min="32" max="2048" step="32" value={hashMb} onChange={(event) => setHashMb(Number(event.target.value))} /></label>
+        <span className="muted">建议保留一半 CPU 给界面和系统</span>
+      </div>
       {message && <div className={message.includes("成功") ? "import-ok" : "import-error"}>{message}</div>}
     </div>
   );
 }
-
