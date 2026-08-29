@@ -9,6 +9,7 @@ import {
   parseJieqiBoard,
 } from "./core/game/jieqi";
 import { evalJieqiPosition, importGame } from "./api";
+import { RUNTIME, runtime } from "./platform/runtime";
 
 const LEVELS = [
   { key: "easy", label: "入门", depth: 6 },
@@ -24,6 +25,7 @@ function winnerFor(status, mover) {
 }
 
 export default function JieqiPlay({ onOpenSettings }) {
+  const isDesktop = runtime === RUNTIME.TAURI;
   const [fen, setFen] = React.useState(null);
   const [humanSide, setHumanSide] = React.useState("w");
   const [level, setLevel] = React.useState("medium");
@@ -35,6 +37,7 @@ export default function JieqiPlay({ onOpenSettings }) {
   const [error, setError] = React.useState("");
   const [moves, setMoves] = React.useState([]);
   const [saved, setSaved] = React.useState(false);
+  const [inspectorTab, setInspectorTab] = React.useState("moves");
   const positionsRef = React.useRef([]);
   const movesRef = React.useRef([]);
 
@@ -187,23 +190,39 @@ export default function JieqiPlay({ onOpenSettings }) {
     );
   }
 
+  const currentTurnText = winner
+    ? winner === "human" ? "你赢了" : winner === "draw" ? "和棋" : "引擎获胜"
+    : thinking ? "引擎思考中…" : "轮到你走";
+  const engineDisplay = runtimeKind === "native"
+    ? "揭棋引擎 · 本地"
+    : runtimeKind === "wasm"
+    ? "揭棋 WASM 引擎"
+    : "揭棋云端引擎";
+  const levelLabel = LEVELS.find((item) => item.key === level)?.label;
+
   return (
     <div className="play">
-      <div className="panel play-status-bar">
+      {!isDesktop && <div className="panel play-status-bar">
         <div className="play-status-line">
           <span className="tag">揭棋</span>
           <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
           <span className="tag">{runtimeKind === "native" ? "⚡ PC 原生引擎" : runtimeKind === "wasm" ? "⚡ WASM 引擎" : "☁ 云端引擎"}</span>
-          <span className="play-turn">{winner ? (winner === "human" ? "你赢了" : winner === "draw" ? "和棋" : "引擎获胜") : thinking ? "引擎思考中…" : "轮到你走"}</span>
+          <span className="play-turn">{currentTurnText}</span>
           {winner && <span className="tag">{saved ? "已存入复盘" : "正在保存…"}</span>}
         </div>
         <div className="play-actions">
           <button className="btn-newgame" onClick={() => setFen(null)}>新对局</button>
         </div>
-      </div>
-      {error && <div className="panel import-error">{error}</div>}
+      </div>}
+      {!isDesktop && error && <div className="panel import-error">{error}</div>}
       <div className="play-main">
         <div className="play-board-area">
+          {isDesktop && (
+            <div className="desktop-board-playerbar">
+              <span>电脑</span>
+              <strong>{currentTurnText}</strong>
+            </div>
+          )}
           <Board
             fen={fen}
             onMove={onMove}
@@ -214,10 +233,69 @@ export default function JieqiPlay({ onOpenSettings }) {
             parsePosition={parseJieqiBoard}
           />
         </div>
-        <div className="panel move-log">
-          <div className="move-log-head"><strong>揭棋着法</strong><span className="muted">{moves.length} 步</span></div>
-          <ol className="jieqi-move-list">{moves.map((move, index) => <li key={`${index}-${move}`}>{index + 1}. {move}</li>)}</ol>
-        </div>
+        {isDesktop ? (
+          <aside className="panel move-log desktop-play-inspector desktop-jieqi-inspector">
+            <div className="desktop-game-summary">
+              <strong>本局信息</strong>
+              <span>{humanSide === "w" ? "你执红" : "你执黑"} · {levelLabel}</span>
+              <span>{engineDisplay}</span>
+              {winner && <span>{saved ? "棋局已存入复盘" : "正在保存棋局…"}</span>}
+            </div>
+
+            <div className="desktop-inspector-tabs" role="tablist" aria-label="揭棋对局信息">
+              <button
+                className={inspectorTab === "moves" ? "active" : ""}
+                onClick={() => setInspectorTab("moves")}
+                role="tab"
+                aria-selected={inspectorTab === "moves"}
+              >
+                棋谱
+              </button>
+              <button
+                className={inspectorTab === "info" ? "active" : ""}
+                onClick={() => setInspectorTab("info")}
+                role="tab"
+                aria-selected={inspectorTab === "info"}
+              >
+                信息
+              </button>
+            </div>
+
+            <div className="desktop-inspector-body">
+              {inspectorTab === "moves" && (
+                moves.length > 0 ? (
+                  <ol className="jieqi-move-list desktop-jieqi-moves">
+                    {moves.map((move, index) => <li key={`${index}-${move}`}>{index + 1}. {move}</li>)}
+                  </ol>
+                ) : (
+                  <div className="desktop-inspector-empty">揭棋对局刚刚开始<br />走子后将在这里记录棋谱</div>
+                )
+              )}
+              {inspectorTab === "info" && (
+                <div className="desktop-analysis-pane">
+                  <div className="desktop-analysis-section">
+                    <strong>揭棋规则</strong>
+                    <p>暗子按初始位置规则移动，首次移动时翻开真实棋子。</p>
+                  </div>
+                  <div className="desktop-analysis-section">
+                    <strong>当前引擎</strong>
+                    <p>{engineDisplay}</p>
+                  </div>
+                  {error && <div className="import-error">{error}</div>}
+                </div>
+              )}
+            </div>
+
+            <div className="desktop-inspector-actions desktop-jieqi-actions">
+              <button className="danger wide" onClick={() => setFen(null)}>新对局</button>
+            </div>
+          </aside>
+        ) : (
+          <div className="panel move-log">
+            <div className="move-log-head"><strong>揭棋着法</strong><span className="muted">{moves.length} 步</span></div>
+            <ol className="jieqi-move-list">{moves.map((move, index) => <li key={`${index}-${move}`}>{index + 1}. {move}</li>)}</ol>
+          </div>
+        )}
       </div>
     </div>
   );

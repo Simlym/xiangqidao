@@ -6,6 +6,7 @@ import {
   getPlayEngine, getBookMoves, getHint, coachHintMove,
 } from "./api";
 import { createEngineManager } from "./core/engine/createEngineManager";
+import { RUNTIME, runtime } from "./platform/runtime";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
@@ -137,6 +138,7 @@ function fmtDuration(ms) {
 }
 
 export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin, onOpenSettings }) {
+  const isDesktop = runtime === RUNTIME.TAURI;
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);
@@ -168,6 +170,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const [soundKey, setSoundKey] = React.useState(soundTheme); // 音效主题（持久化）
   const [overDismissed, setOverDismissed] = React.useState(false); // 结果浮层被关闭，露出终局棋盘
   const [timesLog, setTimesLog] = React.useState([]);       // 每步用时（ms），与 moveLog 对齐
+  const [inspectorTab, setInspectorTab] = React.useState("moves"); // PC 右侧栏：棋谱 | 分析
   const moves = React.useRef([]);                     // 累计着法（红黑交替）
   const moveTimes = React.useRef([]);                 // 每步用时（ms），与 moves 对齐
   const turnStart = React.useRef(0);                  // 本方思考开始时刻
@@ -264,6 +267,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         source = r.source === "book" ? "云库" : "服务器引擎";
       }
       setHint(move ? { move, text: uciToChinese(fen, move), source } : null);
+      if (move && isDesktop) setInspectorTab("analysis");
     } catch {
       setHint(null);
     } finally {
@@ -298,6 +302,15 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
       setFenCopied(true);
       setTimeout(() => setFenCopied(false), 1500);
     } catch { /* 剪贴板不可用时静默 */ }
+  }
+
+  function restart() {
+    if (
+      !over &&
+      moves.current.length > 0 &&
+      !window.confirm("对局尚未结束，确定放弃本局重新开始吗？")
+    ) return;
+    setFen(null);
   }
 
   async function start(side, lvl) {
@@ -600,11 +613,22 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
 
   const capt = capturedPieces(fen);          // 双方被吃的子与子力差
   const totalMs = timesLog.reduce((a, b) => a + b, 0); // 全局累计用时
+  const currentTurnText = over
+    ? winnerText
+    : thinking
+    ? "引擎思考中…"
+    : status === "check"
+    ? "将军！轮到你"
+    : "轮到你走";
+  const engineDisplay = localReady
+    ? localRuntime === "native" ? "Pikafish · 本地" : "本地分析引擎"
+    : engineInfo?.available ? engineInfo.label : "内置引擎";
+  const evalInfo = describeEval(evalData || {}, humanSide);
 
   return (
     <div className="play">
       {/* 状态与操作分两行：状态文案变化（引擎思考中 ↔ 轮到你走）不再挤动按钮换行，棋盘不跳动 */}
-      <div className="panel play-status-bar">
+      {!isDesktop && <div className="panel play-status-bar">
         <div className="play-status-line">
           <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
           <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
@@ -676,22 +700,14 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           )}
           <button
             className="btn-newgame"
-            onClick={() => {
-              if (
-                !over &&
-                moves.current.length > 0 &&
-                !window.confirm("对局尚未结束，确定放弃本局重新开始吗？")
-              )
-                return;
-              setFen(null);
-            }}
+            onClick={restart}
           >
             重开
           </button>
         </div>
-      </div>
+      </div>}
 
-      {showEval && (() => {
+      {!isDesktop && showEval && (() => {
         const info = describeEval(evalData || {}, humanSide);
         return (
           <div className="panel eval-bar-wrap">
@@ -706,7 +722,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         );
       })()}
 
-      {hint && (
+      {!isDesktop && hint && (
         <div className="panel hint-strip">
           💡 推荐：<strong>{hint.text}</strong>
           <span className="muted">（{hint.source}）</span>
@@ -733,7 +749,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         </div>
       )}
 
-      {showBook && (
+      {!isDesktop && showBook && (
         <div className="panel book-panel">
           <div className="book-panel-head">
             <strong>云库着法</strong>
@@ -779,6 +795,12 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
       {/* PC：棋盘居左、棋谱在右侧伴随显示；移动端自动堆叠回上下布局 */}
       <div className="play-main">
         <div className="play-board-area">
+          {isDesktop && (
+            <div className="desktop-board-playerbar">
+              <span>电脑</span>
+              <strong>{currentTurnText}</strong>
+            </div>
+          )}
           <Board
             fen={fen}
             onMove={onMove}
@@ -841,7 +863,152 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           )}
         </div>
 
-        {moveLog.length > 0 && (
+        {isDesktop ? (
+          <aside className="panel move-log desktop-play-inspector">
+            <div className="desktop-game-summary">
+              <strong>本局信息</strong>
+              <span>{humanSide === "w" ? "你执红" : "你执黑"} · {LEVELS.find((item) => item.key === level)?.label}</span>
+              <span>{engineDisplay}</span>
+            </div>
+
+            <div className="desktop-inspector-tabs" role="tablist" aria-label="对局信息">
+              <button
+                className={inspectorTab === "moves" ? "active" : ""}
+                onClick={() => setInspectorTab("moves")}
+                role="tab"
+                aria-selected={inspectorTab === "moves"}
+              >
+                棋谱
+              </button>
+              <button
+                className={inspectorTab === "analysis" ? "active" : ""}
+                onClick={() => setInspectorTab("analysis")}
+                role="tab"
+                aria-selected={inspectorTab === "analysis"}
+              >
+                分析
+              </button>
+            </div>
+
+            <div className="desktop-inspector-body">
+              {inspectorTab === "moves" && (
+                moveLog.length > 0 ? (
+                  <ol className="move-log-list" ref={logRef}>
+                    {moveLogItems(moveLog).map((pair, i) => (
+                      <li key={i}>
+                        <span className="move-log-no">{i + 1}.</span>
+                        <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 ? " latest" : "")}>
+                          {pair[0] || "…"}
+                          {timesLog[i * 2] != null && <i className="move-time">{fmtMoveTime(timesLog[i * 2])}</i>}
+                        </span>
+                        <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 + 1 ? " latest" : "")}>
+                          {pair[1] || ""}
+                          {pair[1] && timesLog[i * 2 + 1] != null && <i className="move-time">{fmtMoveTime(timesLog[i * 2 + 1])}</i>}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <div className="desktop-inspector-empty">对局刚刚开始<br />走子后将在这里记录棋谱</div>
+                )
+              )}
+
+              {inspectorTab === "analysis" && (
+                <div className="desktop-analysis-pane">
+                  {showEval && (
+                    <div className="desktop-analysis-section">
+                      <div className="eval-bar">
+                        <div className="eval-bar-red" style={{ width: `${evalInfo.redPct}%` }} />
+                        <span className="eval-bar-value">{evalLoading && !evalData ? "…" : evalInfo.value}</span>
+                      </div>
+                      <p>{evalLoading ? "评估中…" : evalInfo.label}</p>
+                    </div>
+                  )}
+
+                  {hint && (
+                    <div className="desktop-analysis-section desktop-hint-result">
+                      <strong>推荐 {hint.text}</strong>
+                      <span>{hint.source}</span>
+                      {!coach && (
+                        <button onClick={requestCoach} disabled={coachLoading}>
+                          {coachLoading ? "AI 思考中…" : "AI 详解"}
+                        </button>
+                      )}
+                      {coach?.text && <div className="analysis-explanation ai-explain">{coach.text}</div>}
+                      {coach?.disabled && <p>未启用 AI 点评</p>}
+                      {coach?.error && <p className="import-error">{coach.error}</p>}
+                    </div>
+                  )}
+
+                  {showBook && (
+                    <div className="desktop-analysis-section">
+                      <strong>云库着法</strong>
+                      <p>
+                        {bookLoading
+                          ? "查询中…"
+                          : !bookData || !bookData.available
+                          ? "云库暂不可用"
+                          : bookData.moves.length === 0
+                          ? "云库未收录此局面"
+                          : "点击着法直接走子"}
+                      </p>
+                      {bookData?.available && bookData.moves.length > 0 && (
+                        <div className="desktop-book-moves">
+                          {bookData.moves.slice(0, 5).map((item) => {
+                            const playable = yourTurn && !thinking && !over && legalMoves.includes(item.uci);
+                            return (
+                              <button key={item.uci} disabled={!playable} onClick={() => playable && onMove(item.uci)}>
+                                {uciToChinese(fen, item.uci)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!showEval && !showBook && !hint && (
+                    <div className="desktop-inspector-empty">开启评分、云库或请求提示后<br />分析结果会显示在这里</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="desktop-inspector-actions">
+              <button
+                className="primary"
+                onClick={requestHint}
+                disabled={!yourTurn || thinking || !!over || hintLoading}
+              >
+                {hintLoading ? "思考中…" : "提示"}
+              </button>
+              <button onClick={undo} disabled={!canUndo || thinking}>悔棋</button>
+              <button
+                className={showEval ? "active" : ""}
+                onClick={() => {
+                  setShowEval((value) => !value);
+                  setInspectorTab("analysis");
+                }}
+              >
+                评分 {showEval ? "开" : "关"}
+              </button>
+              <button
+                className={showBook ? "active" : ""}
+                onClick={() => {
+                  setShowBook((value) => !value);
+                  setInspectorTab("analysis");
+                }}
+              >
+                云库 {showBook ? "开" : "关"}
+              </button>
+              <button onClick={copyFen}>{fenCopied ? "已复制" : "复制 FEN"}</button>
+              <button className="danger" onClick={restart}>重开</button>
+              {over && overDismissed && (
+                <button className="wide" onClick={() => setOverDismissed(false)}>查看结果</button>
+              )}
+            </div>
+          </aside>
+        ) : moveLog.length > 0 && (
           <div className="panel move-log">
             <div className="move-log-head">
               <strong>棋谱</strong>

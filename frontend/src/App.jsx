@@ -204,6 +204,38 @@ export default function App() {
     </>
   );
 
+  const desktopAccount = user ? (
+    <details className="desktop-user-menu">
+      <summary>
+        <span className="desktop-avatar">{user.username?.slice(0, 1) || "棋"}</span>
+        <span className="desktop-user-summary">
+          <strong>{user.username}</strong>
+          <small>
+            {credits ? `💎 ${credits.balance}${credits.checkin_today ? " · 今日已签到" : " · 今日未签到"}` : "账户已登录"}
+          </small>
+        </span>
+        <span className="desktop-user-arrow" aria-hidden>›</span>
+      </summary>
+      <div className="desktop-user-popover">
+        <div className="desktop-user-popover-head">
+          <strong>{user.username}</strong>
+          {entitlements?.active && <span className="member-badge">PRO</span>}
+        </div>
+        <CreditsBadge credits={credits} onCheckin={refreshCredits} />
+        <button className="desktop-logout" onClick={logout}>退出登录</button>
+      </div>
+    </details>
+  ) : (
+    <div className="desktop-guest-account">
+      <span className="desktop-avatar">棋</span>
+      <div>
+        <strong>游客模式</strong>
+        <small>登录后同步训练进度</small>
+      </div>
+      <button onClick={() => openAuth("login")}>登录</button>
+    </div>
+  );
+
   const reminderBanner = reminders.banner && (
     <div className="reminder-banner">
       <span>{reminders.banner}</span>
@@ -287,17 +319,10 @@ export default function App() {
                 <span aria-hidden>⚙</span>
                 <span>设置</span>
               </button>
-              <div className="desktop-account-head">
-                <span className="desktop-avatar">{user?.username?.slice(0, 1) || "棋"}</span>
-                <span>
-                  <strong>{user?.username || "游客模式"}</strong>
-                  <small>{entitlements?.active ? "PRO 会员" : user ? "普通用户" : "登录后同步进度"}</small>
-                </span>
-              </div>
-              <div className="desktop-account-actions">{account}</div>
+              {desktopAccount}
             </div>
           </aside>
-          <section className="desktop-workspace">
+          <section className={`desktop-workspace desktop-tab-${tab}`}>
             <header className="desktop-toolbar">
               <div>
                 <h1>{activeTab.label}</h1>
