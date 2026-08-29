@@ -267,6 +267,15 @@ nav .nav-ico, nav .nav-label-short { display: none; }
   box-shadow: none;
   filter: drop-shadow(0 0 6px rgba(255, 200, 0, .95)) drop-shadow(0 0 3px rgba(255, 160, 0, .9));
 }
+.xq-piece.in-check {
+  z-index: 12;
+  outline: 0;
+  box-shadow: 0 0 8px rgba(211, 35, 29, .78);
+}
+.xq-piece.image.in-check {
+  box-shadow: none;
+  filter: drop-shadow(0 2px 2px rgba(43, 25, 10, .22)) drop-shadow(0 0 6px rgba(218, 34, 28, .92));
+}
 .xq-piece .xq-dark-piece {
   display: grid;
   place-items: center;
@@ -325,12 +334,101 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .native-engine-limits input { width: 72px; }
 .jieqi-move-list { margin: 8px 0 0; padding-left: 24px; font-family: ui-monospace, monospace; }
 .jieqi-move-list li { padding: 3px 0; }
-.jieqi-hidden-pools { display: grid; gap: 6px; margin: 10px 0; }
-.jieqi-hidden-pool { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; }
-.jieqi-hidden-pool strong { flex: 0 0 auto; }
-.jieqi-hidden-pool span { min-width: 0; color: #555; line-height: 1.5; word-spacing: 3px; }
-.jieqi-hidden-pool.red strong { color: #b12b26; }
-.jieqi-hidden-pool.black strong { color: #333; }
+.jieqi-notation-list {
+  list-style: none; margin: 8px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 3px;
+  font-family: "STKaiti", "KaiTi", "PingFang SC", serif;
+  font-size: 14px;
+}
+.jieqi-notation-list li {
+  display: grid; grid-template-columns: 25px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: baseline; gap: 5px; padding: 4px 2px;
+  border-bottom: 1px solid #f0ebe4;
+}
+.jieqi-move-no { color: #aaa197; text-align: right; font: 12px/1.4 ui-monospace, monospace; }
+.jieqi-move-red { color: #b12b26; }
+.jieqi-move-black { color: #34302c; }
+.jieqi-move-red, .jieqi-move-black { min-width: 0; white-space: nowrap; }
+.jieqi-board-stage {
+  /* 评估条和棋盘共用一个紧凑宽度，棋盘达到最大缩放后不再由剩余空间把两者拉开。 */
+  width: min(100%, 748px); min-width: 0; margin-inline: auto;
+  display: flex; align-items: stretch; justify-content: center;
+}
+.jieqi-check-alert {
+  position: absolute; z-index: 60; top: 0; left: 50%;
+  transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  padding: 7px 13px; border: 1px solid rgba(151, 24, 20, .72); border-radius: 999px;
+  color: #7f1715; background: rgba(255, 245, 237, .94);
+  box-shadow: 0 4px 16px rgba(122, 25, 19, .2); backdrop-filter: blur(4px);
+  pointer-events: none; animation: jieqi-check-rise .2s ease-out;
+}
+.jieqi-check-alert strong { color: #c4201c; font-size: 16px; letter-spacing: 2px; }
+.jieqi-check-alert span { font-size: 12px; font-weight: 600; white-space: nowrap; }
+@keyframes jieqi-check-rise {
+  from { opacity: 0; transform: translate(-50%, -7px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.jieqi-board-stage > .xq-board-measure { flex: 1; min-width: 0; }
+/* JieqiBox 风格的棋盘侧边评估条：上黑下红，红色高度代表红方胜势占比。 */
+.jieqi-eval-rail {
+  position: relative; flex: 0 0 14px; align-self: flex-start;
+  min-height: 0; margin-right: 6px;
+  overflow: hidden; border: 1px solid rgba(67, 49, 34, .55); border-radius: 5px;
+  background: #292929; box-shadow: 0 2px 5px rgba(45, 27, 12, .2);
+}
+.jieqi-eval-rail-red {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: #c8322e; transition: height .4s ease;
+}
+.jieqi-eval-rail.flipped .jieqi-eval-rail-red {
+  top: 0; bottom: auto;
+}
+.jieqi-eval-rail-divider {
+  position: absolute; left: 0; right: 0; z-index: 1;
+  bottom: calc(var(--jieqi-eval-pct) - 1px); height: 2px;
+  background: rgba(255, 255, 255, .95);
+  box-shadow: 0 0 2px rgba(0, 0, 0, .35);
+  pointer-events: none;
+}
+.jieqi-eval-rail.flipped .jieqi-eval-rail-divider {
+  top: calc(var(--jieqi-eval-pct) - 1px); bottom: auto;
+}
+.jieqi-eval-rail span {
+  position: absolute; left: 50%; top: 50%; z-index: 2;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  color: #fff; font: 700 10px/1 ui-monospace, monospace;
+  text-shadow: 0 1px 2px #000; white-space: nowrap; pointer-events: none;
+}
+.jieqi-hidden-pools {
+  margin: 0; padding: 11px 12px 12px;
+  border-bottom: 1px solid #e9e2d8;
+  background: #fcfaf6;
+}
+.jieqi-hidden-pools-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.jieqi-hidden-pools-head > strong { color: #4b433a; font-size: 13px; }
+.jieqi-hidden-pools-head > span {
+  padding: 2px 6px; border-radius: 999px;
+  color: #958b80; background: #f0ebe4; font-size: 10px;
+}
+.jieqi-hidden-pools > p { margin: 4px 0 9px; color: #91877c; font-size: 11px; line-height: 1.45; }
+.jieqi-hidden-pools-list { display: grid; gap: 7px; }
+.jieqi-hidden-pool { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 7px; min-width: 0; }
+.jieqi-hidden-pool-side { display: flex; flex-direction: column; line-height: 1.2; }
+.jieqi-hidden-pool-side strong { font-size: 12px; }
+.jieqi-hidden-pool-side small { margin-top: 2px; color: #aaa197; font-size: 9px; }
+.jieqi-hidden-pool.red .jieqi-hidden-pool-side strong { color: #b12b26; }
+.jieqi-hidden-pool.black .jieqi-hidden-pool-side strong { color: #333; }
+.jieqi-hidden-pieces { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.jieqi-hidden-piece {
+  display: inline-flex; align-items: baseline; gap: 2px;
+  min-width: 29px; padding: 3px 5px;
+  border: 1px solid #ddd4c9; border-radius: 5px;
+  color: #39342f; background: #fff; line-height: 1;
+}
+.jieqi-hidden-pool.red .jieqi-hidden-piece { color: #a72e29; border-color: #ead0ca; background: #fffafa; }
+.jieqi-hidden-piece b { font: 600 13px/1 "STKaiti", "KaiTi", "PingFang SC", serif; }
+.jieqi-hidden-piece small { color: #91877c; font: 9px/1 ui-monospace, monospace; }
+.jieqi-hidden-empty { color: #aaa197; font-size: 11px; }
 .jieqi-flip-overlay {
   position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
   padding: 18px; background: rgba(38, 28, 18, .22); backdrop-filter: blur(2px);
@@ -1677,11 +1775,11 @@ body.desktop-runtime {
 .desktop-book-moves button:disabled { opacity: .5; cursor: default; }
 .desktop-jieqi-moves {
   margin: 0;
-  padding-left: 28px;
+  padding: 0;
   color: #5f574f;
   font-size: 13px;
 }
-.desktop-jieqi-moves li { padding: 5px 0; border-bottom: 1px solid #f0ebe4; }
+.desktop-jieqi-moves li { padding: 6px 1px; border-bottom: 1px solid #f0ebe4; }
 
 .desktop-inspector-actions {
   padding: 11px 12px 12px;

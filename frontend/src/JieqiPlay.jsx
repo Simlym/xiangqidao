@@ -5,6 +5,8 @@ import {
   JIEQI_INITIAL_FEN,
   applyJieqiMove,
   availableJieqiReveals,
+  completeJieqiMove,
+  jieqiMoveToChinese,
   jieqiStatus,
   legalJieqiMoves,
   parseJieqiBoard,
@@ -40,24 +42,62 @@ function describeJieqiEval(data) {
   const absolute = Math.abs(cp);
   const advantage = absolute < 60 ? "均势" : absolute < 150 ? "略优" : absolute < 400 ? "占优" : absolute < 900 ? "大优" : "胜势";
   return {
-    value: `${cp >= 0 ? "+" : ""}${(cp / 100).toFixed(2)}`,
+    // 揭棋引擎直接使用其 UCI 原始评分，和 JieqiBox / PikaJieQi 的显示口径一致。
+    // 这里不是标准象棋界面中的“兵值”，不要再按 centipawn 除以 100。
+    value: `${cp >= 0 ? "+" : ""}${Math.round(cp)}`,
     label: absolute < 60 ? advantage : `${cp > 0 ? "红方" : "黑方"}${advantage}`,
     redPct: 50 + (Math.max(-1000, Math.min(1000, cp)) / 1000) * 50,
   };
 }
 
-function HiddenPool({ fen }) {
+function HiddenPool({ fen, gameMode }) {
+  const poolHint = gameMode === "free"
+    ? "暗子首次移动时，可从本方剩余身份中选择；数量会随揭开减少。"
+    : "暗子首次移动时，会从本方剩余身份中随机揭出；数量会随揭开减少。";
+
   return (
-    <div className="jieqi-hidden-pools" aria-label="剩余暗子池">
-      {[["b", "黑方"], ["w", "红方"]].map(([side, label]) => (
-        <div className={`jieqi-hidden-pool ${side === "w" ? "red" : "black"}`} key={side}>
-          <strong>{label}</strong>
-          <span>
-            {availableJieqiReveals(fen, side).map((item) => `${item.glyph}×${item.count}`).join(" ") || "已空"}
-          </span>
-        </div>
+    <section className="jieqi-hidden-pools" aria-labelledby="jieqi-hidden-pool-title">
+      <div className="jieqi-hidden-pools-head">
+        <strong id="jieqi-hidden-pool-title">待揭身份</strong>
+        <span>不是已吃棋子</span>
+      </div>
+      <p>{poolHint}</p>
+      <div className="jieqi-hidden-pools-list">
+        {[["b", "黑方"], ["w", "红方"]].map(([side, label]) => {
+          const items = availableJieqiReveals(fen, side);
+          const total = items.reduce((sum, item) => sum + item.count, 0);
+          return (
+            <div className={`jieqi-hidden-pool ${side === "w" ? "red" : "black"}`} key={side}>
+              <div className="jieqi-hidden-pool-side">
+                <strong>{label}</strong>
+                <small>{total} 枚</small>
+              </div>
+              <div className="jieqi-hidden-pieces" aria-label={`${label}剩余 ${total} 枚待揭身份`}>
+                {items.length > 0 ? items.map((item) => (
+                  <span className="jieqi-hidden-piece" key={item.piece} title={`${item.glyph}：剩余 ${item.count} 枚`}>
+                    <b>{item.glyph}</b><small>×{item.count}</small>
+                  </span>
+                )) : <span className="jieqi-hidden-empty">全部揭开</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ChineseMoveList({ pairs, desktop = false }) {
+  return (
+    <ol className={`jieqi-notation-list${desktop ? " desktop-jieqi-moves" : ""}`}>
+      {pairs.map(([red, black], index) => (
+        <li key={`${index}-${red}-${black}`}>
+          <span className="jieqi-move-no">{index + 1}.</span>
+          <span className="jieqi-move-red">{red}</span>
+          <span className="jieqi-move-black">{black}</span>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 
@@ -82,9 +122,13 @@ export default function JieqiPlay({ onOpenSettings }) {
   const [analysisLoading, setAnalysisLoading] = React.useState(false);
   const [analysisError, setAnalysisError] = React.useState("");
   const [showHint, setShowHint] = React.useState(true);
+  const [boardFlipped, setBoardFlipped] = React.useState(false);
+  const [boardScale, setBoardScale] = React.useState(1);
   const positionsRef = React.useRef([]);
   const movesRef = React.useRef([]);
+  const initialPlyRef = React.useRef(0);
   const analysisReqId = React.useRef(0);
+  const turnReqId = React.useRef(0);
 
   React.useEffect(() => {
     jieqiEngine.availableKinds().then((kinds) => {
@@ -140,10 +184,15 @@ export default function JieqiPlay({ onOpenSettings }) {
     const baseMove = result.bestMove?.slice(0, 4);
     if (!baseMove || !legal.includes(baseMove)) throw new Error("揭棋引擎返回了不合法着法");
     const next = applyJieqiMove(position, result.bestMove);
-    return { fen: next, move: result.bestMove, winner: winnerFor(jieqiStatus(next), side) };
+    return {
+      fen: next,
+      move: completeJieqiMove(position, result.bestMove, next),
+      winner: winnerFor(jieqiStatus(next), side),
+    };
   }
 
   async function start() {
+    const requestId = ++turnReqId.current;
     setThinking(gameMode === "human-ai");
     setError("");
     setWinner(null);
@@ -153,16 +202,20 @@ export default function JieqiPlay({ onOpenSettings }) {
     setAnalysisData(null);
     setAnalysisError("");
     setShowHint(true);
+    setBoardFlipped(gameMode === "human-ai" && humanSide === "b");
     movesRef.current = [];
     positionsRef.current = [JIEQI_INITIAL_FEN];
+    initialPlyRef.current = 0;
     try {
       let position = JIEQI_INITIAL_FEN;
       if (gameMode === "human-ai" && humanSide === "b") {
         const reply = await engineTurn(position, "engine");
+        if (requestId !== turnReqId.current) return;
         position = reply.fen;
         setLastMove(reply.move);
         movesRef.current = [reply.move];
         positionsRef.current.push(position);
+        initialPlyRef.current = 1;
         setMoves([...movesRef.current]);
       } else {
         setLastMove(null);
@@ -256,24 +309,41 @@ export default function JieqiPlay({ onOpenSettings }) {
       return;
     }
     const previous = fen;
-    setThinking(true);
+    let afterHuman;
+    let recordedHumanMove;
+    let humanWinner;
     try {
-      const afterHuman = applyJieqiMove(previous, move);
-      const humanWinner = winnerFor(jieqiStatus(afterHuman), "human");
-      if (humanWinner) {
-        movesRef.current.push(move);
-        positionsRef.current.push(afterHuman);
-        setFen(afterHuman);
-        setLastMove(move);
-        setMoves([...movesRef.current]);
-        setLegalMoves([]);
-        setWinner(humanWinner);
-        saveGame(humanWinner);
-        return;
-      }
+      afterHuman = applyJieqiMove(previous, move);
+      recordedHumanMove = completeJieqiMove(previous, move, afterHuman);
+      humanWinner = winnerFor(jieqiStatus(afterHuman), "human");
+    } catch (reason) {
+      setError(reason.message || "走子失败");
+      return;
+    }
+
+    // 先提交用户着法，让棋盘和动画立即更新；引擎搜索只负责稍后追加应着。
+    movesRef.current.push(recordedHumanMove);
+    positionsRef.current.push(afterHuman);
+    setFen(afterHuman);
+    setLastMove(recordedHumanMove);
+    setMoves([...movesRef.current]);
+    setLegalMoves([]);
+
+    if (humanWinner) {
+      setWinner(humanWinner);
+      saveGame(humanWinner);
+      return;
+    }
+
+    const requestId = ++turnReqId.current;
+    setThinking(true);
+    // 给 React 和浏览器一次绘制机会，避免本地引擎启动挤占落子这一帧。
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
       const reply = await engineTurn(afterHuman, "engine");
-      movesRef.current.push(move, reply.move);
-      positionsRef.current.push(afterHuman, reply.fen);
+      if (requestId !== turnReqId.current) return;
+      movesRef.current.push(reply.move);
+      positionsRef.current.push(reply.fen);
       setFen(reply.fen);
       setLastMove(reply.move);
       setMoves([...movesRef.current]);
@@ -281,10 +351,11 @@ export default function JieqiPlay({ onOpenSettings }) {
       setLegalMoves(reply.winner ? [] : legalJieqiMoves(reply.fen));
       if (reply.winner) saveGame(reply.winner);
     } catch (reason) {
-      setFen(previous);
-      setError(`${reason.message || "引擎应着失败"}，本步已回退`);
+      if (requestId === turnReqId.current) {
+        setError(`${reason.message || "引擎应着失败"}，你的走子已保留，可悔棋后重试`);
+      }
     } finally {
-      setThinking(false);
+      if (requestId === turnReqId.current) setThinking(false);
     }
   }
 
@@ -373,11 +444,50 @@ export default function JieqiPlay({ onOpenSettings }) {
     );
   }
 
+  function undo() {
+    if (thinking) return;
+    if (pendingFlip) {
+      setPendingFlip(null);
+      return;
+    }
+    const minimum = initialPlyRef.current;
+    if (movesRef.current.length <= minimum) return;
+
+    let targetPly = movesRef.current.length - 1;
+    if (gameMode === "human-ai") {
+      while (
+        targetPly > minimum &&
+        parseJieqiFen(positionsRef.current[targetPly]).side !== humanSide
+      ) targetPly--;
+    }
+
+    analysisReqId.current++;
+    turnReqId.current++;
+    const restoredFen = positionsRef.current[targetPly];
+    movesRef.current = movesRef.current.slice(0, targetPly);
+    positionsRef.current = positionsRef.current.slice(0, targetPly + 1);
+    setFen(restoredFen);
+    setMoves([...movesRef.current]);
+    setLastMove(movesRef.current.at(-1) || null);
+    setLegalMoves(legalJieqiMoves(restoredFen));
+    setWinner(null);
+    setSaved(false);
+    setError("");
+    setAnalysisData(null);
+    setAnalysisError("");
+    setAnalysisLoading(false);
+    setShowHint(true);
+  }
+
   const currentSide = parseJieqiFen(fen).side;
+  const currentStatus = jieqiStatus(fen);
+  const inCheck = currentStatus === "check";
   const currentTurnText = gameMode === "free"
     ? winner
       ? winner === "draw" ? "和棋" : winner === "w" ? "红方获胜" : "黑方获胜"
-      : pendingFlip ? `请选择${pendingFlip.side === "w" ? "红方" : "黑方"}翻出的棋子` : `轮到${currentSide === "w" ? "红方" : "黑方"}走`
+      : pendingFlip
+        ? `请选择${pendingFlip.side === "w" ? "红方" : "黑方"}翻出的棋子`
+        : `轮到${currentSide === "w" ? "红方" : "黑方"}走`
     : winner
       ? winner === "human" ? "你赢了" : winner === "draw" ? "和棋" : "引擎获胜"
       : thinking ? "引擎思考中…" : "轮到你走";
@@ -388,6 +498,17 @@ export default function JieqiPlay({ onOpenSettings }) {
     : "揭棋云端引擎";
   const levelLabel = LEVELS.find((item) => item.key === level)?.label;
   const evalInfo = describeJieqiEval(analysisData);
+  const canUndo = moves.length > initialPlyRef.current || Boolean(pendingFlip);
+  const notationTexts = moves.map((move, index) =>
+    jieqiMoveToChinese(positionsRef.current[index] || JIEQI_INITIAL_FEN, move)
+  );
+  const notationPairs = [];
+  for (let index = 0; index < notationTexts.length; index += 2) {
+    notationPairs.push([notationTexts[index], notationTexts[index + 1] || ""]);
+  }
+  const bestMoveText = analysisData?.bestMove
+    ? jieqiMoveToChinese(fen, analysisData.bestMove)
+    : "";
   const analysisRuntime = analysisData?.runtime === "native"
     ? "PC 原生揭棋引擎"
     : analysisData?.runtime === "wasm"
@@ -437,30 +558,59 @@ export default function JieqiPlay({ onOpenSettings }) {
               {analysisLoading ? "分析中…" : analysisData ? showHint ? "隐藏提示" : "走子提示" : "走子提示"}
             </button>
           </>}
-          <button className="btn-newgame" onClick={() => { setPendingFlip(null); setFen(null); }}>新对局</button>
+          <button className="btn-newgame" onClick={undo} disabled={!canUndo || thinking}>悔棋</button>
+          <button className="btn-newgame" onClick={() => setBoardFlipped((value) => !value)}>翻转棋盘</button>
+          <button className="btn-newgame" onClick={() => { turnReqId.current++; setThinking(false); setPendingFlip(null); setFen(null); }}>新对局</button>
         </div>
       </div>}
       {!isDesktop && error && <div className="panel import-error">{error}</div>}
       <div className="play-main">
         <div className="play-board-area">
+          {inCheck && (
+            <div className="jieqi-check-alert" role="status" aria-live="assertive">
+              <strong>将军</strong>
+              <span>{currentSide === "w" ? "红帅" : "黑将"}受到攻击</span>
+            </div>
+          )}
           {isDesktop && (
             <div className="desktop-board-playerbar">
               <span>{gameMode === "free" ? "自由翻子" : "电脑"}</span>
               <strong>{currentTurnText}</strong>
             </div>
           )}
-          <Board
-            fen={fen}
-            onMove={onMove}
-            lastMove={lastMove}
-            disabled={thinking || Boolean(winner) || Boolean(pendingFlip)}
-            legalMoves={legalMoves}
-            hintMove={gameMode === "free" && showHint && !pendingFlip ? analysisData?.bestMove || null : null}
-            flipped={gameMode === "human-ai" && humanSide === "b"}
-            parsePosition={parseJieqiBoard}
-            pieceImage={jieqiPieceImage}
-            maxScale={1.62}
-          />
+          <div className="jieqi-board-stage">
+            {gameMode === "free" && (
+              <div
+                className={`jieqi-eval-rail${boardFlipped ? " flipped" : ""}`}
+                style={{
+                  height: `${462 * boardScale}px`,
+                  marginTop: `${22 * boardScale}px`,
+                  marginBottom: `${22 * boardScale}px`,
+                  "--jieqi-eval-pct": `${evalInfo.redPct}%`,
+                }}
+                title={analysisLoading ? "局势评估中" : `${evalInfo.label} ${evalInfo.value}`}
+                aria-label={`局势评估：${analysisLoading ? "分析中" : `${evalInfo.label} ${evalInfo.value}`}`}
+              >
+                <div className="jieqi-eval-rail-red" style={{ height: `${evalInfo.redPct}%` }} />
+                <div className="jieqi-eval-rail-divider" aria-hidden="true" />
+                <span>{analysisLoading && !analysisData ? "…" : evalInfo.value}</span>
+              </div>
+            )}
+            <Board
+              fen={fen}
+              onMove={onMove}
+              lastMove={lastMove}
+              disabled={thinking || Boolean(winner) || Boolean(pendingFlip)}
+              legalMoves={legalMoves}
+              hintMove={gameMode === "free" && showHint && !pendingFlip ? analysisData?.bestMove || null : null}
+              flipped={boardFlipped}
+              checkedSide={inCheck ? currentSide : null}
+              parsePosition={parseJieqiBoard}
+              pieceImage={jieqiPieceImage}
+              maxScale={1.75}
+              onScaleChange={setBoardScale}
+            />
+          </div>
         </div>
         {isDesktop ? (
           <aside className="panel move-log desktop-play-inspector desktop-jieqi-inspector">
@@ -471,7 +621,7 @@ export default function JieqiPlay({ onOpenSettings }) {
               {winner && <span>{saved ? "棋局已存入复盘" : "正在保存棋局…"}</span>}
             </div>
 
-            <HiddenPool fen={fen} />
+            <HiddenPool fen={fen} gameMode={gameMode} />
 
             <div className="desktop-inspector-tabs" role="tablist" aria-label="揭棋对局信息">
               <button
@@ -495,9 +645,7 @@ export default function JieqiPlay({ onOpenSettings }) {
             <div className="desktop-inspector-body">
               {inspectorTab === "moves" && (
                 moves.length > 0 ? (
-                  <ol className="jieqi-move-list desktop-jieqi-moves">
-                    {moves.map((move, index) => <li key={`${index}-${move}`}>{move}</li>)}
-                  </ol>
+                  <ChineseMoveList pairs={notationPairs} desktop />
                 ) : (
                   <div className="desktop-inspector-empty">揭棋对局刚刚开始<br />走子后将在这里记录棋谱</div>
                 )
@@ -514,7 +662,7 @@ export default function JieqiPlay({ onOpenSettings }) {
                       {analysisData && <>
                         <div className="jieqi-best-move">
                           <span>最佳着法</span>
-                          <strong>{analysisData.bestMove}</strong>
+                          <strong title={analysisData.bestMove}>{bestMoveText}</strong>
                         </div>
                         {analysisData.pv?.length > 0 && (
                           <div className="jieqi-pv"><span>完整推演</span><code>{analysisData.pv.join(" ")}</code></div>
@@ -548,20 +696,22 @@ export default function JieqiPlay({ onOpenSettings }) {
                   {analysisLoading ? "分析中…" : analysisData && showHint ? "隐藏提示" : "走子提示"}
                 </button>
               </>}
-              <button className="danger wide" onClick={() => { setPendingFlip(null); setFen(null); }}>新对局</button>
+              <button onClick={undo} disabled={!canUndo || thinking}>悔棋</button>
+              <button onClick={() => setBoardFlipped((value) => !value)}>{boardFlipped ? "恢复方向" : "翻转棋盘"}</button>
+              <button className="danger wide" onClick={() => { turnReqId.current++; setThinking(false); setPendingFlip(null); setFen(null); }}>新对局</button>
             </div>
           </aside>
         ) : (
           <div className="panel move-log">
             <div className="move-log-head"><strong>揭棋着法</strong><span className="muted">{moves.length} 步</span></div>
-            {gameMode === "free" && <HiddenPool fen={fen} />}
+            {gameMode === "free" && <HiddenPool fen={fen} gameMode={gameMode} />}
             {gameMode === "free" && (
               <div className="jieqi-mobile-analysis">
                 <strong>{analysisLoading ? "分析中…" : evalInfo.value}</strong>
-                <span>{analysisLoading ? "正在搜索最佳着法" : analysisData ? `${evalInfo.label} · 推荐 ${analysisData.bestMove}` : analysisError || "分析已停止"}</span>
+                <span>{analysisLoading ? "正在搜索最佳着法" : analysisData ? `${evalInfo.label} · 推荐 ${bestMoveText}` : analysisError || "分析已停止"}</span>
               </div>
             )}
-            <ol className="jieqi-move-list">{moves.map((move, index) => <li key={`${index}-${move}`}>{move}</li>)}</ol>
+            <ChineseMoveList pairs={notationPairs} />
           </div>
         )}
       </div>

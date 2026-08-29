@@ -4,6 +4,8 @@ import {
   JIEQI_INITIAL_FEN,
   applyJieqiMove,
   availableJieqiReveals,
+  completeJieqiMove,
+  jieqiMoveToChinese,
   jieqiStatus,
   legalJieqiMoves,
   parseJieqiFen,
@@ -59,5 +61,23 @@ test("随机翻子吃暗子时仍会识别并扣除暗子", () => {
 test("非法着法不会污染局面", () => {
   assert.throws(() => applyJieqiMove(JIEQI_INITIAL_FEN, "a3a9", () => 0));
   assert.equal(parseJieqiFen(JIEQI_INITIAL_FEN).side, "w");
+});
+
+test("揭棋着法转换为中文记谱并记录翻子", () => {
+  assert.equal(jieqiMoveToChinese(JIEQI_INITIAL_FEN, "g3g4N"), "兵三进一 翻马");
+  assert.equal(jieqiMoveToChinese(JIEQI_INITIAL_FEN, "b0c2R"), "马八进七 翻车");
+  assert.equal(jieqiMoveToChinese(JIEQI_INITIAL_FEN, "a3a4P"), "兵九进一 翻兵");
+});
+
+test("随机翻子着法可从前后局面补全身份", () => {
+  const next = applyJieqiMove(JIEQI_INITIAL_FEN, "g3g4", () => 0);
+  const completed = completeJieqiMove(JIEQI_INITIAL_FEN, "g3g4", next);
+  assert.equal(completed, "g3g4A");
+  assert.equal(jieqiMoveToChinese(JIEQI_INITIAL_FEN, completed), "兵三进一 翻仕");
+});
+
+test("揭棋局面能够识别将军状态", () => {
+  const fen = "4k4/9/9/9/9/9/9/9/4R4/4K4 b - - 0 1";
+  assert.equal(jieqiStatus(fen), "check");
 });
 

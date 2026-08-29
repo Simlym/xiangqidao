@@ -83,6 +83,7 @@ const MARKS = positionMarks();
 export default function Board({
   fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped,
   parsePosition = parseFen, pieceImage = null, maxScale = DEFAULT_MAX_SCALE,
+  checkedSide = null, onScaleChange = null,
 }) {
   const board = parsePosition(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
@@ -101,13 +102,16 @@ export default function Board({
   React.useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const update = () =>
-      setScale(Math.max(0.2, Math.min(maxScale, el.clientWidth / SW)));
+    const update = () => {
+      const nextScale = Math.max(0.2, Math.min(maxScale, el.clientWidth / SW));
+      setScale(nextScale);
+      onScaleChange?.(nextScale);
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [maxScale]);
+  }, [maxScale, onScaleChange]);
 
   const restrict = Array.isArray(legalMoves);
   // 当前选中起点的合法落点集合
@@ -265,6 +269,10 @@ export default function Board({
             const selected = from && from.row === row && from.col === col;
             const highlight = sq === lastFrom || sq === lastTo;
             const isTarget = targets && targets.has(sq);
+            const kingInCheck = Boolean(
+              checkedSide && cell && !cell.hidden && cell.piece?.toUpperCase() === "K" &&
+              (cell.red ? "w" : "b") === checkedSide
+            );
             return (
               <div
                 key={`${row}-${col}`}
@@ -283,6 +291,7 @@ export default function Board({
                       "xq-piece " +
                       (cell.red ? "red" : "black") +
                       (pieceImage ? " image" : "") +
+                      (kingInCheck ? " in-check" : "") +
                       (selected ? " selected" : "") +
                       (sq === lastTo && slide ? " moving" : "")
                     }
