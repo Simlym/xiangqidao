@@ -314,6 +314,61 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .native-engine-limits input { width: 72px; }
 .jieqi-move-list { margin: 8px 0 0; padding-left: 24px; font-family: ui-monospace, monospace; }
 .jieqi-move-list li { padding: 3px 0; }
+.jieqi-hidden-pools { display: grid; gap: 6px; margin: 10px 0; }
+.jieqi-hidden-pool { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; }
+.jieqi-hidden-pool strong { flex: 0 0 auto; }
+.jieqi-hidden-pool span { min-width: 0; color: #555; line-height: 1.5; word-spacing: 3px; }
+.jieqi-hidden-pool.red strong { color: #b12b26; }
+.jieqi-hidden-pool.black strong { color: #333; }
+.jieqi-flip-overlay {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
+  padding: 18px; background: rgba(38, 28, 18, .22); backdrop-filter: blur(2px);
+  animation: overlay-fade .16s ease-out;
+}
+.xq-hint-arrow {
+  position: absolute; inset: 0; z-index: 4; overflow: visible; pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(20, 55, 30, .45));
+}
+.xq-hint-arrow line { stroke: #238b45; stroke-width: 5; stroke-linecap: round; }
+.xq-hint-arrow marker path { fill: #238b45; }
+.jieqi-flip-dialog { width: min(430px, calc(100vw - 36px)); text-align: center; }
+.jieqi-flip-dialog > strong { display: block; color: #70451f; font-size: 18px; }
+.jieqi-flip-dialog > p { margin: 5px 0 15px; color: #777; font-size: 13px; }
+.jieqi-flip-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 16px; }
+.jieqi-flip-choices button {
+  position: relative; display: grid; place-items: center; width: 58px; height: 58px;
+  padding: 0; border: 2px solid #5b3a20; border-radius: 50%; background: #f8e6b7;
+  color: #222; cursor: pointer; box-shadow: 0 4px 12px rgba(58, 37, 20, .18);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.jieqi-flip-choices button.red { color: #b12b26; border-color: #b12b26; }
+.jieqi-flip-choices button:hover, .jieqi-flip-choices button:focus-visible {
+  outline: none; transform: translateY(-2px) scale(1.05); box-shadow: 0 7px 16px rgba(58, 37, 20, .24);
+}
+.jieqi-flip-choices button span { font: 700 27px/1 "KaiTi", "STKaiti", serif; }
+.jieqi-flip-choices button small {
+  position: absolute; top: -5px; right: -5px; min-width: 20px; height: 20px; padding: 0 4px;
+  border: 2px solid #fff; border-radius: 10px; background: #8a5a2b; color: #fff;
+  font: 700 11px/16px system-ui, sans-serif;
+}
+.jieqi-engine-analysis .eval-bar { margin-bottom: 7px; }
+.jieqi-engine-analysis > small { display: block; margin-top: 9px; color: #9a9086; font-size: 11px; }
+.jieqi-best-move {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 10px; padding: 10px 11px; border: 1px solid #eadfce; border-radius: 8px;
+  background: #fffaf3;
+}
+.jieqi-best-move span { color: #80766b; font-size: 12px; }
+.jieqi-best-move strong { color: #8a3f32; font: 700 17px/1.2 ui-monospace, monospace; }
+.jieqi-pv { margin-top: 9px; }
+.jieqi-pv > span { display: block; margin-bottom: 5px; color: #80766b; font-size: 12px; }
+.jieqi-pv code { display: block; overflow-wrap: anywhere; line-height: 1.55; }
+.jieqi-mobile-analysis {
+  display: flex; align-items: center; gap: 9px; margin: 9px 0; padding: 9px 10px;
+  border: 1px solid #eadfce; border-radius: 8px; background: #fffaf3;
+}
+.jieqi-mobile-analysis strong { color: #b12b26; font-size: 17px; }
+.jieqi-mobile-analysis span { color: #746a60; font-size: 12px; line-height: 1.4; }
 .seg { display: inline-flex; border: 1px solid #d9ccb5; border-radius: 8px; overflow: hidden; }
 .seg-btn {
   border: none; background: #fff; padding: 8px 16px; cursor: pointer;

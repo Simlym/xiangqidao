@@ -20,7 +20,7 @@ const TAB_DESCRIPTIONS = {
   stats: "训练记录与能力变化",
   games: "查看棋谱并分析得失",
   play: "与本地或云端引擎对弈",
-  jieqi: "揭棋人机对弈",
+  jieqi: "揭棋对弈",
   admin: "用户、权益与系统配置",
   settings: "应用偏好与本地引擎配置",
 };

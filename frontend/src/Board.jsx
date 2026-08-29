@@ -53,7 +53,7 @@ const MARKS = positionMarks();
 
 // 点击式走子：先点起点，再点终点，回调 onMove(uciMove)。
 // 传入 legalMoves（UCI 数组）时，限制只能走合法着法并提示落点。
-// 传入 hintMove（UCI）时，用虚线圈标出推荐着法的起点与落点。
+// 传入 hintMove（UCI）时，用虚线圈和箭头标出推荐着法。
 // 传入 flipped 时翻转视角（黑方在下），只变换显示坐标，棋盘数据与方格名不变。
 export default function Board({
   fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped,
@@ -133,6 +133,23 @@ export default function Board({
 
   // 走子动画：落点棋子从起点滑入。计算起点相对终点的像素偏移。
   const sqToRC = (sq) => ({ col: "abcdefghi".indexOf(sq[0]), row: 9 - Number(sq[1]) });
+  let hintArrow = null;
+  if (hintFrom && hintTo) {
+    const from = sqToRC(hintFrom);
+    const to = sqToRC(hintTo);
+    const start = { x: px(dCol(from.col)), y: py(dRow(from.row)) };
+    const end = { x: px(dCol(to.col)), y: py(dRow(to.row)) };
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const inset = Math.min(20, length / 4);
+    hintArrow = {
+      x1: start.x + (dx / length) * inset,
+      y1: start.y + (dy / length) * inset,
+      x2: end.x - (dx / length) * inset,
+      y2: end.y - (dy / length) * inset,
+    };
+  }
   let slide = null;
   if (lastFrom && lastTo) {
     const f = sqToRC(lastFrom);
@@ -190,6 +207,17 @@ export default function Board({
         <text className="xq-river" x={px(1.5)} y={py(4.5)}>楚 河</text>
         <text className="xq-river" x={px(6.5)} y={py(4.5)}>漢 界</text>
       </svg>
+
+      {hintArrow && (
+        <svg className="xq-hint-arrow" width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`} aria-hidden="true">
+          <defs>
+            <marker id="xq-hint-arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+              <path d="M 0 0 L 8 4 L 0 8 z" />
+            </marker>
+          </defs>
+          <line {...hintArrow} markerEnd="url(#xq-hint-arrowhead)" />
+        </svg>
+      )}
 
       {/* 交叉点 + 棋子 */}
       <div className="xq-points">

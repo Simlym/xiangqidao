@@ -213,6 +213,16 @@ function chooseFromPool(counts, side, random) {
   return candidates[0][0];
 }
 
+export function availableJieqiReveals(fen, requestedSide = null) {
+  const state = parseJieqiFen(fen);
+  const side = requestedSide || state.side;
+  const order = side === "w" ? "KARBNCP" : "karbncp";
+  return order.split("").flatMap((piece) => {
+    const count = state.hidden[piece] || 0;
+    return count > 0 ? [{ piece, glyph: GLYPHS[piece], count }] : [];
+  });
+}
+
 function boardPlacement(board) {
   return board.map((row) => {
     let text = "";
@@ -229,8 +239,13 @@ function boardPlacement(board) {
   }).join("/");
 }
 
-export function applyJieqiMove(fen, move, random = Math.random) {
+export function applyJieqiMove(fen, move, randomOrOptions = Math.random) {
   if (!legalJieqiMoves(fen).includes(move.slice(0, 4))) throw new Error("不合法的揭棋着法");
+  const options = typeof randomOrOptions === "function"
+    ? { random: randomOrOptions }
+    : (randomOrOptions || {});
+  const random = options.random || Math.random;
+  const identifyCapturedHidden = options.identifyCapturedHidden !== false;
   const state = parseJieqiFen(fen);
   const fromCol = FILES.indexOf(move[0]);
   const fromRow = 9 - Number(move[1]);
@@ -243,9 +258,11 @@ export function applyJieqiMove(fen, move, random = Math.random) {
   let capturedIdentity = extras.find((piece) => sideOf(piece) !== state.side) || null;
 
   if (moving.hidden) reveal ||= chooseFromPool(state.hidden, state.side, random);
-  if (captured?.hidden) capturedIdentity ||= chooseFromPool(state.hidden, state.side === "w" ? "b" : "w", random);
+  if (captured?.hidden && identifyCapturedHidden) {
+    capturedIdentity ||= chooseFromPool(state.hidden, state.side === "w" ? "b" : "w", random);
+  }
   if (moving.hidden && !reveal) throw new Error("暗子池为空，无法翻子");
-  if (captured?.hidden && !capturedIdentity) throw new Error("暗子池为空，无法确定被吃暗子");
+  if (captured?.hidden && identifyCapturedHidden && !capturedIdentity) throw new Error("暗子池为空，无法确定被吃暗子");
 
   if (reveal) state.hidden[reveal] = Math.max(0, (state.hidden[reveal] || 0) - 1);
   if (capturedIdentity) {
