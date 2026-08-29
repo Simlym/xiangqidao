@@ -32,7 +32,10 @@ export default function NativeEngineSettings({
     try {
       const kinds = await manager.availableKinds();
       const ready = kinds.includes("native");
-      setMessage(ready ? "原生引擎连接成功" : "原生引擎启动失败，将自动使用云端引擎");
+      const detail = manager.errorFor?.("native");
+      setMessage(ready
+        ? "原生引擎连接成功"
+        : `原生引擎检测失败，将自动使用云端引擎${detail ? `：${detail}` : ""}`);
       onReady?.(ready, ready ? "native" : null);
     } finally {
       setChecking(false);
@@ -42,7 +45,10 @@ export default function NativeEngineSettings({
   return (
     <div className="native-engine-settings">
       <strong>PC 本地分析引擎</strong>
-      <p className="muted">填写{label}的绝对路径；NNUE 请与程序放在同一目录。</p>
+      <p className="muted">
+        填写{label}的绝对路径；NNUE 请与程序放在同一目录。
+        {variant === "jieqi" && " 必须使用支持揭棋暗子局面的专用构建，不能复用标准象棋官方版。"}
+      </p>
       <div className="native-engine-input">
         <input
           value={path}

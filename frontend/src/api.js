@@ -119,6 +119,9 @@ export const adminGetEngine = () => req("/admin/engine");
 export const adminInstallEngine = (variant) =>
   req("/admin/engine/install", { method: "POST", body: { variant: variant || null } });
 export const adminRemoveEngine = () => req("/admin/engine", { method: "DELETE" });
+export const adminGetJieqiEngine = () => req("/admin/engine/jieqi");
+export const adminUpdateJieqiEngine = (path) =>
+  req("/admin/engine/jieqi", { method: "PUT", body: { path } });
 export const adminGetLlmSettings = () => req("/admin/settings/llm");
 export const adminUpdateLlmSettings = (payload) =>
   req("/admin/settings/llm", { method: "PUT", body: payload });

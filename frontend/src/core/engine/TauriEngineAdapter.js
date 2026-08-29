@@ -4,6 +4,7 @@ import { RUNTIME, runtime } from "../../platform/runtime";
 const profileKey = (variant) => `xq.nativeEngine.${variant}`;
 const INIT_TIMEOUT = 10000;
 const GO_TIMEOUT = 30000;
+const JIEQI_PROBE_FEN = "xxxxkxxxx/9/1x5x1/x1x1x1x1x/9/9/X1X1X1X1X/1X5X1/9/XXXXKXXXX w A2B2N2R2C2P5a2b2n2r2c2p5 - 0 1";
 let activeNativeVariant = null;
 
 function safeProfile(profile) {
@@ -25,6 +26,8 @@ export class TauriEngineAdapter extends EngineAdapter {
     this.listeners = new Set();
     this.unlisten = null;
     this.queue = Promise.resolve();
+    this.lastError = null;
+    this.diagnostics = [];
   }
 
   getProfile() {
@@ -41,8 +44,10 @@ export class TauriEngineAdapter extends EngineAdapter {
     if (runtime !== RUNTIME.TAURI || !this.getProfile()?.path) return false;
     try {
       await this.start();
+      this.lastError = null;
       return true;
-    } catch {
+    } catch (error) {
+      this.lastError = error instanceof Error ? error : new Error(String(error));
       return false;
     }
   }
@@ -70,9 +75,16 @@ export class TauriEngineAdapter extends EngineAdapter {
     const profile = this.getProfile();
     if (!profile?.path) throw new Error("尚未配置桌面原生引擎");
     const { invoke, listen } = await this.modules();
+    this.diagnostics = [];
     this.unlisten ||= await listen("engine-output", ({ payload }) => {
       for (const line of String(payload).split(/\r?\n/).filter(Boolean)) {
+        this.rememberDiagnostic(line);
         for (const listener of this.listeners) listener(line);
+      }
+    });
+    this.unlistenError ||= await listen("engine-error", ({ payload }) => {
+      for (const line of String(payload).split(/\r?\n/).filter(Boolean)) {
+        this.rememberDiagnostic(line);
       }
     });
     await invoke("spawn_engine", { path: profile.path, args: profile.args || [] });
@@ -82,6 +94,13 @@ export class TauriEngineAdapter extends EngineAdapter {
     await invoke("send_to_engine", { command: "setoption name MultiPV value 1" });
     await invoke("send_to_engine", { command: "ucinewgame" });
     await this.waitFor("readyok", () => invoke("send_to_engine", { command: "isready" }), INIT_TIMEOUT);
+    if (this.variant === "jieqi") {
+      await this.waitFor("bestmove", async () => {
+        await invoke("send_to_engine", { command: `position fen ${JIEQI_PROBE_FEN}` });
+        await invoke("send_to_engine", { command: "go depth 1" });
+      }, INIT_TIMEOUT);
+      await invoke("send_to_engine", { command: "ucinewgame" });
+    }
     this.started = true;
     activeNativeVariant = this.variant;
   }
@@ -90,7 +109,8 @@ export class TauriEngineAdapter extends EngineAdapter {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.listeners.delete(onLine);
-        reject(new Error(`等待 ${prefix} 超时`));
+        const detail = this.diagnostics.slice(-3).join("；");
+        reject(new Error(`等待 ${prefix} 超时${detail ? `（引擎输出：${detail}` + "）" : ""}`));
       }, timeout);
       const onLine = (line) => {
         if (!line.startsWith(prefix)) return;
@@ -105,6 +125,13 @@ export class TauriEngineAdapter extends EngineAdapter {
         reject(error);
       });
     });
+  }
+
+  rememberDiagnostic(line) {
+    const text = String(line).trim();
+    if (!text) return;
+    this.diagnostics.push(text.slice(0, 300));
+    if (this.diagnostics.length > 20) this.diagnostics.shift();
   }
 
   evaluate(fen, { depth = 14 } = {}) {
@@ -159,7 +186,9 @@ export class TauriEngineAdapter extends EngineAdapter {
     const { invoke } = await this.modules();
     await invoke("kill_engine").catch(() => {});
     this.unlisten?.();
+    this.unlistenError?.();
     this.unlisten = null;
+    this.unlistenError = null;
     this.started = false;
     if (activeNativeVariant === this.variant) activeNativeVariant = null;
   }

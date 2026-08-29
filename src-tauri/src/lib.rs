@@ -70,8 +70,24 @@ fn spawn_engine(
     ] {
         let handle = app.clone();
         std::thread::spawn(move || {
-            for line in BufReader::new(stream).lines().map_while(Result::ok) {
-                let _ = handle.emit(event_name, line);
+            // 部分揭棋引擎仍以 Windows 本地代码页输出中文。BufRead::lines()
+            // 要求严格 UTF-8，首行解码失败后会直接结束迭代，导致后续 ASCII
+            // 的 uciok/readyok 永远无法送达前端。按字节切行并宽松解码，协议
+            // 关键字仍可原样保留，非 UTF-8 的说明文字则以替换字符展示。
+            let mut reader = BufReader::new(stream);
+            let mut bytes = Vec::new();
+            loop {
+                bytes.clear();
+                match reader.read_until(b'\n', &mut bytes) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        let line = String::from_utf8_lossy(&bytes)
+                            .trim_end_matches(['\r', '\n'])
+                            .to_owned();
+                        let _ = handle.emit(event_name, line);
+                    }
+                    Err(_) => break,
+                }
             }
         });
     }

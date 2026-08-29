@@ -247,7 +247,7 @@ cd backend && python -m pytest tests/ -q
 | `XQ_ORIGINS` | 允许的前端来源（CORS），逗号分隔，如 `https://xq.example.com`；留空则放开（仅限本地开发）| 空（`*`）|
 | `XQ_DB_URL` | 数据库连接串 | `sqlite:///./data/puzzles.db` |
 | `XQ_ENGINE_DIR` | 管理后台一键安装 Pikafish 的受管目录（发现引擎时优先于 PATH）| `./data/engine` |
-| `XQ_JIEQI_ENGINE` | 揭棋 Pikafish 可执行文件路径；与标准象棋引擎保持独立 | `./data/engine/jieqi/pikafish[.exe]` |
+| `XQ_JIEQI_ENGINE` | 揭棋 Pikafish 可执行文件路径；也可在「管理后台 → 系统设置 → 揭棋引擎」填写，后台配置优先 | `./data/engine/jieqi/pikafish[.exe]` |
 | `DEEPSEEK_API_KEY` | AI 教练（可选）：个性化训练计划叙述 + 复盘逐步失误讲解 + 整局综合复盘报告 + 训练题「AI 讲解」+ 对弈提示「AI 详解」；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
 
 ## 公网部署安全清单

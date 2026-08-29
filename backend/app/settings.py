@@ -1,4 +1,4 @@
-"""运行时配置读写：AI 复盘（DeepSeek）的开关与密钥。
+"""运行时配置读写：引擎与 AI 复盘等管理员配置。
 
 优先级：数据库 app_settings 表 > 环境变量 > 默认值。这样既支持后台 UI 配置，
 也兼容既有的纯环境变量部署。"""
@@ -15,6 +15,7 @@ from .models import AppSetting, SessionLocal
 KEY_DEEPSEEK_API_KEY = "deepseek_api_key"
 KEY_DEEPSEEK_MODEL = "deepseek_model"
 KEY_DEEPSEEK_ENABLED = "deepseek_enabled"  # "1" / "0"
+KEY_JIEQI_ENGINE_PATH = "jieqi_engine_path"
 
 DEFAULT_MODEL = "deepseek-chat"
 

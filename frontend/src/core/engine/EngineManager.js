@@ -18,6 +18,11 @@ export class EngineManager {
     return checks.filter(Boolean);
   }
 
+  errorFor(kind) {
+    const adapter = this.adapters.find((item) => item.kind === kind);
+    return adapter?.lastError ? String(adapter.lastError.message || adapter.lastError) : "";
+  }
+
   async evaluate(fen, options = {}, policy = {}) {
     let lastError;
     const adapters = policy.onlyKinds

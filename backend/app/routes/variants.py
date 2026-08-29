@@ -26,7 +26,7 @@ class EngineEvalResponse(BaseModel):
 def evaluate_jieqi(request: Request, req: EngineEvalRequest):
     engine = get_shared_jieqi_engine()
     if engine is None:
-        raise HTTPException(503, "服务器尚未配置揭棋 Pikafish")
+        raise HTTPException(503, "服务器尚未配置揭棋 Pikafish，请管理员前往“管理后台 → 系统设置 → 揭棋引擎”配置")
     result = engine.analyze(req.fen, depth=req.depth)
     sign = 1 if req.fen.split()[1] == "w" else -1
     return EngineEvalResponse(

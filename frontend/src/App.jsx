@@ -60,6 +60,12 @@ export default function App() {
   const [credits, setCredits] = React.useState(null); // {balance, checkin_today, costs, ...}
   const [entitlements, setEntitlements] = React.useState(null);
   const [authOpen, setAuthOpen] = React.useState(false);
+  const [authMode, setAuthMode] = React.useState("login");
+
+  function openAuth(mode = "login") {
+    setAuthMode(mode);
+    setAuthOpen(true);
+  }
 
   // 拉取积分余额；登录态下调用，未登录清空
   const refreshCredits = React.useCallback(() => {
@@ -125,7 +131,7 @@ export default function App() {
 
   // 登录态失效（如收到 401）时，清理并弹出登录框
   function requireLogin() {
-    setAuthOpen(true);
+    openAuth("login");
   }
 
   return (
@@ -167,7 +173,10 @@ export default function App() {
               <button className="btn-link" onClick={logout}>退出</button>
             </>
           ) : (
-            <button className="btn-link" onClick={() => setAuthOpen(true)}>登录 / 注册</button>
+            <>
+              <button className="btn-link" onClick={() => openAuth("login")}>登录</button>
+              <button className="btn-link btn-register" onClick={() => openAuth("register")}>免费注册</button>
+            </>
           )}
         </div>
       </header>
@@ -224,7 +233,9 @@ export default function App() {
           />
         )}
       </main>
-      {authOpen && <Auth onClose={() => setAuthOpen(false)} onAuth={onAuth} />}
+      {authOpen && (
+        <Auth initialMode={authMode} onClose={() => setAuthOpen(false)} onAuth={onAuth} />
+      )}
     </div>
   );
 }

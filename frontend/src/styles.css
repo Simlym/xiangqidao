@@ -38,6 +38,8 @@ header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webk
   border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 14px;
 }
 .btn-link:hover { background: #f6efe3; }
+.btn-register { background: #8a5a2b; color: #fff; font-weight: 600; }
+.btn-register:hover { background: #70471f; }
 
 /* 弹窗 */
 .modal-overlay {
@@ -50,6 +52,10 @@ header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webk
   max-height: 85vh; overflow-y: auto;
   box-shadow: 0 8px 30px rgba(0,0,0,.25);
 }
+.auth-modal { position: relative; }
+.auth-modal h2 { margin: 0 28px 4px 0; color: #8a5a2b; font-size: 22px; }
+.auth-close { position: absolute; top: 12px; right: 12px; }
+.auth-intro { margin: 0 0 16px; color: #777; font-size: 13px; }
 .auth-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 .auth-tabs button {
   flex: 1; padding: 8px; border: none; background: #f0ebe3; color: #777;
@@ -58,6 +64,7 @@ header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webk
 .auth-tabs button.active { background: #8a5a2b; color: #fff; }
 .auth-form { display: flex; flex-direction: column; gap: 10px; }
 .auth-form .import-input { padding: 9px 10px; font-size: 14px; }
+.auth-note { margin: 0; font-size: 12px; line-height: 1.5; }
 
 /* 后台 Tab 导航 */
 .admin-tabs {

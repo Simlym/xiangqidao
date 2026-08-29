@@ -310,7 +310,10 @@ def analyze_game(
     if not game or game.user_id != user.username:
         raise HTTPException(status_code=404, detail="棋局不存在")
     if (game.variant or "xiangqi") == "jieqi" and get_shared_jieqi_engine() is None:
-        raise HTTPException(status_code=503, detail="服务器尚未配置揭棋 Pikafish")
+        raise HTTPException(
+            status_code=503,
+            detail="服务器尚未配置揭棋 Pikafish，请管理员前往“管理后台 → 系统设置 → 揭棋引擎”配置",
+        )
 
     background_tasks.add_task(_run_analysis, game_id, user.username)
     return {"status": "analyzing", "game_id": game_id}

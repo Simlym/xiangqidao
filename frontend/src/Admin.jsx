@@ -4,6 +4,7 @@ import {
   adminDeletePuzzle,
   adminDeleteUser,
   adminGetEngine,
+  adminGetJieqiEngine,
   adminGetLlmSettings,
   adminInstallEngine,
   adminLogs,
@@ -12,6 +13,7 @@ import {
   adminRemoveEngine,
   adminTestLlmSettings,
   adminUpdateLlmSettings,
+  adminUpdateJieqiEngine,
   adminUpdateMembership,
   adminUsers,
 } from "./api";
@@ -91,6 +93,7 @@ export default function Admin() {
       {tab === "settings" && (
         <>
           <EnginePanel />
+          <JieqiEnginePanel />
           <LlmSettingsPanel />
         </>
       )}
@@ -473,6 +476,76 @@ function EnginePanel() {
       </p>
 
       {err && <div className="import-error">{err}</div>}
+    </div>
+  );
+}
+
+function JieqiEnginePanel() {
+  const [status, setStatus] = React.useState(null);
+  const [path, setPath] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(() => {
+    adminGetJieqiEngine().then((next) => {
+      setStatus(next);
+      setPath(next.configured_path || next.effective_path || "");
+    }).catch((e) => setErr(e.message));
+  }, []);
+
+  async function save(nextPath = path.trim()) {
+    setBusy(true);
+    setMsg("");
+    setErr("");
+    try {
+      const next = await adminUpdateJieqiEngine(nextPath);
+      setStatus(next);
+      setPath(next.configured_path || next.effective_path || "");
+      setMsg(next.available ? "配置已保存，引擎文件已找到" : "已清除配置，当前未发现揭棋引擎");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h3>揭棋引擎（Pikafish）</h3>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+        填写运行 Web 后端的服务器上的揭棋 Pikafish 可执行文件绝对路径。必须使用支持暗子局面和暗子池扩展 FEN 的揭棋专用构建，不能复用标准象棋官方版；配套 NNUE 请放在可执行文件同一目录。
+      </p>
+      {status && (
+        <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
+          <span className={"tag" + (status.available ? "" : " muted")}>
+            {status.available ? "● 已找到引擎文件（尚未验证揭棋协议）" : "○ 未配置揭棋引擎"}
+          </span>
+          {status.effective_path && <span className="muted" style={{ fontSize: 12 }}>{status.effective_path}</span>}
+        </div>
+      )}
+      <div className="import-row">
+        <input
+          className="import-input"
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder="例如 /opt/jieqi/pikafish 或 D:\\engines\\jieqi\\pikafish.exe"
+          spellCheck={false}
+        />
+        <button className="btn-import-submit" disabled={busy || !path.trim()} onClick={() => save()}>
+          {busy ? "保存中…" : "保存配置"}
+        </button>
+        {status?.configured_path && (
+          <button className="game-delete-btn" style={{ width: "auto", padding: "0 12px" }} disabled={busy} onClick={() => save("")}>
+            清除
+          </button>
+        )}
+      </div>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+        也可用环境变量 <code>XQ_JIEQI_ENGINE</code> 配置；后台保存的路径优先，并会立即生效，无需重启服务。
+      </p>
+      {err && <div className="import-error">{err}</div>}
+      {msg && <div className={status?.available ? "import-ok" : "muted"}>{msg}</div>}
     </div>
   );
 }
