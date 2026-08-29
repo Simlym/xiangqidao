@@ -12,7 +12,7 @@ const H = (ROWS - 1) * CELL; // 棋盘线区域高
 const SW = W + 2 * PAD; // SVG 总宽
 const SH = H + 2 * PAD; // SVG 总高
 const TOTAL_H = SH + 2 * COORD; // 含坐标条的整体高
-const MAX_SCALE = 1.4; // PC 端最大放大倍数（基准棋盘约 416px）
+const DEFAULT_MAX_SCALE = 1.4; // 标准棋盘最大放大倍数；揭棋可按页面空间单独提高。
 
 // 列坐标：上方黑方用阿拉伯数字 1-9（黑视角从右到左→屏幕从左到右）；
 // 下方红方用汉字（红视角从右到左→屏幕从左到右为 九…一）。
@@ -23,6 +23,31 @@ const px = (col) => PAD + col * CELL;
 const py = (row) => PAD + row * CELL;
 
 const LINE = "#5a3d22";
+
+// JieqiBox 同款渐细多边形箭头：极细尾部、稳定箭身、紧凑箭头。
+function buildArrowPoints(x1, y1, x2, y2) {
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  if (length < 1) return "";
+  const ux = (x2 - x1) / length;
+  const uy = (y2 - y1) / length;
+  const nx = -uy;
+  const ny = ux;
+  const headLength = Math.min(8.1, length * 0.42);
+  const headBase = Math.max(0, length - headLength);
+  const point = (distance, halfWidth, side) => [
+    x1 + ux * distance + nx * halfWidth * side,
+    y1 + uy * distance + ny * halfWidth * side,
+  ];
+  return [
+    point(0, 0.18, 1),
+    point(headBase, 1.3, 1),
+    point(headBase, 5.2, 1),
+    [x2, y2],
+    point(headBase, 5.2, -1),
+    point(headBase, 1.3, -1),
+    point(0, 0.18, -1),
+  ].map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+}
 
 // 炮位、兵位的「╬」定位标记。
 function positionMarks() {
@@ -57,7 +82,7 @@ const MARKS = positionMarks();
 // 传入 flipped 时翻转视角（黑方在下），只变换显示坐标，棋盘数据与方格名不变。
 export default function Board({
   fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped,
-  parsePosition = parseFen,
+  parsePosition = parseFen, pieceImage = null, maxScale = DEFAULT_MAX_SCALE,
 }) {
   const board = parsePosition(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
@@ -77,12 +102,12 @@ export default function Board({
     const el = wrapRef.current;
     if (!el) return;
     const update = () =>
-      setScale(Math.max(0.2, Math.min(MAX_SCALE, el.clientWidth / SW)));
+      setScale(Math.max(0.2, Math.min(maxScale, el.clientWidth / SW)));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [maxScale]);
 
   const restrict = Array.isArray(legalMoves);
   // 当前选中起点的合法落点集合
@@ -139,16 +164,7 @@ export default function Board({
     const to = sqToRC(hintTo);
     const start = { x: px(dCol(from.col)), y: py(dRow(from.row)) };
     const end = { x: px(dCol(to.col)), y: py(dRow(to.row)) };
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const inset = Math.min(20, length / 4);
-    hintArrow = {
-      x1: start.x + (dx / length) * inset,
-      y1: start.y + (dy / length) * inset,
-      x2: end.x - (dx / length) * inset,
-      y2: end.y - (dy / length) * inset,
-    };
+    hintArrow = buildArrowPoints(start.x, start.y, end.x, end.y);
   }
   let slide = null;
   if (lastFrom && lastTo) {
@@ -178,6 +194,32 @@ export default function Board({
       </div>
     <div className="xq-board" style={{ width: SW, height: SH }}>
       <svg className="xq-lines" width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`}>
+        <defs>
+          <linearGradient id="xq-board-wood" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#f7dfad" />
+            <stop offset="0.48" stopColor="#edc985" />
+            <stop offset="1" stopColor="#dcae68" />
+          </linearGradient>
+          <radialGradient id="xq-board-glow" cx="48%" cy="38%" r="70%">
+            <stop offset="0" stopColor="#fff5d8" stopOpacity=".42" />
+            <stop offset="1" stopColor="#a96f2c" stopOpacity=".08" />
+          </radialGradient>
+          <linearGradient id="xq-board-rim" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#9a6a3b" />
+            <stop offset="0.42" stopColor="#724721" />
+            <stop offset="0.72" stopColor="#8b5b2d" />
+            <stop offset="1" stopColor="#5f391b" />
+          </linearGradient>
+          <pattern id="xq-board-grain" width="32" height="32" patternUnits="userSpaceOnUse">
+            <path d="M2 0V32M10 0V32M27 0V32" stroke="#8b541f" strokeOpacity=".045" strokeWidth="1" />
+            <path d="M0 7C10 4 21 9 32 6M0 25C11 22 20 27 32 23" fill="none" stroke="#fff8e5" strokeOpacity=".12" strokeWidth=".8" />
+          </pattern>
+        </defs>
+        <rect className="xq-board-rim" x="1" y="1" width={SW - 2} height={SH - 2} rx="8" />
+        <rect className="xq-board-base" x="4" y="4" width={SW - 8} height={SH - 8} rx="6" />
+        <rect x="4" y="4" width={SW - 8} height={SH - 8} rx="6" fill="url(#xq-board-glow)" />
+        <rect x="4" y="4" width={SW - 8} height={SH - 8} rx="6" fill="url(#xq-board-grain)" />
+        <rect className="xq-board-inner-frame" x="7" y="7" width={SW - 14} height={SH - 14} rx="4" />
         {/* 横线 */}
         {Array.from({ length: ROWS }, (_, r) => (
           <line key={`h${r}`} x1={px(0)} y1={py(r)} x2={px(COLS - 1)} y2={py(r)} />
@@ -210,12 +252,8 @@ export default function Board({
 
       {hintArrow && (
         <svg className="xq-hint-arrow" width={SW} height={SH} viewBox={`0 0 ${SW} ${SH}`} aria-hidden="true">
-          <defs>
-            <marker id="xq-hint-arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
-              <path d="M 0 0 L 8 4 L 0 8 z" />
-            </marker>
-          </defs>
-          <line {...hintArrow} markerEnd="url(#xq-hint-arrowhead)" />
+          <polygon className="xq-hint-arrow-halo" points={hintArrow} />
+          <polygon className="xq-hint-arrow-body" points={hintArrow} />
         </svg>
       )}
 
@@ -237,7 +275,6 @@ export default function Board({
                 {highlight && (
                   <span className={"xq-mark-last " + markSide} />
                 )}
-                {(sq === hintFrom || sq === hintTo) && <span className="xq-mark-hint" />}
                 {isTarget && <span className={"xq-dot" + (cell ? " capture" : "")} />}
                 {cell && (
                   <span
@@ -245,6 +282,7 @@ export default function Board({
                     className={
                       "xq-piece " +
                       (cell.red ? "red" : "black") +
+                      (pieceImage ? " image" : "") +
                       (selected ? " selected" : "") +
                       (sq === lastTo && slide ? " moving" : "")
                     }
@@ -254,7 +292,9 @@ export default function Board({
                         : undefined
                     }
                   >
-                    {cell.hidden ? <span className="xq-dark-piece">暗</span> : cell.glyph}
+                    {pieceImage ? (
+                      <img className="xq-piece-image" src={pieceImage(cell)} alt={cell.hidden ? "暗子" : cell.glyph} draggable="false" />
+                    ) : cell.hidden ? <span className="xq-dark-piece">暗</span> : cell.glyph}
                   </span>
                 )}
               </div>

@@ -12,6 +12,7 @@ import {
 } from "./core/game/jieqi";
 import { evalJieqiPosition, importGame } from "./api";
 import { RUNTIME, runtime } from "./platform/runtime";
+import { jieqiPieceImage } from "./jieqiPieceImages";
 
 const LEVELS = [
   { key: "easy", label: "入门", depth: 6 },
@@ -457,6 +458,8 @@ export default function JieqiPlay({ onOpenSettings }) {
             hintMove={gameMode === "free" && showHint && !pendingFlip ? analysisData?.bestMove || null : null}
             flipped={gameMode === "human-ai" && humanSide === "b"}
             parsePosition={parseJieqiBoard}
+            pieceImage={jieqiPieceImage}
+            maxScale={1.62}
           />
         </div>
         {isDesktop ? (
