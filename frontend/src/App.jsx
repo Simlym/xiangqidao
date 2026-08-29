@@ -8,6 +8,7 @@ import JieqiPlay from "./JieqiPlay";
 import Challenge from "./Challenge";
 import Auth from "./Auth";
 import Admin from "./Admin";
+import Settings from "./Settings";
 import { fetchMe, getToken, setToken, getCredits, checkinCredits, getEntitlements } from "./api";
 import { useReminders } from "./reminders";
 import { RUNTIME, runtime } from "./platform/runtime";
@@ -21,6 +22,7 @@ const TAB_DESCRIPTIONS = {
   play: "与本地或云端引擎对弈",
   jieqi: "揭棋人机对弈",
   admin: "用户、权益与系统配置",
+  settings: "应用偏好与本地引擎配置",
 };
 
 // 顶部积分徽标 + 每日签到。积分用于兑换 AI（大模型）功能权益。
@@ -152,7 +154,7 @@ export default function App() {
     openAuth("login");
   }
 
-  const tabs = [
+  const mainTabs = [
     { key: "train", icon: "🎯", desktopIcon: "◎", label: "战术训练", short: "训练" },
     ...(entitlements?.features?.includes("ai_training")
       ? [{ key: "coach", icon: "🧑‍🏫", desktopIcon: "✦", label: "AI 教练", short: "教练" }]
@@ -166,12 +168,14 @@ export default function App() {
       ? [{ key: "admin", icon: "⚙️", desktopIcon: "⚙", label: "管理后台", short: "后台" }]
       : []),
   ];
+  const settingsTab = { key: "settings", desktopIcon: "⚙", label: "设置", short: "设置" };
+  const tabs = isDesktop ? [...mainTabs, settingsTab] : mainTabs;
 
   const activeTab = tabs.find((item) => item.key === tab) || tabs[0];
 
   const nav = (
     <nav aria-label="主要功能">
-      {tabs.map((item) => (
+      {mainTabs.map((item) => (
         <button
           key={item.key}
           className={tab === item.key ? "active" : ""}
@@ -240,10 +244,14 @@ export default function App() {
           user={user}
           onCreditsChanged={refreshCredits}
           onRequireLogin={requireLogin}
+          onOpenSettings={isDesktop ? () => setTab("settings") : null}
         />
       )}
-      {tab === "jieqi" && <JieqiPlay />}
+      {tab === "jieqi" && (
+        <JieqiPlay onOpenSettings={isDesktop ? () => setTab("settings") : null} />
+      )}
       {tab === "admin" && user?.role === "admin" && <Admin />}
+      {tab === "settings" && isDesktop && <Settings />}
       {tab === "games" && (
         <Games
           initialGameId={reviewGameId}
@@ -272,6 +280,13 @@ export default function App() {
             <span className="desktop-nav-caption">主要功能</span>
             {nav}
             <div className="desktop-account">
+              <button
+                className={`desktop-settings-link${tab === "settings" ? " active" : ""}`}
+                onClick={() => setTab("settings")}
+              >
+                <span aria-hidden>⚙</span>
+                <span>设置</span>
+              </button>
               <div className="desktop-account-head">
                 <span className="desktop-avatar">{user?.username?.slice(0, 1) || "棋"}</span>
                 <span>

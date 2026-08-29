@@ -1213,6 +1213,28 @@ body.desktop-runtime {
   border-top: 1px solid rgba(255, 255, 255, .1);
 }
 
+.desktop-settings-link {
+  width: 100%;
+  margin-bottom: 9px;
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 0;
+  border-radius: 8px;
+  color: rgba(238, 231, 218, .78);
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+}
+.desktop-settings-link:hover { color: #fff; background: rgba(255, 255, 255, .07); }
+.desktop-settings-link.active {
+  color: #fff;
+  background: rgba(255, 255, 255, .14);
+  box-shadow: inset 3px 0 0 #c66a57;
+}
+
 .desktop-account-head {
   display: flex;
   align-items: center;
@@ -1386,8 +1408,146 @@ body.desktop-runtime {
   margin: 0 auto;
 }
 
+/* 对弈页只保留本局选项，引擎技术参数统一进入设置中心。 */
+.engine-setup-summary {
+  margin: 18px 0 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #ded5c8;
+  border-radius: 9px;
+  background: #faf7f1;
+}
+.engine-setup-summary > div { min-width: 0; }
+.engine-setup-summary strong,
+.engine-setup-summary span { display: block; }
+.engine-setup-summary strong { margin-bottom: 3px; color: #4c443b; font-size: 13px; }
+.engine-setup-summary span {
+  overflow: hidden;
+  color: #847b70;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.engine-setup-summary .btn-newgame { margin-left: auto; flex-shrink: 0; }
+
+/* PC 设置中心 */
+.settings-page {
+  width: 100%;
+  max-width: 980px;
+  min-height: 520px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #d9d1c5;
+  border-radius: 12px;
+  background: #fffdf9;
+  box-shadow: 0 2px 10px rgba(61, 45, 28, .06);
+}
+
+.settings-sections {
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #f3efe8;
+  border-right: 1px solid #ddd5c9;
+}
+.settings-sections button {
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 7px;
+  color: #675f56;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+}
+.settings-sections button:hover { background: rgba(138, 90, 43, .07); }
+.settings-sections button.active {
+  color: #8a3f32;
+  background: #eadbd3;
+  font-weight: 600;
+}
+
+.settings-content { min-width: 0; padding: 24px 28px; }
+.settings-group { max-width: 680px; }
+.settings-heading {
+  margin-bottom: 18px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e8e1d7;
+}
+.settings-heading h2 { margin: 0; color: #342f2a; font-size: 20px; }
+.settings-heading p { margin: 5px 0 0; color: #8a8177; font-size: 13px; }
+
+.settings-row {
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 1px solid #f0ebe4;
+}
+.settings-row > div { flex: 1; min-width: 0; }
+.settings-row strong { color: #423b34; font-size: 14px; }
+.settings-row p { margin: 4px 0 0; color: #948b81; font-size: 12px; }
+.settings-row select {
+  min-width: 120px;
+  padding: 7px 9px;
+  border: 1px solid #d8cfc2;
+  border-radius: 7px;
+  color: #4c443b;
+  background: #fff;
+}
+.settings-switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #675f56;
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings-switch input { width: 17px; height: 17px; accent-color: #8a5a2b; }
+
+.settings-content .native-engine-settings {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.settings-content .native-engine-settings > strong { display: none; }
+.settings-content .native-engine-settings > p { margin-top: 0; }
+.settings-content .native-engine-input input {
+  padding: 8px 10px;
+  border: 1px solid #d8cfc2;
+  border-radius: 7px;
+  background: #fff;
+}
+.settings-content .native-engine-input button {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: #8a5a2b;
+  cursor: pointer;
+}
+.settings-content .native-engine-input button:disabled { opacity: .55; }
+.settings-content .native-engine-limits {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eee7dd;
+}
+.settings-content .native-engine-limits input {
+  padding: 5px 6px;
+  border: 1px solid #d8cfc2;
+  border-radius: 6px;
+}
+
 @media (max-width: 1080px) {
   .app-desktop { grid-template-columns: 168px minmax(0, 1fr); }
   .app-desktop .trainer { grid-template-columns: minmax(390px, 1fr) 250px; }
   .app-desktop .play-main .move-log { width: 230px; }
+  .settings-page { grid-template-columns: 170px minmax(0, 1fr); }
 }

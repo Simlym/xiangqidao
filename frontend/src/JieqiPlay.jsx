@@ -1,6 +1,5 @@
 import React from "react";
 import Board from "./Board";
-import NativeEngineSettings from "./components/NativeEngineSettings";
 import { createEngineManager } from "./core/engine/createEngineManager";
 import {
   JIEQI_INITIAL_FEN,
@@ -24,7 +23,7 @@ function winnerFor(status, mover) {
   return null;
 }
 
-export default function JieqiPlay() {
+export default function JieqiPlay({ onOpenSettings }) {
   const [fen, setFen] = React.useState(null);
   const [humanSide, setHumanSide] = React.useState("w");
   const [level, setLevel] = React.useState("medium");
@@ -165,12 +164,23 @@ export default function JieqiPlay() {
             ))}
           </div>
         </div>
-        <NativeEngineSettings
-          manager={jieqiEngine}
-          variant="jieqi"
-          label="揭棋 Pikafish"
-          onReady={(ready) => ready && setRuntimeKind("native")}
-        />
+        <div className="engine-setup-summary">
+          <div>
+            <strong>当前引擎</strong>
+            <span>
+              {runtimeKind === "native"
+                ? "PC 原生揭棋引擎 · 已就绪"
+                : runtimeKind === "wasm"
+                ? "揭棋 WASM 引擎 · 已就绪"
+                : runtimeKind === "remote"
+                ? "云端揭棋引擎 · 自动降级可用"
+                : "正在检测可用引擎…"}
+            </span>
+          </div>
+          {onOpenSettings && (
+            <button className="btn-newgame" onClick={onOpenSettings}>引擎设置</button>
+          )}
+        </div>
         {error && <div className="import-error">{error}</div>}
         <button className="btn-start" onClick={start} disabled={thinking}>{thinking ? "引擎启动中…" : "开始揭棋"}</button>
       </div>

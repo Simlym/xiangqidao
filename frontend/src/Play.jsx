@@ -6,7 +6,6 @@ import {
   getPlayEngine, getBookMoves, getHint, coachHintMove,
 } from "./api";
 import { createEngineManager } from "./core/engine/createEngineManager";
-import NativeEngineSettings from "./components/NativeEngineSettings";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
@@ -137,7 +136,7 @@ function fmtDuration(ms) {
   return s < 60 ? `${s}秒` : `${Math.floor(s / 60)}分${s % 60}秒`;
 }
 
-export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin }) {
+export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin, onOpenSettings }) {
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);
@@ -571,13 +570,19 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             ))}
           </div>
         </div>
-        <NativeEngineSettings
-          manager={positionEngine}
-          onReady={(ready, kind) => {
-            setLocalReady(ready);
-            setLocalRuntime(kind);
-          }}
-        />
+        <div className="engine-setup-summary">
+          <div>
+            <strong>当前引擎</strong>
+            <span>
+              {localReady
+                ? localRuntime === "native" ? "PC 原生 Pikafish · 已就绪" : "浏览器本地引擎 · 已就绪"
+                : engineInfo?.label ? `${engineInfo.label} · 自动降级可用` : "正在检测可用引擎…"}
+            </span>
+          </div>
+          {onOpenSettings && (
+            <button className="btn-newgame" onClick={onOpenSettings}>引擎设置</button>
+          )}
+        </div>
         <button className="btn-start" onClick={() => start(humanSide, level)}>
           开始对弈
         </button>
