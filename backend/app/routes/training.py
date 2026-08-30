@@ -7,12 +7,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import credits, ratings, repository as repo
-from ..auth import current_user, current_user_id
+from ..auth import current_user_id
 from ..deps import get_db
 from ..importer.verify_mate import FILES, parse_fen
 from ..llm import explain_puzzle
 from ..models import Attempt, Review, User
 from ..puzzle_sessions import create_session, require_session
+from ..puzzle_content import primary_line, rule_explanation, solution_lines
 from ..play_engine import game_status, legal_moves_uci
 from ..ratelimit import limiter
 from ..settings import get_deepseek_config
@@ -82,6 +83,7 @@ class SubmitResponse(BaseModel):
     next_review: date
     solution: list[str]    # 完整正解，供答错后展示讲解
     rating: RatingChange | None = None  # 首次遇题时的评分变化（已登录用户）
+    rule_explanation: str = ""
 
 
 class ExplainRequest(BaseModel):
@@ -92,6 +94,7 @@ class ExplainResponse(BaseModel):
     enabled: bool          # AI 讲解是否可用（未配置 key 时 False）
     explanation: str
     cached: bool = False   # 是否命中缓存（同题只调用一次大模型）
+    mode: str = "rules"   # rules / ai
 
 
 PIECE_NAMES = {
@@ -146,7 +149,7 @@ def _target_difficulty(db: Session, user: str) -> int:
 # ── 接口 ───────────────────────────────────────────────────────
 
 def _puzzle_out(db: Session, puzzle, user: str, context: str = "training") -> PuzzleOut:
-    n = len([m for m in puzzle.solution.split(",") if m.strip()])
+    n = len(primary_line(puzzle.solution))
     steps = (n + 1) // 2  # 仅玩家要走的着法数（对方应着自动走出）
     session = create_session(db, user, puzzle, context)
     return PuzzleOut(
@@ -166,6 +169,7 @@ def get_training_puzzle(
     puzzle_id: int,
     db: Session = Depends(get_db),
     user: str = Depends(current_user_id),
+    context: str = "training",
 ):
     """按 id 取一道题用于训练（如从复盘报告/弱点跳转而来）。
 
@@ -174,7 +178,8 @@ def get_training_puzzle(
     puzzle = repo.get_visible_puzzle(db, puzzle_id, user)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
-    return _puzzle_out(db, puzzle, user)
+    safe_context = context if context.startswith(("assessment:", "game_review:")) else "training"
+    return _puzzle_out(db, puzzle, user, safe_context)
 
 
 @router.get("/next", response_model=NextResponse)
@@ -214,7 +219,14 @@ def next_puzzle(
                 # 仍有未学新题但今日额度用尽时才算“达上限”
                 new_limit_reached = repo.count_unlearned(db, user) > 0
 
-    p_out = _puzzle_out(db, puzzle, user) if puzzle else None
+    context = "training"
+    if puzzle:
+        review = repo.get_review(db, puzzle.id, user)
+        if getattr(puzzle, "user_id", "default") == user:
+            context = "blunder"
+        elif review and review.next_review <= today:
+            context = "review"
+    p_out = _puzzle_out(db, puzzle, user, context) if puzzle else None
     return NextResponse(puzzle=p_out, due_count=due_count, new_limit_reached=new_limit_reached)
 
 
@@ -236,14 +248,25 @@ def check_move(
     if req.step != session.step:
         raise HTTPException(409, "解题步骤不同步，请重新进入题目")
 
-    solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
+    lines = solution_lines(puzzle.solution)
+    if not lines:
+        raise HTTPException(409, "题目缺少有效解答")
+    # 首个玩家着决定采用哪条录入分支；分支按顺序录入，首条应是引擎最强应手。
+    if session.line_index < 0:
+        candidates = [(i, line) for i, line in enumerate(lines) if 2 * req.step < len(line)]
+    else:
+        candidates = [(session.line_index, lines[session.line_index])]
+    solution = candidates[0][1]
     n = len(solution)
     sol_idx = 2 * req.step  # 玩家第 step 步对应的 solution 下标（偶数位）
     if sol_idx >= n:
         raise HTTPException(400, "step 超出解题步数")
 
-    expected = solution[sol_idx]
     user_move = req.move.strip()
+    matched = [(i, line) for i, line in candidates if line[sol_idx] == user_move]
+    if matched:
+        session.line_index, solution = matched[0]
+    expected = solution[sol_idx]
     is_mating_move = sol_idx == n - 1  # 之后无对方应着，通常即终结(将死)的一手
 
     # 当前步之前的局面（已走完前面所有 己方+对方 着法）
@@ -251,7 +274,7 @@ def check_move(
     for mv in solution[:sol_idx]:
         fen_now = apply_move(fen_now, mv)
 
-    correct = user_move == expected
+    correct = bool(matched)
 
     # 变着容错：仅终结步放宽——走出“另一条同样成立的杀着”也算对；
     # 中间步换着会让后续录入的对方应着无法衔接，故仍要求精确。
@@ -299,35 +322,34 @@ def explain(
     request: Request,
     req: ExplainRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user_id: str = Depends(current_user_id),
 ):
-    """AI 讲解一道题的解题思路。需登录；首次生成消耗积分，结果缓存后复用免费。"""
-    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user.username)
+    """规则讲解始终免费；登录用户可在已配置时获得 AI 增强讲解。"""
+    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user_id)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
 
     # 命中缓存直接返回（不扣分）：同题只调用一次大模型
     if puzzle.ai_explanation:
-        return ExplainResponse(enabled=True, explanation=puzzle.ai_explanation, cached=True)
+        return ExplainResponse(enabled=True, explanation=puzzle.ai_explanation, cached=True, mode="ai")
 
     if not get_deepseek_config(db).active:
-        return ExplainResponse(enabled=False, explanation="")
+        return ExplainResponse(enabled=True, explanation=rule_explanation(puzzle), mode="rules")
 
-    if not credits.charge(db, user.username, "puzzle_explain", f"puzzle:{puzzle.id}"):
-        raise HTTPException(
-            402,
-            f"免费账号本次 AI 讲解需 {credits.cost(db, 'puzzle_explain')} 积分；PRO 会员不限次。",
-        )
+    if not credits.charge(db, user_id, "puzzle_explain", f"puzzle:{puzzle.id}"):
+        return ExplainResponse(enabled=True, explanation=rule_explanation(puzzle), mode="rules")
 
-    solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
+    solution = primary_line(puzzle.solution)
     side = "红方" if puzzle.side_to_move == "w" else "黑方"
     text = explain_puzzle(puzzle.fen, solution, puzzle.category, side)
     if text:
         puzzle.ai_explanation = text
         db.commit()
     else:
-        credits.refund(db, user.username, "puzzle_explain", f"puzzle:{puzzle.id}")
-    return ExplainResponse(enabled=True, explanation=text)
+        credits.refund(db, user_id, "puzzle_explain", f"puzzle:{puzzle.id}")
+    if not text:
+        return ExplainResponse(enabled=True, explanation=rule_explanation(puzzle), mode="rules")
+    return ExplainResponse(enabled=True, explanation=text, mode="ai")
 
 
 @router.post("/submit", response_model=SubmitResponse)
@@ -336,7 +358,9 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
     puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
-    session = require_session(db, req.session_id, user, puzzle.id, "training")
+    session = require_session(db, req.session_id, user, puzzle.id)
+    if not (session.context in {"training", "review", "blunder"} or session.context.startswith(("assessment:", "game_review:"))):
+        raise HTTPException(409, "解题会话来源不正确")
     if session.settled:
         raise HTTPException(409, "本次解题已经结算")
     if req.correct and not session.completed:
@@ -345,7 +369,9 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
     correct = session.completed
     had_retry = session.wrong_count > 0
 
-    solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
+    lines = solution_lines(puzzle.solution)
+    chosen = session.line_index if 0 <= session.line_index < len(lines) else 0
+    solution = lines[chosen] if lines else []
 
     # 评分只在首次遇题时结算（须在写入本次 Attempt 之前判定）
     rating_change = None
@@ -390,6 +416,7 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
             correct=correct,
             time_spent_ms=req.time_spent_ms,
             had_retry=had_retry,
+            context=session.context,
         )
     )
     session.settled = True
@@ -400,4 +427,9 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
         if rating_change
         else None
     )
-    return SubmitResponse(next_review=rev.next_review, solution=solution, rating=rc)
+    return SubmitResponse(
+        next_review=rev.next_review,
+        solution=solution,
+        rating=rc,
+        rule_explanation=rule_explanation(puzzle),
+    )

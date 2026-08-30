@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import current_user, guest_owner, hash_password, make_token, verify_password
 from ..deps import get_db
-from ..models import Attempt, CoachPlan, Game, Puzzle, PuzzleSession, Review, User, UserStat
+from ..models import Attempt, CoachPlan, Game, LearningPack, Puzzle, PuzzleSession, Review, User, UserStat
 from ..ratelimit import limiter
 from ..security_log import login_failed
 
@@ -58,7 +58,7 @@ def register(request: Request, body: Credentials, db: Session = Depends(get_db))
     # 注册即认领本设备的游客数据。用户名刚创建，不会与既有进度发生唯一键冲突。
     guest = guest_owner(request.headers.get("x-guest-id"))
     if guest.startswith("guest:"):
-        for model in (Review, Attempt, Game, Puzzle, CoachPlan, PuzzleSession):
+        for model in (Review, Attempt, Game, Puzzle, CoachPlan, PuzzleSession, LearningPack):
             db.query(model).filter(model.user_id == guest).update(
                 {model.user_id: username}, synchronize_session=False
             )

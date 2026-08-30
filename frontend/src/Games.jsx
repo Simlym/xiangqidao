@@ -2,7 +2,7 @@ import React from "react";
 import Board from "./Board";
 import { uciToChinese } from "./xiangqi";
 import { parseJieqiBoard } from "./core/game/jieqi";
-import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis } from "./api";
+import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis, createGameTrainingPack } from "./api";
 import EvaluationChart from "./components/EvaluationChart";
 
 const RESULT_LABELS = {
@@ -33,7 +33,7 @@ function getMoveQuality(moveData) {
   return "best";
 }
 
-export default function Games({ onNavigateToTrain, initialGameId, onInitialGameConsumed, user, onCreditsChanged, onRequireLogin }) {
+export default function Games({ onNavigateToTrain, onStartPack, initialGameId, onInitialGameConsumed, user, onCreditsChanged, onRequireLogin }) {
   const [games, setGames] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState(null);
@@ -53,6 +53,18 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
   const [progress, setProgress] = React.useState({ analyzed: 0, total: 0 });
   const pollRef = React.useRef(null);
   const pendingAutoAnalyze = React.useRef(null); // 来自对弈跳转、需自动拉取分析的棋局 id
+  const [packError, setPackError] = React.useState("");
+
+  async function trainKeyProblems() {
+    if (!selectedId) return;
+    try {
+      setPackError("");
+      const pack = await createGameTrainingPack(selectedId);
+      onStartPack?.(pack);
+    } catch (e) {
+      setPackError(e.message || "训练包生成失败");
+    }
+  }
 
   // 轮询分析进度，完成后落地结果（不重复触发分析）
   const startPolling = React.useCallback((id) => {
@@ -601,6 +613,13 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
                   preFen={stepIndex > 0 ? positionsList[stepIndex - 1]?.fen : ""}
                   onNavigateToTrain={onNavigateToTrain}
                 />
+              )}
+              {analyzeStatus === "done" && (analysisData?.blunder_count > 0 || analysisData?.mistake_count > 0) && (
+                <div className="analysis-panel key-problems-cta">
+                  <div><strong>把复盘变成训练</strong><p className="muted">按失分排序，重走本局最值得修正的 3 个决策。</p></div>
+                  <button onClick={trainKeyProblems}>训练本局 3 个关键问题 →</button>
+                  {packError && <small className="error">{packError}</small>}
+                </div>
               )}
             </div>
           </div>

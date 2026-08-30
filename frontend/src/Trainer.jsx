@@ -1,7 +1,7 @@
 import React from "react";
 import Board from "./Board";
 import { applyMove, uciToChinese } from "./xiangqi";
-import { getNext, getTrainingPuzzle, checkMove, submitRating, explainPuzzle } from "./api";
+import { getNext, getTrainingPuzzle, checkMove, submitRating, explainPuzzle, completeLearningPack } from "./api";
 
 // 训练状态机
 // phase: 'loading' | 'thinking' | 'step_ok' | 'wrong' | 'rating' | 'done' | 'empty'
@@ -20,6 +20,8 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [newCapped, setNewCapped] = React.useState(false);
   // 弱点专项：非空时「下一题」继续在该类目内取题
   const [activeCategory, setActiveCategory] = React.useState(null);
+  const [pack, setPack] = React.useState(null); // {id,type,title,puzzleIds,index}
+  const [packResult, setPackResult] = React.useState(null);
   const didInit                   = React.useRef(false);
 
   // 多步追踪
@@ -35,6 +37,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [solution, setSolution]   = React.useState([]);
   const [nextReview, setNextReview] = React.useState(null);
   const [ratingChange, setRatingChange] = React.useState(null); // 首次遇题的 ELO 变化
+  const [ruleText, setRuleText] = React.useState("");
   const startedAt                 = React.useRef(0);
 
   // AI 讲解（完成后按需请求，后端缓存同题结果）
@@ -67,6 +70,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     setStepMsg("");
     setSolution([]);
     setRatingChange(null);
+    setRuleText("");
     setElapsed(0);
     setAiText("");
     setAiLoading(false);
@@ -80,19 +84,19 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   }, []);
 
   // 常规取题（可带类目做弱点专项）
-  const load = React.useCallback(async (category = null) => {
+  const load = React.useCallback(async (category = null, kind = null) => {
     resetState();
-    const d = await getNext(category);
+    const d = await getNext(category, kind);
     setDueCount(d.due_count);
     if (!d.puzzle) { setNewCapped(!!d.new_limit_reached); setPhase("empty"); return; }
     beginPuzzle(d.puzzle);
   }, [resetState, beginPuzzle]);
 
   // 按 id 取指定题（来自复盘报告/实战漏着推荐）
-  const loadById = React.useCallback(async (id) => {
+  const loadById = React.useCallback(async (id, context = "training") => {
     resetState();
     try {
-      const p = await getTrainingPuzzle(id);
+      const p = await getTrainingPuzzle(id, context);
       beginPuzzle(p);
     } catch {
       setPhase("empty");
@@ -105,9 +109,21 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
       setActiveCategory(null);
       loadById(target.puzzleId);
       onTargetConsumed?.();
+    } else if (target?.puzzleIds?.length) {
+      const nextPack = { id: target.packId, type: target.packType, title: target.title,
+        puzzleIds: target.puzzleIds, index: 0 };
+      setActiveCategory(null);
+      setPack(nextPack);
+      setPackResult(null);
+      loadById(target.puzzleIds[0], `${target.packType}:${target.packId}`);
+      onTargetConsumed?.();
     } else if (target?.category) {
       setActiveCategory(target.category);
       load(target.category);
+      onTargetConsumed?.();
+    } else if (target?.kind) {
+      setActiveCategory(target.kind);
+      load(null, target.kind);
       onTargetConsumed?.();
     } else if (!didInit.current) {
       didInit.current = true;
@@ -182,6 +198,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     setSolution(res.solution);
     setNextReview(res.next_review);
     setRatingChange(res.rating || null);
+    setRuleText(res.rule_explanation || "");
     setPhase("done");
   }
 
@@ -198,8 +215,29 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     setSolution(res.solution);
     setNextReview(res.next_review);
     setRatingChange(res.rating || null);
+    setRuleText(res.rule_explanation || "");
     setPhase("done");
     onCreditsChanged?.(); // 首次做对可能奖励积分
+  }
+
+  async function onNext() {
+    if (!pack) {
+      load(activeCategory);
+      return;
+    }
+    if (pack.index + 1 < pack.puzzleIds.length) {
+      const next = { ...pack, index: pack.index + 1 };
+      setPack(next);
+      loadById(next.puzzleIds[next.index], `${next.type}:${next.id}`);
+      return;
+    }
+    try {
+      const result = await completeLearningPack(pack.id);
+      setPackResult(result);
+      setPhase("pack_done");
+    } catch (e) {
+      setAiText(e.message || "训练包结算失败");
+    }
   }
 
   async function onAiExplain() {
@@ -244,6 +282,17 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   // ── 渲染 ──────────────────────────────────────────────────────
 
   if (phase === "loading") return <div className="panel">加载中…</div>;
+  if (phase === "pack_done") return (
+    <div className="panel learning-pack-result">
+      <span className="eyebrow">{pack?.title}</span>
+      <h2>训练包完成</h2>
+      <div className="cards">
+        <div className="card"><div className="card-value">{Math.round((packResult?.score || 0) * 100)}%</div><div className="card-label">本次首答率</div></div>
+        {pack?.type === "assessment" && <div className="card"><div className="card-value">{packResult?.delta >= 0 ? "+" : ""}{Math.round((packResult?.delta || 0) * 100)}%</div><div className="card-label">较训练基线</div></div>}
+      </div>
+      <button onClick={() => { setPack(null); setPackResult(null); load(); }}>回到每日训练 →</button>
+    </div>
+  );
   if (phase === "empty")
     return (
       <div className="panel">
@@ -282,6 +331,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
               弱点专项
             </span>
           )}
+          {pack && <span className="tag pack-tag">{pack.title} {pack.index + 1}/{pack.puzzleIds.length}</span>}
           {puzzle.kind && puzzle.kind !== puzzle.category && (
             <span className="tag" style={{ background: "#e8f0fe", color: "#2980b9" }}>
               {puzzle.kind}
@@ -389,13 +439,14 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
               {aiText && (
                 <div className="analysis-explanation ai-explain">{aiText}</div>
               )}
+              {ruleText && <div className="analysis-explanation rule-explain"><strong>棋理拆解</strong><br />{ruleText}</div>}
               {!aiDisabled && !aiText && (
                 <button className="btn-ai" onClick={onAiExplain} disabled={aiLoading}>
                   {aiLoading ? "AI 思考中…" : "🤖 AI 讲解这道题"}
                 </button>
               )}
-              <button onClick={() => load(activeCategory)}>
-                {activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
+              <button onClick={onNext}>
+                {pack ? (pack.index + 1 < pack.puzzleIds.length ? "训练包下一题 →" : "完成训练包 →") : activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
               </button>
             </div>
           </div>

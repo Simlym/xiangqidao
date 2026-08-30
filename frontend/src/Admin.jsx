@@ -18,7 +18,7 @@ import {
   adminUsers,
 } from "./api";
 
-const EMPTY = { fen: "", solution: "", category: "未分类", difficulty: 3, side_to_move: "w" };
+const EMPTY = { fen: "", solution: "", kind: "杀法", category: "未分类", tags: "", difficulty: 3, side_to_move: "w" };
 
 const TABS = [
   { key: "overview", label: "概览" },
@@ -190,7 +190,7 @@ function PuzzlesPanel() {
     setErr("");
     setMsg("");
     try {
-      await adminCreatePuzzle({ ...form, difficulty: Number(form.difficulty), mate_check: true });
+      await adminCreatePuzzle({ ...form, difficulty: Number(form.difficulty), mate_check: form.kind === "杀法" });
       setMsg("添加成功，已通过将死校验");
       setForm(EMPTY);
       load();
@@ -223,12 +223,12 @@ function PuzzlesPanel() {
               <h3 style={{ margin: 0 }}>新增战术题</h3>
               <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
             </div>
-            <p className="muted" style={{ marginTop: 0 }}>单步杀法会自动做将死校验。</p>
+            <p className="muted" style={{ marginTop: 0 }}>支持开局、中局、残局与杀法；多条可接受变着用 | 分隔，第一条录入对手最强应手。</p>
             <form className="admin-form" onSubmit={addPuzzle}>
               <input className="import-input" name="fen" placeholder="FEN，如 4k4/R8/8R/9/9/9/9/9/9/3K5"
                      value={form.fen} onChange={change} />
               <div className="import-row">
-                <input className="import-input" name="solution" placeholder="正解 UCI，如 i7i9（多步逗号分隔）"
+                <input className="import-input" name="solution" placeholder="多步用逗号，多变着用 | 分隔"
                        value={form.solution} onChange={change} />
                 <select className="import-input" name="side_to_move" value={form.side_to_move} onChange={change}>
                   <option value="w">红方走</option>
@@ -236,12 +236,17 @@ function PuzzlesPanel() {
                 </select>
               </div>
               <div className="import-row">
+                <select className="import-input" name="kind" value={form.kind} onChange={change}>
+                  {['杀法', '开局', '中局', '残局'].map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
                 <input className="import-input" name="category" placeholder="分类，如 双车错"
                        value={form.category} onChange={change} />
                 <select className="import-input" name="difficulty" value={form.difficulty} onChange={change}>
                   {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>难度 {d}</option>)}
                 </select>
               </div>
+              <input className="import-input" name="tags" placeholder="棋理标签，逗号分隔，如 候选着,开放线,先手"
+                     value={form.tags} onChange={change} />
               {err && <div className="import-error">{err}</div>}
               {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
               <button className="btn-import-submit" type="submit">添加题目</button>

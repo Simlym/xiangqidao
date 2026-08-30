@@ -43,7 +43,10 @@ def _ensure_columns() -> None:
             ("membership_expires_at", "DATETIME"),
         ],
         "reviews": [("created_at", "DATE")],
-        "attempts": [("had_retry", "BOOLEAN DEFAULT 0")],
+        "attempts": [
+            ("had_retry", "BOOLEAN DEFAULT 0"),
+            ("context", "VARCHAR(80) DEFAULT 'training'"),
+        ],
         "puzzles": [
             ("variant", "VARCHAR(12) DEFAULT 'xiangqi'"),
             ("user_id", "VARCHAR(40) DEFAULT 'default'"),
@@ -51,6 +54,10 @@ def _ensure_columns() -> None:
             ("kind", "VARCHAR(10) DEFAULT '杀法'"),
             ("steps", "INTEGER DEFAULT 1"),
             ("ai_explanation", "TEXT DEFAULT ''"),
+            ("tags", "TEXT DEFAULT ''"),
+        ],
+        "puzzle_sessions": [
+            ("line_index", "INTEGER DEFAULT -1"),
         ],
         "games": [
             ("variant", "VARCHAR(12) DEFAULT 'xiangqi'"),

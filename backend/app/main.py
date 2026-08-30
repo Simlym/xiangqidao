@@ -21,6 +21,7 @@ from .routes import (
     credits,
     engine_admin,
     games,
+    learning,
     play,
     stats,
     today,
@@ -60,6 +61,7 @@ app.include_router(admin.router)
 app.include_router(engine_admin.router)
 app.include_router(training.router)
 app.include_router(today.router)
+app.include_router(learning.router)
 app.include_router(challenge.router)
 app.include_router(stats.router)
 app.include_router(coach.router)

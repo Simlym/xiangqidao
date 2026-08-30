@@ -41,7 +41,8 @@ def load(path: str, verify: bool = False, movetime_ms: int = 1000, mate_check: b
             solution = item["solution"]  # list[str] 或逗号串
             if isinstance(solution, list):
                 solution = ",".join(solution)
-            first_move = solution.split(",")[0].strip()
+            branches = [b for b in solution.split("|") if b.strip()]
+            first_move = branches[0].split(",")[0].strip()
 
             # 去重：相同 fen+solution 视为同题
             exists = db.scalar(
@@ -70,7 +71,7 @@ def load(path: str, verify: bool = False, movetime_ms: int = 1000, mate_check: b
                 verified = True
 
             # steps 缺省按题解己方着法数推断（总手数向上取整的一半）
-            n_moves = len(solution.split(","))
+            n_moves = max(len(branch.split(",")) for branch in branches)
             db.add(
                 Puzzle(
                     fen=fen,
@@ -82,6 +83,7 @@ def load(path: str, verify: bool = False, movetime_ms: int = 1000, mate_check: b
                     steps=int(item.get("steps", (n_moves + 1) // 2)),
                     source=item.get("source", ""),
                     verified=verified,
+                    tags=item.get("tags", ""),
                 )
             )
             added += 1

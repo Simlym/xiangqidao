@@ -16,8 +16,10 @@ from sqlalchemy.orm import Session
 from .. import ratings, repository as repo
 from ..auth import current_user_id
 from ..deps import get_db
-from ..models import Attempt
+from ..models import Attempt, Review
 from ..puzzle_sessions import create_session, require_session
+from ..puzzle_content import primary_line, solution_lines
+from ..srs import SrsState, review as srs_review
 
 router = APIRouter(prefix="/api/challenge", tags=["challenge"])
 
@@ -83,7 +85,7 @@ def _chunks(puzzles: list) -> list[list]:
 
 
 def _steps(puzzle) -> int:
-    n = len([m for m in puzzle.solution.split(",") if m.strip()])
+    n = len(primary_line(puzzle.solution))
     return (n + 1) // 2
 
 
@@ -189,6 +191,19 @@ def submit(
             db, user, puzzle, ratings.score_of(correct, had_retry)
         )
 
+    # 闯关也进入统一复习模型：通关不是一次性消费，错题会回到后续复习。
+    review = repo.get_review(db, puzzle.id, user)
+    if review is None:
+        review = Review(puzzle_id=puzzle.id, user_id=user)
+        db.add(review)
+    state = SrsState(
+        repetitions=review.repetitions or 0, interval=review.interval or 0,
+        ease_factor=review.ease_factor or 2.5, next_review=review.next_review,
+    )
+    updated = srs_review(state, 1 if not correct else 3 if had_retry else 4)
+    review.repetitions, review.interval = updated.repetitions, updated.interval
+    review.ease_factor, review.next_review = updated.ease_factor, updated.next_review
+
     db.add(
         Attempt(
             puzzle_id=puzzle.id,
@@ -196,6 +211,7 @@ def submit(
             correct=correct,
             time_spent_ms=req.time_spent_ms,
             had_retry=had_retry,
+            context="challenge",
         )
     )
     session.settled = True
@@ -206,5 +222,7 @@ def submit(
         if rating_change
         else None
     )
-    solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
+    lines = solution_lines(puzzle.solution)
+    chosen = session.line_index if 0 <= session.line_index < len(lines) else 0
+    solution = lines[chosen] if lines else []
     return ChallengeSubmitResponse(solution=solution, solved=correct, rating=rc)

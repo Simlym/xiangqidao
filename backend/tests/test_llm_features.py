@@ -58,12 +58,14 @@ def _without_env_key(monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
 
-def test_explain_requires_login(monkeypatch):
-    """未登录调用大模型功能应被拒（401），杜绝匿名刷接口。"""
+def test_explain_rules_are_free_for_guest(monkeypatch):
+    """游客也能获得不调用大模型的规则型棋理解说。"""
     _without_env_key(monkeypatch)
     client, pid = _make_client()
     r = client.post("/api/training/explain", json={"puzzle_id": pid})
-    assert r.status_code == 401
+    assert r.status_code == 200
+    assert r.json()["mode"] == "rules"
+    assert r.json()["explanation"]
 
 
 def test_coach_requires_login(monkeypatch):
@@ -73,15 +75,16 @@ def test_coach_requires_login(monkeypatch):
     assert r.status_code == 401
 
 
-def test_explain_disabled_without_key(monkeypatch):
-    """已登录但未配置 key：返回 enabled=False，不报错、不扣分。"""
+def test_explain_falls_back_to_rules_without_key(monkeypatch):
+    """未配置 key 时返回免费规则讲解，不报错、不扣分。"""
     _without_env_key(monkeypatch)
     client, pid = _make_client()
     r = client.post("/api/training/explain", json={"puzzle_id": pid}, headers=AUTH)
     assert r.status_code == 200
     body = r.json()
-    assert body["enabled"] is False
-    assert body["explanation"] == ""
+    assert body["enabled"] is True
+    assert body["mode"] == "rules"
+    assert body["explanation"]
 
 
 def test_explain_returns_cached_without_llm(monkeypatch):

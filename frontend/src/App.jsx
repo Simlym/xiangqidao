@@ -10,6 +10,7 @@ import Auth from "./Auth";
 import Admin from "./Admin";
 import Settings from "./Settings";
 import Today from "./Today";
+import Learning from "./Learning";
 import { fetchMe, getToken, setToken, resetGuestId, getCredits, checkinCredits, getEntitlements } from "./api";
 import { useReminders } from "./reminders";
 import { RUNTIME, runtime } from "./platform/runtime";
@@ -163,10 +164,18 @@ export default function App() {
   function requireLogin() {
     openAuth("login");
   }
+  function practiceScope(scope) {
+    setTrainTarget(scope);
+    setTab("train");
+  }
+  function startPack(pack) {
+    setTrainTarget({ packId: pack.id, packType: pack.type, title: pack.title, puzzleIds: pack.puzzle_ids });
+    setTab("train");
+  }
 
   const primaryGroups = [
     { key: "today", icon: "◷", label: "今日", short: "今日", defaultTab: "today", tabs: ["today", "stats", "coach"] },
-    { key: "training", icon: "◎", label: "训练", short: "训练", defaultTab: "train", tabs: ["train", "challenge"] },
+    { key: "training", icon: "◎", label: "训练", short: "训练", defaultTab: "train", tabs: ["train", "learning", "challenge"] },
     { key: "playing", icon: "♟", label: "对弈", short: "对弈", defaultTab: "play", tabs: ["play", "jieqi"] },
     { key: "records", icon: "≡", label: "棋谱", short: "棋谱", defaultTab: "games", tabs: ["games"] },
   ];
@@ -175,6 +184,7 @@ export default function App() {
     { key: "stats", label: "成长报告" },
     { key: "coach", label: "教练建议" },
     { key: "train", label: "每日训练" },
+    { key: "learning", label: "学习地图与测评" },
     { key: "challenge", label: "闯关" },
     { key: "play", label: "标准象棋" },
     { key: "jieqi", label: "揭棋" },
@@ -296,6 +306,7 @@ export default function App() {
         />
       )}
       {tab === "challenge" && <Challenge />}
+      {tab === "learning" && <Learning onPractice={practiceScope} onStartPack={startPack} />}
       {tab === "stats" && <Stats onPractice={practiceCategory} />}
       {tab === "play" && (
         <Play
@@ -323,6 +334,7 @@ export default function App() {
           initialGameId={reviewGameId}
           onInitialGameConsumed={() => setReviewGameId(null)}
           onNavigateToTrain={practicePuzzle}
+          onStartPack={startPack}
           user={user}
           onCreditsChanged={refreshCredits}
           onRequireLogin={requireLogin}

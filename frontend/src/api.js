@@ -75,7 +75,8 @@ export const getNext = (category, kind) => {
   const s = qs.toString();
   return req(`/training/next${s ? `?${s}` : ""}`);
 };
-export const getTrainingPuzzle = (id) => req(`/training/puzzle/${id}`);
+export const getTrainingPuzzle = (id, context = "training") =>
+  req(`/training/puzzle/${id}?context=${encodeURIComponent(context)}`);
 export const checkMove = (payload) => req("/training/check_move", { method: "POST", body: payload });
 export const submitRating = (payload) => req("/training/submit", { method: "POST", body: payload });
 export const explainPuzzle = (puzzleId) =>
@@ -90,6 +91,12 @@ export const getForecast = (days = 14) => req(`/stats/forecast?days=${days}`);
 export const getRating = () => req("/stats/rating");
 export const getLeaderboard = (limit = 20) => req(`/stats/leaderboard?limit=${limit}`);
 export const getToday = () => req("/today");
+export const getCurriculum = () => req("/learning/curriculum");
+export const getMastery = () => req("/learning/mastery");
+export const getLearningProgress = (days = 28) => req(`/learning/progress?days=${days}`);
+export const startAssessment = () => req("/learning/assessment/start", { method: "POST", body: {} });
+export const completeLearningPack = (id) => req(`/learning/packs/${id}/complete`, { method: "POST", body: {} });
+export const createGameTrainingPack = (gameId) => req(`/learning/games/${gameId}/pack`, { method: "POST", body: {} });
 
 // ── AI 教练 ─────────────────────────────────────────────
 export const getCoachPlan = () => req("/coach/plan");

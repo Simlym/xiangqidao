@@ -52,6 +52,44 @@ header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webk
   max-height: 85vh; overflow-y: auto;
   box-shadow: 0 8px 30px rgba(0,0,0,.25);
 }
+
+/* ===== P1 学习效果 ===== */
+.learning-page { display: grid; gap: 16px; }
+.assessment-hero { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
+.assessment-hero h2 { margin: 5px 0 7px; }
+.curriculum-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.curriculum-card { border: 1px solid var(--border, #e5dfd4); border-radius: 12px; padding: 14px; background: rgba(255,255,255,.45); }
+.curriculum-card.empty { opacity: .58; border-style: dashed; }
+.curriculum-head { display: flex; align-items: center; justify-content: space-between; }
+.curriculum-head strong { font-size: 18px; }
+.curriculum-head span { color: var(--muted, #777); font-size: 12px; }
+.curriculum-card p { min-height: 42px; font-size: 13px; }
+.skill-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
+.skill-chips span { background: #f3eee5; border-radius: 99px; padding: 3px 7px; font-size: 11px; }
+.mastery-row { display: grid; grid-template-columns: minmax(80px, 150px) 1fr 44px 72px; align-items: center; gap: 10px; margin: 10px 0; }
+.mastery-name { text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.mastery-row small { color: var(--muted, #777); text-align: right; }
+.comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.comparison-card { border: 1px solid var(--border, #e5dfd4); border-radius: 12px; padding: 14px; }
+.comparison-card > div { display: flex; gap: 12px; align-items: center; font-size: 21px; margin: 10px 0 5px; }
+.comparison-card b { color: var(--muted, #777); }
+.comparison-card small { color: #278557; }
+.pack-tag { background: #eee6ff !important; color: #6941a5 !important; }
+.rule-explain { white-space: pre-line; text-align: left; margin: 8px 0; }
+.learning-pack-result { max-width: 680px; margin: 24px auto; text-align: center; }
+.key-problems-cta { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.key-problems-cta p { margin: 4px 0 0; }
+
+@media (max-width: 760px) {
+  .curriculum-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .assessment-hero { align-items: stretch; flex-direction: column; }
+  .mastery-row { grid-template-columns: 92px 1fr 40px; }
+  .mastery-row small { grid-column: 2 / 4; }
+}
+
+@media (max-width: 430px) {
+  .curriculum-grid, .comparison-grid { grid-template-columns: 1fr; }
+}
 .auth-modal { position: relative; }
 .auth-modal h2 { margin: 0 28px 4px 0; color: #8a5a2b; font-size: 22px; }
 .auth-close { position: absolute; top: 12px; right: 12px; }

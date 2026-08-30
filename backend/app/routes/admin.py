@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..auth import require_admin
 from ..deps import get_db
 from ..models import Attempt, Game, Puzzle, Review, SecurityLog, User
+from ..puzzle_content import solution_lines
 from ..security_log import admin_action
 from ..settings import (
     KEY_DEEPSEEK_API_KEY,
@@ -43,6 +44,7 @@ class AdminPuzzle(BaseModel):
     steps: int
     source: str
     verified: bool
+    tags: str
 
 
 class MembershipUpdate(BaseModel):
@@ -63,6 +65,7 @@ class NewPuzzle(BaseModel):
     category: str = "未分类"
     difficulty: int = 3
     source: str = "admin"
+    tags: str = ""
     mate_check: bool = True  # 单步杀法用内置规则校验
 
 
@@ -71,7 +74,7 @@ def _admin_puzzle(p) -> "AdminPuzzle":
         id=p.id, fen=p.fen, solution=p.solution, side_to_move=p.side_to_move,
         kind=getattr(p, "kind", "杀法") or "杀法", category=p.category,
         difficulty=p.difficulty, steps=getattr(p, "steps", 1) or 1,
-        source=p.source, verified=p.verified,
+        source=p.source, verified=p.verified, tags=p.tags or "",
     )
 
 
@@ -161,7 +164,7 @@ def list_puzzles(limit: int = 20, offset: int = 0, category: str = "",
         query = query.where(Puzzle.difficulty == difficulty)
     if q:
         like = f"%{q}%"
-        conds = [Puzzle.solution.like(like), Puzzle.fen.like(like), Puzzle.category.like(like)]
+        conds = [Puzzle.solution.like(like), Puzzle.fen.like(like), Puzzle.category.like(like), Puzzle.tags.like(like)]
         if q.isdigit():
             conds.append(Puzzle.id == int(q))
         query = query.where(or_(*conds))
@@ -182,24 +185,27 @@ def list_puzzles(limit: int = 20, offset: int = 0, category: str = "",
 
 @router.post("/puzzles", response_model=AdminPuzzle)
 def create_puzzle(body: NewPuzzle, db: Session = Depends(get_db)):
-    solution = ",".join(m.strip() for m in body.solution.replace(" ", ",").split(",") if m.strip())
-    if not solution:
+    branches = solution_lines(body.solution.replace(" ", ","))
+    solution = "|".join(",".join(branch) for branch in branches)
+    if not branches:
         raise HTTPException(400, "正解不能为空")
 
     verified = False
-    if body.mate_check and len(solution.split(",")) == 1:
+    if body.mate_check and all(len(branch) == 1 for branch in branches):
         from ..importer.verify_mate import is_mate_in_one
 
         full = body.fen if len(body.fen.split()) > 1 else body.fen + " " + body.side_to_move
-        ok, why = is_mate_in_one(full, solution)
-        if not ok:
-            raise HTTPException(400, f"校验未通过：{why}")
+        for branch in branches:
+            ok, why = is_mate_in_one(full, branch[0])
+            if not ok:
+                raise HTTPException(400, f"校验未通过：{why}")
         verified = True
 
     p = Puzzle(
         fen=body.fen, solution=solution, side_to_move=body.side_to_move,
         kind=body.kind, category=body.category, difficulty=body.difficulty,
-        steps=(len(solution.split(",")) + 1) // 2, source=body.source, verified=verified,
+        steps=max((len(branch) + 1) // 2 for branch in branches), source=body.source,
+        verified=verified, tags=body.tags,
     )
     db.add(p)
     db.commit()

@@ -190,9 +190,9 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
                 if not explanation:
                     credits.refund(db, owner, "mistake_explain", f"game:{game_id}")
 
-            # 对大漏着创建练习题
+            # 对严重失误与普通失误都创建私有练习题，供“本局 3 个关键问题”训练包使用。
             puzzle_id: int | None = None
-            if not is_jieqi and is_blunder and best_move and best_move != move:
+            if not is_jieqi and (is_blunder or is_mistake) and best_move and best_move != move:
                 # 判断 FEN 中走方
                 fen_parts = fen_before.split()
                 side_to_move = fen_parts[1] if len(fen_parts) > 1 else "w"
@@ -212,6 +212,8 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
                         solution=solution,
                         side_to_move=side_to_move,
                         category="实战漏算",
+                        kind="中局",
+                        tags="候选着,对手最强应手,错误复发",
                         source=source,
                         user_id=owner,  # 实战漏着题归棋局所有者私有
                     )
