@@ -5,6 +5,7 @@ import {
   applyJieqiMove,
   availableJieqiReveals,
   completeJieqiMove,
+  generateLimitedKnowledgeFen,
   jieqiMoveToChinese,
   jieqiStatus,
   legalJieqiMoves,
@@ -56,6 +57,27 @@ test("随机翻子吃暗子时仍会识别并扣除暗子", () => {
   const state = parseJieqiFen(next);
   assert.equal(state.hidden.p || 0, 0);
   assert.equal(state.capturedHidden.p, 1);
+});
+
+test("有限知识局面会恢复该方被对手吃掉的暗子", () => {
+  const fen = "4k4/9/9/9/9/9/9/9/9/4K4 b P2p1 P1n1 0 3";
+  const limited = parseJieqiFen(generateLimitedKnowledgeFen(fen, "b"));
+  assert.equal(limited.hidden.p, 1);
+  assert.equal(limited.hidden.n, 1);
+  assert.equal(limited.capturedHidden.n || 0, 0);
+  assert.equal(limited.capturedHidden.P, 1);
+});
+
+test("有限知识引擎着法不能指定权威局面的暗子身份", () => {
+  const next = applyJieqiMove(JIEQI_INITIAL_FEN, "a3a4P", {
+    perspective: "w",
+    random: () => 0,
+  });
+  const state = parseJieqiFen(next);
+  assert.equal(state.board[5][0].piece, "A");
+  assert.equal(state.hidden.A, 1);
+  assert.equal(state.hidden.P, 5);
+  assert.equal(completeJieqiMove(JIEQI_INITIAL_FEN, "a3a4", next), "a3a4A");
 });
 
 test("非法着法不会污染局面", () => {

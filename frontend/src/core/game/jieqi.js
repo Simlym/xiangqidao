@@ -243,6 +243,24 @@ function boardPlacement(board) {
   }).join("/");
 }
 
+function serializeJieqiState(state) {
+  return `${boardPlacement(state.board)} ${state.side} ${formatCounts(state.hidden)} ${formatCounts(state.capturedHidden)} ${state.halfmove} ${state.fullmove}`;
+}
+
+// 生成指定一方的有限知识局面。该方被对手吃掉的暗子身份对其不可见，
+// 因此把这些身份放回待揭池，并从“已吃暗子”字段移除。
+export function generateLimitedKnowledgeFen(fen, perspective) {
+  if (perspective !== "w" && perspective !== "b") return fen;
+  const state = parseJieqiFen(fen);
+  for (const [piece, count] of Object.entries(state.capturedHidden)) {
+    if (count > 0 && sideOf(piece) === perspective) {
+      state.hidden[piece] = (state.hidden[piece] || 0) + count;
+      delete state.capturedHidden[piece];
+    }
+  }
+  return serializeJieqiState(state);
+}
+
 export function applyJieqiMove(fen, move, randomOrOptions = Math.random) {
   if (!legalJieqiMoves(fen).includes(move.slice(0, 4))) throw new Error("不合法的揭棋着法");
   const options = typeof randomOrOptions === "function"
@@ -251,6 +269,9 @@ export function applyJieqiMove(fen, move, randomOrOptions = Math.random) {
   const random = options.random || Math.random;
   const identifyCapturedHidden = options.identifyCapturedHidden !== false;
   const state = parseJieqiFen(fen);
+  const perspective = options.perspective === "w" || options.perspective === "b"
+    ? options.perspective
+    : null;
   const fromCol = FILES.indexOf(move[0]);
   const fromRow = 9 - Number(move[1]);
   const toCol = FILES.indexOf(move[2]);
@@ -258,8 +279,15 @@ export function applyJieqiMove(fen, move, randomOrOptions = Math.random) {
   const moving = state.board[fromRow][fromCol];
   const captured = state.board[toRow][toCol];
   const extras = move.slice(4).split("");
-  let reveal = extras.find((piece) => sideOf(piece) === state.side) || null;
-  let capturedIdentity = extras.find((piece) => sideOf(piece) !== state.side) || null;
+  // 有限知识引擎给出的扩展字符来自它的推演样本，不是真实暗子身份。
+  // 应用到权威局面时必须重新从真实池抽取，避免引擎借扩展着法“指定”翻子。
+  const trustExtendedIdentity = !perspective || perspective !== state.side;
+  let reveal = trustExtendedIdentity
+    ? extras.find((piece) => sideOf(piece) === state.side) || null
+    : null;
+  let capturedIdentity = trustExtendedIdentity
+    ? extras.find((piece) => sideOf(piece) !== state.side) || null
+    : null;
 
   if (moving.hidden) reveal ||= chooseFromPool(state.hidden, state.side, random);
   if (captured?.hidden && identifyCapturedHidden) {
@@ -278,7 +306,7 @@ export function applyJieqiMove(fen, move, randomOrOptions = Math.random) {
   state.side = state.side === "w" ? "b" : "w";
   state.halfmove = captured ? 0 : state.halfmove + 1;
   if (state.side === "w") state.fullmove++;
-  return `${boardPlacement(state.board)} ${state.side} ${formatCounts(state.hidden)} ${formatCounts(state.capturedHidden)} ${state.halfmove} ${state.fullmove}`;
+  return serializeJieqiState(state);
 }
 
 // 引擎或随机模式有时只返回 4 位坐标。根据走子前后局面补全实际翻子/暗子身份，

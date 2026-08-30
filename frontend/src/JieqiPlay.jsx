@@ -6,6 +6,7 @@ import {
   applyJieqiMove,
   availableJieqiReveals,
   completeJieqiMove,
+  generateLimitedKnowledgeFen,
   jieqiMoveToChinese,
   jieqiStatus,
   legalJieqiMoves,
@@ -50,38 +51,43 @@ function describeJieqiEval(data) {
   };
 }
 
-function HiddenPool({ fen, gameMode }) {
-  const poolHint = gameMode === "free"
-    ? "暗子首次移动时，可从本方剩余身份中选择；数量会随揭开减少。"
-    : "暗子首次移动时，会从本方剩余身份中随机揭出；数量会随揭开减少。";
+const HIDDEN_POOL_PIECES = [
+  ["R", "车"], ["N", "马"], ["B", "相"],
+  ["A", "仕"], ["C", "炮"], ["P", "兵"],
+];
 
+function HiddenPool({ fen, side, label }) {
+  const state = parseJieqiFen(fen);
+  const red = side === "w";
+  const items = HIDDEN_POOL_PIECES.map(([upper, redGlyph]) => {
+    const piece = red ? upper : upper.toLowerCase();
+    const glyph = red ? redGlyph : ({ R: "车", N: "马", B: "象", A: "士", C: "炮", P: "卒" })[upper];
+    return {
+      piece,
+      glyph,
+      remaining: state.hidden[piece] || 0,
+      captured: state.capturedHidden[piece] || 0,
+    };
+  });
+  const total = items.reduce((sum, item) => sum + item.remaining, 0);
   return (
-    <section className="jieqi-hidden-pools" aria-labelledby="jieqi-hidden-pool-title">
-      <div className="jieqi-hidden-pools-head">
-        <strong id="jieqi-hidden-pool-title">待揭身份</strong>
-        <span>不是已吃棋子</span>
+    <section className={`jieqi-pool-strip ${red ? "red" : "black"}`} aria-label={`${label}暗子池，剩余 ${total} 枚`}>
+      <div className="jieqi-pool-strip-side">
+        <strong>{label}暗子池</strong>
+        <small>待揭 {total}</small>
       </div>
-      <p>{poolHint}</p>
-      <div className="jieqi-hidden-pools-list">
-        {[["b", "黑方"], ["w", "红方"]].map(([side, label]) => {
-          const items = availableJieqiReveals(fen, side);
-          const total = items.reduce((sum, item) => sum + item.count, 0);
-          return (
-            <div className={`jieqi-hidden-pool ${side === "w" ? "red" : "black"}`} key={side}>
-              <div className="jieqi-hidden-pool-side">
-                <strong>{label}</strong>
-                <small>{total} 枚</small>
-              </div>
-              <div className="jieqi-hidden-pieces" aria-label={`${label}剩余 ${total} 枚待揭身份`}>
-                {items.length > 0 ? items.map((item) => (
-                  <span className="jieqi-hidden-piece" key={item.piece} title={`${item.glyph}：剩余 ${item.count} 枚`}>
-                    <b>{item.glyph}</b><small>×{item.count}</small>
-                  </span>
-                )) : <span className="jieqi-hidden-empty">全部揭开</span>}
-              </div>
-            </div>
-          );
-        })}
+      <div className="jieqi-pool-strip-pieces">
+        {items.map((item) => (
+          <span
+            className={`jieqi-pool-piece${item.remaining === 0 ? " depleted" : ""}`}
+            key={item.piece}
+            title={`${item.glyph}：待揭 ${item.remaining} 枚${item.captured ? `，暗子被吃 ${item.captured} 枚` : ""}`}
+          >
+            <b>{item.glyph}</b>
+            <em>{item.remaining}</em>
+            {item.captured > 0 && <small>吃{item.captured}</small>}
+          </span>
+        ))}
       </div>
     </section>
   );
@@ -179,14 +185,17 @@ export default function JieqiPlay({ onOpenSettings }) {
   }
 
   async function engineTurn(position, side) {
-    const result = await jieqiEngine.evaluate(position, { depth });
+    const engineSide = parseJieqiFen(position).side;
+    const enginePosition = generateLimitedKnowledgeFen(position, engineSide);
+    const result = await jieqiEngine.evaluate(enginePosition, { depth });
     const legal = legalJieqiMoves(position);
     const baseMove = result.bestMove?.slice(0, 4);
     if (!baseMove || !legal.includes(baseMove)) throw new Error("揭棋引擎返回了不合法着法");
-    const next = applyJieqiMove(position, result.bestMove);
+    const next = applyJieqiMove(position, result.bestMove, { perspective: engineSide });
     return {
       fen: next,
-      move: completeJieqiMove(position, result.bestMove, next),
+      // 搜索 FEN 中的扩展身份只是有限知识样本；棋谱必须从真实前后局面补全。
+      move: completeJieqiMove(position, baseMove, next),
       winner: winnerFor(jieqiStatus(next), side),
     };
   }
@@ -578,6 +587,11 @@ export default function JieqiPlay({ onOpenSettings }) {
               <strong>{currentTurnText}</strong>
             </div>
           )}
+          <HiddenPool
+            fen={fen}
+            side={boardFlipped ? "w" : "b"}
+            label={boardFlipped ? "红方" : "黑方"}
+          />
           <div className="jieqi-board-stage">
             {gameMode === "free" && (
               <div
@@ -609,8 +623,15 @@ export default function JieqiPlay({ onOpenSettings }) {
               pieceImage={jieqiPieceImage}
               maxScale={1.75}
               onScaleChange={setBoardScale}
+              fitContainerHeight={isDesktop}
+              reservedBottomHeight={46}
             />
           </div>
+          <HiddenPool
+            fen={fen}
+            side={boardFlipped ? "b" : "w"}
+            label={boardFlipped ? "黑方" : "红方"}
+          />
         </div>
         {isDesktop ? (
           <aside className="panel move-log desktop-play-inspector desktop-jieqi-inspector">
@@ -620,8 +641,6 @@ export default function JieqiPlay({ onOpenSettings }) {
               <span>{gameMode === "free" ? `当前${currentSide === "w" ? "红方" : "黑方"}走` : engineDisplay}</span>
               {winner && <span>{saved ? "棋局已存入复盘" : "正在保存棋局…"}</span>}
             </div>
-
-            <HiddenPool fen={fen} gameMode={gameMode} />
 
             <div className="desktop-inspector-tabs" role="tablist" aria-label="揭棋对局信息">
               <button
@@ -704,7 +723,6 @@ export default function JieqiPlay({ onOpenSettings }) {
         ) : (
           <div className="panel move-log">
             <div className="move-log-head"><strong>揭棋着法</strong><span className="muted">{moves.length} 步</span></div>
-            {gameMode === "free" && <HiddenPool fen={fen} gameMode={gameMode} />}
             {gameMode === "free" && (
               <div className="jieqi-mobile-analysis">
                 <strong>{analysisLoading ? "分析中…" : evalInfo.value}</strong>

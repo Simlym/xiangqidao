@@ -83,7 +83,8 @@ const MARKS = positionMarks();
 export default function Board({
   fen, onMove, lastMove, disabled, legalMoves, hintMove, flipped,
   parsePosition = parseFen, pieceImage = null, maxScale = DEFAULT_MAX_SCALE,
-  checkedSide = null, onScaleChange = null,
+  checkedSide = null, onScaleChange = null, fitContainerHeight = false,
+  reservedBottomHeight = 0,
 }) {
   const board = parsePosition(fen);
   const [from, setFrom] = React.useState(null); // {row,col}
@@ -95,23 +96,33 @@ export default function Board({
   const topLabels = flipped ? [...BOTTOM_LABELS].reverse() : TOP_LABELS;
   const bottomLabels = flipped ? [...TOP_LABELS].reverse() : BOTTOM_LABELS;
 
-  // 自适应缩放：按容器宽度等比缩放整块棋盘（保留内部固定像素坐标）。
-  // 窄屏缩小、宽屏（PC）适当放大，最高 MAX_SCALE 倍。
+  // 自适应缩放：常规页面按宽度缩放；桌面对局区还同时受可用高度约束，
+  // 为棋盘下方的信息条预留空间，避免必须滚动才能看到双方信息。
   const wrapRef = React.useRef(null);
   const [scale, setScale] = React.useState(1);
   React.useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
+    const heightContainer = fitContainerHeight ? el.closest(".play-board-area") : null;
     const update = () => {
-      const nextScale = Math.max(0.2, Math.min(maxScale, el.clientWidth / SW));
+      const widthScale = el.clientWidth / SW;
+      let heightScale = Number.POSITIVE_INFINITY;
+      if (heightContainer) {
+        const containerRect = heightContainer.getBoundingClientRect();
+        const boardTop = el.getBoundingClientRect().top - containerRect.top;
+        const availableHeight = heightContainer.clientHeight - boardTop - reservedBottomHeight;
+        heightScale = availableHeight / TOTAL_H;
+      }
+      const nextScale = Math.max(0.2, Math.min(maxScale, widthScale, heightScale));
       setScale(nextScale);
       onScaleChange?.(nextScale);
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
+    if (heightContainer) ro.observe(heightContainer);
     return () => ro.disconnect();
-  }, [maxScale, onScaleChange]);
+  }, [fitContainerHeight, maxScale, onScaleChange, reservedBottomHeight]);
 
   const restrict = Array.isArray(legalMoves);
   // 当前选中起点的合法落点集合
