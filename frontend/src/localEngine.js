@@ -12,6 +12,7 @@ const INIT_TIMEOUT = 20000; // 首次加载含 wasm 编译 + 网络权重，放�
 const GO_TIMEOUT = 15000;
 
 const runtimes = new Map();
+import { abortError, analysisResult, goCommand, parseUciInfo, redPerspective } from "./core/engine/uci";
 
 function filesFor(variant) {
   const dir = variant === "jieqi" ? "/engine/jieqi" : "/engine";
@@ -92,56 +93,54 @@ export async function localEngineReady(variant = "xiangqi") {
   return (await getLocalEngine(variant)) !== null;
 }
 
-// 解析 "info ... score cp 35 ... pv h2e2 ..." 行
-function parseInfo(line) {
-  const out = {};
-  let m = line.match(/score (cp|mate) (-?\d+)/);
-  if (m) {
-    if (m[1] === "cp") out.cp = Number(m[2]);
-    else out.mate = Number(m[2]);
-  }
-  m = line.match(/\bpv ([a-i]\d[a-i]\d.*)$/);
-  if (m) out.pv = m[1].trim().split(/\s+/);
-  return out;
-}
-
 // 分析一个局面，返回**红方视角**的 {cp, mate, bestMove, pv}（与服务器
 // /play/eval 语义一致，调用方无需区分本地/远端）。失败时抛错，由调用方降级。
-export function localEval(fen, { depth = 12, variant = "xiangqi" } = {}) {
+export function localEval(fen, options = {}) {
+  const { variant = "xiangqi", signal, onUpdate } = options;
   const state = getRuntime(variant);
   const run = async () => {
+    if (signal?.aborted) throw abortError();
     const worker = await getLocalEngine(variant);
     if (!worker) throw new Error("本地引擎不可用");
     return new Promise((resolve, reject) => {
-      const sign = (fen.split(/\s+/)[1] || "w") === "w" ? 1 : -1; // 走子方 → 红方视角
-      let last = {};
-      const timer = setTimeout(() => {
+      const latestByPv = new Map();
+      let stopping = false;
+      const timeoutMs = options.mode === "infinite" ? null : Math.max(GO_TIMEOUT, Number(options.value) + 5000 || 0);
+      const timer = timeoutMs == null ? null : setTimeout(() => {
+        stopping = true;
         worker.postMessage("stop");
-        cleanup();
-        reject(new Error("分析超时"));
-      }, GO_TIMEOUT);
+      }, timeoutMs);
+      const onAbort = () => {
+        stopping = true;
+        worker.postMessage("stop");
+      };
       const onMessage = (e) => {
         const line = typeof e.data === "string" ? e.data : "";
         if (line.startsWith("info ")) {
-          Object.assign(last, parseInfo(line));
+          const parsed = redPerspective(parseUciInfo(line), fen);
+          if (!parsed) return;
+          const previous = latestByPv.get(parsed.multipv) || {};
+          latestByPv.set(parsed.multipv, { ...previous, ...parsed });
+          onUpdate?.({ status: "searching", ...analysisResult(latestByPv) });
         } else if (line.startsWith("bestmove")) {
           cleanup();
           const mv = line.split(/\s+/)[1];
-          resolve({
-            cp: last.mate != null ? null : last.cp != null ? sign * last.cp : null,
-            mate: last.mate != null ? sign * last.mate : null,
-            bestMove: mv && mv !== "(none)" ? mv : null,
-            pv: last.pv || null,
-          });
+          if (signal?.aborted) reject(abortError());
+          else if (stopping) reject(new Error("分析超时"));
+          else resolve(analysisResult(latestByPv, mv && mv !== "(none)" ? mv : null));
         }
       };
       const cleanup = () => {
         clearTimeout(timer);
         worker.removeEventListener("message", onMessage);
+        signal?.removeEventListener("abort", onAbort);
       };
       worker.addEventListener("message", onMessage);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      worker.postMessage(`setoption name MultiPV value ${Math.max(1, Math.min(10, Number(options.multiPv) || 1))}`);
+      if (options.showWdl) worker.postMessage("setoption name UCI_ShowWDL value true");
       worker.postMessage(`position fen ${fen}`);
-      worker.postMessage(`go depth ${depth}`);
+      worker.postMessage(goCommand(options));
     });
   };
   // 串行执行：上一个请求失败也不阻塞下一个

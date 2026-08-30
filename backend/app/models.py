@@ -228,6 +228,23 @@ class CreditLog(Base):
     ref: Mapped[str] = mapped_column(String(80), default="")  # 关联对象，如 puzzle:123 / game:45
 
 
+class CosmeticPurchase(Base):
+    """用户已解锁的外观资源。
+
+    付费外观买断后永久保留；免费外观不入库。唯一约束同时避免
+    重复购买和并发请求重复扣费。
+    """
+
+    __tablename__ = "cosmetic_purchases"
+    __table_args__ = (UniqueConstraint("user_id", "asset_key", name="uq_cosmetic_user_asset"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    asset_key: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    price_paid: Mapped[int] = mapped_column(Integer, default=0)
+    purchased_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AppSetting(Base):
     """运行时全局配置（键值对），供管理员在后台修改而无需重启或改环境变量。
 

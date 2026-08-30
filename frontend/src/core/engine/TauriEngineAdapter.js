@@ -1,5 +1,6 @@
 import { EngineAdapter } from "./EngineAdapter";
 import { RUNTIME, runtime } from "../../platform/runtime";
+import { abortError, analysisResult, goCommand, parseUciInfo, redPerspective } from "./uci";
 
 const profileKey = (variant) => `xq.nativeEngine.${variant}`;
 const INIT_TIMEOUT = 10000;
@@ -28,6 +29,7 @@ export class TauriEngineAdapter extends EngineAdapter {
     this.queue = Promise.resolve();
     this.lastError = null;
     this.diagnostics = [];
+    this.log = [];
   }
 
   getProfile() {
@@ -78,12 +80,14 @@ export class TauriEngineAdapter extends EngineAdapter {
     this.diagnostics = [];
     this.unlisten ||= await listen("engine-output", ({ payload }) => {
       for (const line of String(payload).split(/\r?\n/).filter(Boolean)) {
+        this.rememberLog("recv", line);
         this.rememberDiagnostic(line);
         for (const listener of this.listeners) listener(line);
       }
     });
     this.unlistenError ||= await listen("engine-error", ({ payload }) => {
       for (const line of String(payload).split(/\r?\n/).filter(Boolean)) {
+        this.rememberLog("error", line);
         this.rememberDiagnostic(line);
       }
     });
@@ -134,42 +138,65 @@ export class TauriEngineAdapter extends EngineAdapter {
     if (this.diagnostics.length > 20) this.diagnostics.shift();
   }
 
-  evaluate(fen, { depth = 14 } = {}) {
+  rememberLog(direction, line) {
+    this.log.push({ at: Date.now(), direction, line: String(line).slice(0, 500) });
+    if (this.log.length > 200) this.log.shift();
+  }
+
+  getLog() {
+    return [...this.log];
+  }
+
+  evaluate(fen, options = {}) {
+    const { signal, onUpdate } = options;
     const run = async () => {
+      if (signal?.aborted) throw abortError();
       await this.start();
       const { invoke } = await this.modules();
-      const sign = (fen.split(/\s+/)[1] || "w") === "w" ? 1 : -1;
-      let latest = {};
+      const latestByPv = new Map();
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          invoke("send_to_engine", { command: "stop" }).catch(() => {});
-          cleanup();
-          reject(new Error("原生引擎分析超时"));
-        }, GO_TIMEOUT);
+        let stopping = false;
+        const timeoutMs = options.mode === "infinite" ? null : Math.max(GO_TIMEOUT, Number(options.value) + 5000 || 0);
+        const timer = timeoutMs == null ? null : setTimeout(() => {
+          stopping = true;
+          send("stop").catch(() => {});
+        }, timeoutMs);
         const cleanup = () => {
           clearTimeout(timer);
           this.listeners.delete(onLine);
+          signal?.removeEventListener("abort", onAbort);
+        };
+        const send = (command) => {
+          this.rememberLog("sent", command);
+          return invoke("send_to_engine", { command });
+        };
+        const onAbort = () => {
+          stopping = true;
+          send("stop").catch(() => {});
         };
         const onLine = (line) => {
           if (line.startsWith("info ")) {
-            const score = line.match(/score (cp|mate) (-?\d+)/);
-            const pv = line.match(/\bpv ([a-i]\d[a-i]\d.*)$/);
-            if (score) latest[score[1]] = Number(score[2]);
-            if (pv) latest.pv = pv[1].trim().split(/\s+/);
+            const parsed = redPerspective(parseUciInfo(line), fen);
+            if (!parsed) return;
+            const previous = latestByPv.get(parsed.multipv) || {};
+            const merged = { ...previous, ...parsed };
+            latestByPv.set(parsed.multipv, merged);
+            onUpdate?.({ status: "searching", ...analysisResult(latestByPv) });
           } else if (line.startsWith("bestmove")) {
             cleanup();
             const move = line.split(/\s+/)[1];
-            resolve({
-              cp: latest.mate == null && latest.cp != null ? sign * latest.cp : null,
-              mate: latest.mate != null ? sign * latest.mate : null,
-              bestMove: move && move !== "(none)" ? move : null,
-              pv: latest.pv || null,
-            });
+            if (signal?.aborted) reject(abortError());
+            else if (stopping) reject(new Error("原生引擎分析超时"));
+            else resolve(analysisResult(latestByPv, move && move !== "(none)" ? move : null));
           }
         };
         this.listeners.add(onLine);
-        invoke("send_to_engine", { command: `position fen ${fen}` })
-          .then(() => invoke("send_to_engine", { command: `go depth ${depth}` }))
+        signal?.addEventListener("abort", onAbort, { once: true });
+        const multiPv = Math.max(1, Math.min(10, Number(options.multiPv) || 1));
+        send(`setoption name MultiPV value ${multiPv}`)
+          .then(() => options.showWdl ? send("setoption name UCI_ShowWDL value true") : null)
+          .then(() => send(`position fen ${fen}`))
+          .then(() => send(goCommand(options)))
           .catch((error) => {
             cleanup();
             reject(error);

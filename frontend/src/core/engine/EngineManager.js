@@ -24,23 +24,64 @@ export class EngineManager {
   }
 
   async evaluate(fen, options = {}, policy = {}) {
-    let lastError;
+    return this.startAnalysis(fen, options, policy).result;
+  }
+
+  startAnalysis(fen, options = {}, policy = {}) {
+    let active = null;
+    let stopped = false;
+    let updateTimer = null;
+    let pendingUpdate = null;
+    let lastUpdateAt = 0;
+    const deliverUpdate = () => {
+      updateTimer = null;
+      if (!pendingUpdate || stopped) return;
+      const value = pendingUpdate;
+      pendingUpdate = null;
+      lastUpdateAt = Date.now();
+      options.onUpdate?.(value);
+    };
+    const onUpdate = options.onUpdate ? (value) => {
+      pendingUpdate = value;
+      const remaining = 50 - (Date.now() - lastUpdateAt);
+      if (remaining <= 0) deliverUpdate();
+      else if (updateTimer == null) updateTimer = setTimeout(deliverUpdate, remaining);
+    } : undefined;
     const adapters = policy.onlyKinds
       ? this.adapters.filter((adapter) => policy.onlyKinds.includes(adapter.kind))
       : this.adapters;
+    const result = (async () => {
+    let lastError;
     for (const adapter of adapters) {
       try {
+        if (stopped) throw new DOMException("分析已停止", "AbortError");
         if (!(await adapter.ready())) continue;
-        const result = await adapter.evaluate(fen, options);
-        return { ...result, runtime: adapter.kind };
+        active = adapter.analyze(fen, { ...options, onUpdate });
+        const value = await active.result;
+        deliverUpdate();
+        return { ...value, runtime: adapter.kind };
       } catch (error) {
+        if (stopped || error?.name === "AbortError") throw error;
         lastError = error;
       }
     }
     throw lastError || new Error("没有可用的分析引擎");
+    })();
+    return {
+      result,
+      stop() {
+        stopped = true;
+        if (updateTimer != null) clearTimeout(updateTimer);
+        active?.stop?.();
+      },
+    };
   }
 
   async dispose() {
     await Promise.allSettled(this.adapters.map((adapter) => adapter.dispose()));
+  }
+
+  getLog() {
+    return this.adapters.flatMap((adapter) => adapter.getLog?.() || []).slice(-200);
   }
 }

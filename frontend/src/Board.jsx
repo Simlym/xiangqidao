@@ -1,5 +1,6 @@
 import React from "react";
 import { parseFen, toSquare } from "./xiangqi";
+import { useCosmeticPreferences } from "./cosmetics";
 
 // 棋盘几何：棋子落在 9 路 × 10 线的交叉点上。
 const COLS = 9; // 路（a-i）
@@ -87,6 +88,7 @@ export default function Board({
   reservedBottomHeight = 0,
 }) {
   const board = parsePosition(fen);
+  const appearance = useCosmeticPreferences();
   const [from, setFrom] = React.useState(null); // {row,col}
 
   // 显示坐标变换：翻转时上下左右同时镜像（相当于把棋盘旋转 180°）
@@ -199,7 +201,7 @@ export default function Board({
     <div className="xq-board-measure" ref={wrapRef}>
     <div className="xq-board-wrap" style={{ width: SW * scale, height: TOTAL_H * scale }}>
     <div
-      className="xq-board-scale"
+      className={`xq-board-scale board-theme-${appearance.board}`}
       style={{ width: SW, height: TOTAL_H, transform: `scale(${scale})`, transformOrigin: "top left" }}
     >
       <div className="xq-coords">
@@ -301,6 +303,7 @@ export default function Board({
                     className={
                       "xq-piece " +
                       (cell.red ? "red" : "black") +
+                      (!pieceImage ? ` piece-theme-${appearance.piece}` : "") +
                       (pieceImage ? " image" : "") +
                       (kingInCheck ? " in-check" : "") +
                       (selected ? " selected" : "") +

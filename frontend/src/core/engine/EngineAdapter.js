@@ -13,6 +13,14 @@ export class EngineAdapter {
     throw new Error(`${this.kind} 引擎尚未实现局面评估`);
   }
 
+  analyze(fen, options = {}) {
+    const controller = new AbortController();
+    return {
+      result: this.evaluate(fen, { ...options, signal: controller.signal }),
+      stop: () => controller.abort(),
+    };
+  }
+
   async dispose() {}
 }
 

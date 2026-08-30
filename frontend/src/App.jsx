@@ -12,6 +12,7 @@ import Settings from "./Settings";
 import { fetchMe, getToken, setToken, getCredits, checkinCredits, getEntitlements } from "./api";
 import { useReminders } from "./reminders";
 import { RUNTIME, runtime } from "./platform/runtime";
+import { useCosmeticPreferences } from "./cosmetics";
 
 const TAB_DESCRIPTIONS = {
   train: "今日计划与专项训练",
@@ -66,6 +67,7 @@ function CreditsBadge({ credits, onCheckin }) {
 
 export default function App() {
   const isDesktop = runtime === RUNTIME.TAURI;
+  const appearance = useCosmeticPreferences();
   const [tab, setTab] = React.useState("train");
   // 训练目标：null | {puzzleId} | {category}，用于从复盘/弱点跳转到指定练习
   const [trainTarget, setTrainTarget] = React.useState(null);
@@ -104,6 +106,11 @@ export default function App() {
     document.body.classList.toggle("desktop-runtime", isDesktop);
     return () => document.body.classList.remove("desktop-runtime");
   }, [isDesktop]);
+
+  React.useEffect(() => {
+    document.body.dataset.appTheme = appearance.app;
+    return () => { delete document.body.dataset.appTheme; };
+  }, [appearance.app]);
 
   // 跳到训练并指定要练的题/类目
   function practicePuzzle(puzzleId) {
@@ -168,14 +175,15 @@ export default function App() {
       ? [{ key: "admin", icon: "⚙️", desktopIcon: "⚙", label: "管理后台", short: "后台" }]
       : []),
   ];
-  const settingsTab = { key: "settings", desktopIcon: "⚙", label: "设置", short: "设置" };
-  const tabs = isDesktop ? [...mainTabs, settingsTab] : mainTabs;
+  const settingsTab = { key: "settings", icon: "⚙️", desktopIcon: "⚙", label: "设置", short: "设置" };
+  const tabs = [...mainTabs, settingsTab];
+  const navTabs = isDesktop ? mainTabs : [...mainTabs, settingsTab];
 
   const activeTab = tabs.find((item) => item.key === tab) || tabs[0];
 
   const nav = (
     <nav aria-label="主要功能">
-      {mainTabs.map((item) => (
+      {navTabs.map((item) => (
         <button
           key={item.key}
           className={tab === item.key ? "active" : ""}
@@ -283,7 +291,14 @@ export default function App() {
         <JieqiPlay onOpenSettings={isDesktop ? () => setTab("settings") : null} />
       )}
       {tab === "admin" && user?.role === "admin" && <Admin />}
-      {tab === "settings" && isDesktop && <Settings />}
+      {tab === "settings" && (
+        <Settings
+          user={user}
+          credits={credits}
+          onCreditsChanged={refreshCredits}
+          onRequireLogin={requireLogin}
+        />
+      )}
       {tab === "games" && (
         <Games
           initialGameId={reviewGameId}
@@ -298,7 +313,7 @@ export default function App() {
   );
 
   return (
-    <div className={`app ${isDesktop ? "app-desktop" : "app-web"}`}>
+    <div className={`app app-theme-${appearance.app} ${isDesktop ? "app-desktop" : "app-web"}`}>
       {isDesktop ? (
         <>
           <aside className="desktop-sidebar">

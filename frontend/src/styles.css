@@ -290,6 +290,39 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .xq-piece.selected {
   box-shadow: 0 0 0 3px rgba(255, 200, 0, .9), 0 1px 3px rgba(0, 0, 0, .35);
 }
+
+/* 外观商店：棋盘与棋子主题。默认经典样式保持不变。 */
+.board-theme-paper .xq-board { filter: drop-shadow(0 4px 7px rgba(54, 48, 39, .14)); }
+.board-theme-paper .xq-board-rim { fill: #b8aa91; stroke: #776b58; }
+.board-theme-paper .xq-board-base { fill: #f3ecd9; stroke: #d7ccb3; }
+.board-theme-paper .xq-board-inner-frame { stroke: rgba(76, 68, 55, .48); }
+.board-theme-paper .xq-lines line { stroke: #625b4f; }
+.board-theme-paper .xq-river { fill: #514b42; }
+.board-theme-paper .xq-coords span { color: #625b4f; }
+
+.board-theme-jade .xq-board { filter: drop-shadow(0 6px 10px rgba(10, 42, 38, .32)); }
+.board-theme-jade .xq-board-rim { fill: #123f3a; stroke: #d3b86a; }
+.board-theme-jade .xq-board-base { fill: #286f65; stroke: #8eb8a4; }
+.board-theme-jade .xq-board-inner-frame { stroke: rgba(235, 214, 143, .68); }
+.board-theme-jade .xq-lines line { stroke: #ead494; }
+.board-theme-jade .xq-river { fill: #fff0b6; opacity: .68; }
+.board-theme-jade .xq-coords span { color: #28665e; }
+
+.xq-piece.piece-theme-ink {
+  background: #f8f3e7;
+  border: 2px solid #57534d;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, .22), inset 0 0 0 2px #ded5c3;
+  text-shadow: none;
+}
+.xq-piece.piece-theme-ink.red { color: #ad3c32; border-color: #8f5049; }
+.xq-piece.piece-theme-jade {
+  background: radial-gradient(circle at 34% 26%, #f4fff9, #b8ddca 55%, #72a98f 100%);
+  border: 1px solid #426f5e;
+  box-shadow: 0 3px 5px rgba(10, 50, 38, .34), inset 0 0 0 2px #d9f0e2, inset 0 0 0 3px #b89950;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .52);
+}
+.xq-piece.piece-theme-jade.red { color: #a92e2b; }
+.xq-piece.piece-theme-jade.black { color: #123c35; }
 /* 提示着法：虚线圈呼吸标出推荐着法的起点与落点 */
 .xq-mark-hint {
   position: absolute;
@@ -492,6 +525,66 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 }
 .jieqi-mobile-analysis strong { color: #b12b26; font-size: 17px; }
 .jieqi-mobile-analysis span { color: #746a60; font-size: 12px; line-height: 1.4; }
+
+.engine-analysis-controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0; }
+.engine-analysis-controls select,
+.engine-analysis-controls input { min-width: 0; max-width: 130px; padding: 5px 7px; border: 1px solid #d8d0c6; border-radius: 6px; background: #fffdf9; color: #4b433a; font-size: 12px; }
+.engine-analysis-controls input { width: 62px; }
+.engine-search-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; margin: 8px 0; color: #786f65; font-size: 11px; }
+.engine-search-stats span { display: flex; justify-content: space-between; gap: 5px; }
+.engine-search-stats b { color: #423a32; font-weight: 600; }
+.wdl-wrap { margin: 8px 0; }
+.wdl-bar { display: flex; width: 100%; height: 7px; overflow: hidden; border-radius: 5px; background: #ddd; }
+.wdl-bar span { display: block; }
+.wdl-bar .win { background: #b64238; }
+.wdl-bar .draw { background: #aaa49b; }
+.wdl-bar .loss { background: #343230; }
+.wdl-wrap small { display: block; margin-top: 3px; color: #80776e; text-align: center; font-size: 10px; }
+.engine-pv-lines { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.engine-pv-line { display: grid; grid-template-columns: 22px 46px minmax(0, 1fr); align-items: start; gap: 4px; padding: 6px; border-radius: 6px; background: #f7f3ed; font-size: 11px; }
+.engine-pv-line > b { color: #91877c; }
+.engine-pv-line > strong { color: #b12b26; }
+.engine-pv-line > div { display: flex; flex-wrap: wrap; gap: 3px; }
+.engine-pv-line button { padding: 0 2px; border: 0; background: transparent; color: #51483f; font: inherit; text-align: left; cursor: pointer; }
+.engine-pv-line button:hover { color: #b12b26; text-decoration: underline; }
+.engine-pv-line .engine-searchmove { grid-column: 3; justify-self: start; margin-top: 2px; color: #9a4d45; font-size: 10px; }
+.engine-searchmove-clear { margin: 4px 0; padding: 3px 6px; border: 1px solid #d4b5ae; border-radius: 5px; background: #fff5f2; color: #8f3932; font-size: 10px; cursor: pointer; }
+.engine-log { margin-top: 9px; border: 0; color: #71685f; font-size: 10px; }
+.engine-log summary { width: fit-content; border: 0; border-radius: 4px; outline: 0; cursor: pointer; }
+.engine-log summary:focus-visible { box-shadow: 0 0 0 2px rgba(177, 43, 38, .22); }
+.engine-log > div {
+  max-height: 180px; margin-top: 5px; overflow: auto; padding: 7px 9px;
+  border-radius: 5px; background: #f4f1ea;
+  scrollbar-width: thin; scrollbar-color: #b6afa6 transparent;
+}
+.engine-log > div::-webkit-scrollbar { width: 7px; height: 7px; }
+.engine-log > div::-webkit-scrollbar-track { background: transparent; }
+.engine-log > div::-webkit-scrollbar-thumb { border-radius: 4px; background: #b6afa6; }
+.engine-log code {
+  display: block; padding: 2px 0; border-radius: 0; background: transparent;
+  overflow-wrap: anywhere; white-space: pre-wrap; color: #655d55; font-size: 9px; line-height: 1.45;
+}
+.engine-log code.sent { color: #44738f; }
+.engine-log code.error { color: #a33a32; }
+.pv-preview-overlay { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(26, 22, 18, .64); }
+.pv-preview-dialog { width: min(520px, 94vw); max-height: 94vh; overflow: auto; }
+.pv-preview-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.pv-preview-head button { border: 0; background: transparent; font-size: 24px; cursor: pointer; }
+.pv-preview-caption { min-height: 24px; margin: 8px 0; text-align: center; color: #6f655b; }
+
+.evaluation-chart { margin-bottom: 12px; padding: 9px; border: 1px solid #e2dbd2; border-radius: 9px; background: #fffdf9; }
+.evaluation-chart-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+.evaluation-chart-head strong { color: #4b433a; font-size: 13px; }
+.evaluation-chart-head small { color: #948a80; font-size: 10px; }
+.evaluation-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-red-zone { fill: #fff3f1; }
+.chart-black-zone { fill: #f0efed; }
+.chart-zero { stroke: #aaa39b; stroke-width: 1; stroke-dasharray: 4 4; }
+.chart-line { fill: none; stroke: #8e3e37; stroke-width: 2.25; stroke-linejoin: round; }
+.chart-point { fill: #fff; stroke: #8e3e37; stroke-width: 2; cursor: pointer; }
+.chart-point.mistake { fill: #f3a43b; stroke: #b87821; }
+.chart-point.blunder { fill: #d5453c; stroke: #982720; }
+.chart-point.active { stroke: #2672a8; stroke-width: 3; }
 .seg { display: inline-flex; border: 1px solid #d9ccb5; border-radius: 8px; overflow: hidden; }
 .seg-btn {
   border: none; background: #fff; padding: 8px 16px; cursor: pointer;
@@ -1951,6 +2044,86 @@ body.desktop-runtime {
 }
 .settings-switch input { width: 17px; height: 17px; accent-color: #8a5a2b; }
 
+.cosmetic-balance {
+  margin: -4px 0 20px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 8px;
+  color: #665d52;
+  background: #f5f0e8;
+  font-size: 13px;
+}
+.cosmetic-message { color: #8a3f32; font-weight: 600; }
+.cosmetic-message.error { color: #a12d28; }
+.cosmetic-category { margin: 0 0 24px; }
+.cosmetic-category h3 { margin: 0 0 10px; color: #423b34; font-size: 15px; }
+.cosmetic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cosmetic-card {
+  min-width: 0;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 9px 10px;
+  border: 1px solid #e2d9cc;
+  border-radius: 10px;
+  background: #fff;
+}
+.cosmetic-card.selected { border-color: #a86b42; box-shadow: 0 0 0 1px rgba(168, 107, 66, .2); }
+.cosmetic-preview {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  color: #a9322e;
+  background: #ecd09a;
+  font: 700 28px "STKaiti", "KaiTi", serif;
+}
+.preview-board-paper { background: repeating-linear-gradient(0deg, #f3ecd9 0 13px, #7c7467 14px 15px); }
+.preview-board-jade { background: repeating-linear-gradient(90deg, #286f65 0 13px, #ead494 14px 15px); }
+.preview-app-classic { color: #fff3d6; background: linear-gradient(135deg, #8a5a2b 0 42%, #f4f1ea 43%); }
+.preview-app-ink { color: #9b312e; background: linear-gradient(135deg, #343638 0 42%, #f2f0e9 43%); }
+.preview-app-jade { color: #ead494; background: linear-gradient(135deg, #18594e 0 42%, #e3eee6 43%); }
+.preview-app-night { color: #9dc5df; background: linear-gradient(135deg, #101925 0 42%, #243546 43%); }
+.preview-piece-classic { border-radius: 50%; background: radial-gradient(circle at 35% 28%, #fffefb, #e7d2a4); box-shadow: inset 0 0 0 3px #b9925a; }
+.preview-piece-ink { border-radius: 50%; color: #ad3c32; background: #f8f3e7; box-shadow: inset 0 0 0 2px #57534d; }
+.preview-piece-jade { border-radius: 50%; background: radial-gradient(circle at 34% 26%, #f4fff9, #72a98f); box-shadow: inset 0 0 0 3px #b89950; }
+.preview-sound-wood { background: #d7a968; }
+.preview-sound-crisp { color: #397780; background: #e8f3f0; }
+.preview-sound-beep { color: #5558b9; background: #e8e9ff; }
+.preview-sound-temple { color: #d4b86b; background: #30463e; }
+.cosmetic-card-body { min-width: 0; }
+.cosmetic-card-body strong { color: #423b34; font-size: 14px; }
+.cosmetic-card-body p { min-height: 30px; margin: 3px 0 5px; color: #948b81; font-size: 11px; line-height: 1.35; }
+.cosmetic-free, .cosmetic-price { font-size: 11px; font-weight: 700; }
+.cosmetic-free { color: #39805b; }
+.cosmetic-price { color: #9a652e; }
+.cosmetic-card > button {
+  grid-column: 1 / -1;
+  padding: 7px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: #8a5a2b;
+  cursor: pointer;
+}
+.cosmetic-card > button:disabled { color: #7f766c; background: #ece6de; cursor: default; }
+.cosmetic-purchase-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e8b5ae;
+  border-radius: 7px;
+  color: #a12d28;
+  background: #fff0ed;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .settings-content .native-engine-settings {
   margin: 0;
   padding: 0;
@@ -1991,3 +2164,95 @@ body.desktop-runtime {
   .app-desktop .play-main .move-log { width: 230px; }
   .settings-page { grid-template-columns: 170px minmax(0, 1fr); }
 }
+
+@media (max-width: 700px) {
+  .settings-page { min-height: 0; grid-template-columns: 1fr; }
+  .settings-sections { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid #ddd5c9; }
+  .settings-sections button { width: auto; flex: 0 0 auto; }
+  .settings-content { padding: 18px 14px; }
+  .cosmetic-grid { grid-template-columns: 1fr; }
+  .cosmetic-balance { flex-direction: column; }
+}
+
+/* ── 整体软件主题 ────────────────────────────────────── */
+body[data-app-theme="ink"] {
+  --app-bg: #e8e6df; --app-surface: #f8f6f0; --app-surface-soft: #efede6;
+  --app-text: #292b2c; --app-muted: #777771; --app-border: #d2cec4;
+  --app-accent: #9a3431; --app-accent-soft: #eee0dc; --app-sidebar: #303234;
+  background: var(--app-bg); color: var(--app-text);
+}
+body[data-app-theme="jade"] {
+  --app-bg: #dce8df; --app-surface: #f7faf6; --app-surface-soft: #e8f0e9;
+  --app-text: #243932; --app-muted: #6d7f77; --app-border: #c2d3c8;
+  --app-accent: #176555; --app-accent-soft: #d8e9df; --app-sidebar: #123d36;
+  background: var(--app-bg); color: var(--app-text);
+}
+body[data-app-theme="night"] {
+  --app-bg: #111923; --app-surface: #1b2733; --app-surface-soft: #23313f;
+  --app-text: #dce6ed; --app-muted: #91a2af; --app-border: #354757;
+  --app-accent: #78a9c8; --app-accent-soft: #283f50; --app-sidebar: #0d151f;
+  background: var(--app-bg); color: var(--app-text); color-scheme: dark;
+}
+
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) { color: var(--app-text); }
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
+  .panel, .card, .level-card, .games-list-panel, .games-review-panel, .modal,
+  .settings-page, .settings-content, .cosmetic-card, .board-overlay > .panel,
+  .coach-card, .analysis-report, .evaluation-chart
+) {
+  color: var(--app-text);
+  background: var(--app-surface);
+  border-color: var(--app-border);
+}
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
+  .settings-sections, .cosmetic-balance, .desktop-runtime-badge, .auth-tabs button,
+  .admin-tabs button, .engine-pv-line, .import-form, code, .tag
+) { background: var(--app-surface-soft); border-color: var(--app-border); }
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
+  input, select, textarea, .import-input, .import-textarea, .engine-analysis-controls input,
+  .engine-analysis-controls select, .seg-btn, .btn-retry, .btn-newgame, .btn-link
+) {
+  color: var(--app-text);
+  background: var(--app-surface);
+  border-color: var(--app-border);
+}
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
+  header h1, .auth-modal h2, .admin h3, .play-setup h2, .card-value, .level-no,
+  .games-list-title, .lb-rating, .settings-heading h2, .settings-row strong,
+  .cosmetic-category h3, .cosmetic-card-body strong, .desktop-toolbar h1
+) { color: var(--app-accent); }
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
+  .muted, .card-label, .settings-heading p, .settings-row p, .cosmetic-card-body p,
+  .desktop-toolbar p, .desktop-statusbar, .user-name
+) { color: var(--app-muted); }
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
+  nav button.active, .btn-register, .auth-tabs button.active, .admin-tabs button.active,
+  .seg-btn.active, .btn-primary, .btn-import, .result button, .panel > button,
+  .cosmetic-card > button:not(:disabled), .step-dot.current, .bar-fill, .spark-bar,
+  .member-badge
+) { color: #fff; background: var(--app-accent); }
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
+  .settings-sections button.active, .game-item.selected, .leaderboard li.me,
+  .credits-amt, nav button:hover
+) { color: var(--app-accent); background: var(--app-accent-soft); }
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
+  .settings-page, .settings-sections, .settings-heading, .settings-row, .cosmetic-card,
+  .desktop-toolbar, .desktop-statusbar, .games-list-header, .game-item, .games-list-footer
+) { border-color: var(--app-border); }
+
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night).app-desktop,
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) .desktop-workspace {
+  background: var(--app-bg);
+}
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(.desktop-toolbar, .desktop-statusbar, .desktop-user-popover) {
+  color: var(--app-text); background: var(--app-surface); border-color: var(--app-border);
+}
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) .desktop-sidebar { background: var(--app-sidebar); }
+
+/* 夜弈主题额外压低高亮和线条亮度。 */
+.app-theme-night :is(.game-item:hover, .book-move:hover:not(:disabled)) { background: #223342; }
+.app-theme-night :is(.bar-track, .level-card.locked) { background: #293744; }
+.app-theme-night .level-card.cleared { background: #19382e; }
+.app-theme-night .hint { color: #ead9a6; background: #3a3422; }
+.app-theme-night .game-black { color: #d8e1e8; }
+.app-theme-night .modal-overlay { background: rgba(2, 7, 12, .68); }

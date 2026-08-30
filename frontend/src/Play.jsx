@@ -3,14 +3,16 @@ import Board from "./Board";
 import { applyMove, uciToChinese, parseFen, INITIAL_FEN } from "./xiangqi";
 import {
   newPlayGame, playMove, getPositionState, importGame, analyzeGame, evalPosition,
-  getPlayEngine, getBookMoves, getHint, coachHintMove,
+  getPlayEngine, getBookMoves, getHint, coachHintMove, streamEvalPosition,
 } from "./api";
 import { createEngineManager } from "./core/engine/createEngineManager";
 import { RUNTIME, runtime } from "./platform/runtime";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
+  soundThemeLabel,
 } from "./sounds";
+import EngineAnalysisView from "./components/EngineAnalysisView";
 
 const LEVELS = [
   { key: "easy", label: "入门" },
@@ -25,7 +27,7 @@ const SIDES = [
 
 // 当前为 Web：WASM 优先，失败后自动降级 FastAPI。
 // Tauri 接入后只在工厂中增加原生适配器，页面无需出现平台分支。
-const positionEngine = createEngineManager({ remoteEvaluate: evalPosition });
+const positionEngine = createEngineManager({ remoteEvaluate: evalPosition, remoteStream: streamEvalPosition });
 const PLAY_DEPTH = { easy: 6, medium: 10, hard: 14 };
 
 function terminalResult(status, winner) {
@@ -154,6 +156,11 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const [showEval, setShowEval] = React.useState(false); // 是否显示优劣势评估条
   const [evalData, setEvalData] = React.useState(null);  // 红方视角 {cp, mate}
   const [evalLoading, setEvalLoading] = React.useState(false);
+  const [analysisMode, setAnalysisMode] = React.useState("movetime");
+  const [analysisTime, setAnalysisTime] = React.useState(1000);
+  const [analysisDepth, setAnalysisDepth] = React.useState(18);
+  const [analysisMultiPv, setAnalysisMultiPv] = React.useState(1);
+  const [analysisSearchMoves, setAnalysisSearchMoves] = React.useState([]);
   const [engineInfo, setEngineInfo] = React.useState(null); // {engine,label,available}
   const [localReady, setLocalReady] = React.useState(false); // 浏览器本地引擎是否就绪
   const [localRuntime, setLocalRuntime] = React.useState(null); // native | wasm | null
@@ -176,6 +183,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const turnStart = React.useRef(0);                  // 本方思考开始时刻
   const history = React.useRef([]);                   // 悔棋快照栈
   const evalReqId = React.useRef(0);                  // 评分请求序号，丢弃过期响应
+  const evalSession = React.useRef(null);
   const logRef = React.useRef(null);                  // 棋谱滚动容器
   const keysRef = React.useRef({});                   // 键盘快捷键的最新处理函数
 
@@ -220,12 +228,29 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     if (!showEval || !fen || thinking) return;
     const id = ++evalReqId.current;
     setEvalLoading(true);
-    const request = positionEngine.evaluate(fen);
-    request
+    evalSession.current?.stop();
+    const session = positionEngine.startAnalysis(fen, {
+      mode: analysisMode,
+      value: analysisMode === "depth" ? analysisDepth : analysisTime,
+      depth: analysisDepth,
+      multiPv: analysisMultiPv,
+      showWdl: true,
+      searchMoves: analysisSearchMoves,
+      onUpdate: (data) => { if (id === evalReqId.current) setEvalData(data); },
+    });
+    evalSession.current = session;
+    session.result
       .then((d) => { if (id === evalReqId.current) setEvalData(d); })
-      .catch(() => { if (id === evalReqId.current) setEvalData(null); })
+      .catch((error) => { if (id === evalReqId.current && error?.name !== "AbortError") setEvalData(null); })
       .finally(() => { if (id === evalReqId.current) setEvalLoading(false); });
-  }, [showEval, fen, thinking, localReady]);
+    return () => {
+      evalReqId.current++;
+      session.stop();
+      if (evalSession.current === session) evalSession.current = null;
+    };
+  }, [showEval, fen, thinking, localReady, analysisMode, analysisTime, analysisDepth, analysisMultiPv, analysisSearchMoves]);
+
+  React.useEffect(() => { setAnalysisSearchMoves([]); }, [fen]);
 
   // 云库参考：轮到自己时查询当前局面的库着法（含评分/胜率）
   React.useEffect(() => {
@@ -691,7 +716,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           >
             {muted
               ? "🔇 静音"
-              : `🔊 ${SOUND_THEMES.find((t) => t.key === soundKey)?.label || ""}`}
+              : `🔊 ${soundThemeLabel(soundKey)}`}
           </button>
           {over && overDismissed && (
             <button className="btn-newgame" onClick={() => setOverDismissed(false)}>
@@ -922,6 +947,20 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
                         <span className="eval-bar-value">{evalLoading && !evalData ? "…" : evalInfo.value}</span>
                       </div>
                       <p>{evalLoading ? "评估中…" : evalInfo.label}</p>
+                      <div className="engine-analysis-controls">
+                        <select value={analysisMode} onChange={(event) => setAnalysisMode(event.target.value)} aria-label="分析模式">
+                          <option value="movetime">限时分析</option><option value="depth">深度分析</option>{localReady && <option value="infinite">无限分析</option>}
+                        </select>
+                        {analysisMode === "movetime" && <select value={analysisTime} onChange={(event) => setAnalysisTime(Number(event.target.value))} aria-label="分析时间">
+                          <option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={3000}>3 秒</option><option value={5000}>5 秒</option>
+                        </select>}
+                        {analysisMode === "depth" && <input type="number" min="1" max="30" value={analysisDepth} onChange={(event) => setAnalysisDepth(Math.max(1, Math.min(30, Number(event.target.value) || 1)))} aria-label="分析深度" />}
+                        <select value={analysisMultiPv} onChange={(event) => setAnalysisMultiPv(Number(event.target.value))} aria-label="候选线路数">
+                          <option value={1}>最佳 1 线</option><option value={3}>候选 3 线</option><option value={5}>候选 5 线</option>
+                        </select>
+                      </div>
+                      {analysisSearchMoves.length > 0 && <button className="engine-searchmove-clear" onClick={() => setAnalysisSearchMoves([])}>正在限定 {analysisSearchMoves[0]} · 取消限定</button>}
+                      {evalData && <EngineAnalysisView fen={fen} data={evalData} onAnalyzeMove={(move) => setAnalysisSearchMoves([move])} log={positionEngine.getLog()} />}
                     </div>
                   )}
 

@@ -3,6 +3,7 @@ import Board from "./Board";
 import { uciToChinese } from "./xiangqi";
 import { parseJieqiBoard } from "./core/game/jieqi";
 import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis } from "./api";
+import EvaluationChart from "./components/EvaluationChart";
 
 const RESULT_LABELS = {
   "1-0": { text: "红胜", color: "#c0392b" },
@@ -531,6 +532,9 @@ export default function Games({ onNavigateToTrain, initialGameId, onInitialGameC
 
             {/* Move list */}
             <div className="review-moves-wrap">
+              {(analyzeStatus === "done" || analyzeStatus === "partial") && analysisData?.moves?.length > 1 && (
+                <EvaluationChart moves={analysisData.moves} activeStep={stepIndex} onSelect={setStepIndex} />
+              )}
               <div className="review-moves-title">着法列表</div>
               <div className="review-moves-list" ref={moveListRef}>
                 {rounds.map(({ round, red, black }) => (

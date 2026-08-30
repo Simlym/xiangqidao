@@ -28,6 +28,13 @@ class MoveEval:
     score_cp: int | None      # centipawn，正=当前方有利
     score_mate: int | None    # 几步杀，None=无强制杀
     pv: list[str] | None = None  # 主变着法序列（己方/对方交替），用于生成多步题
+    depth: int | None = None
+    seldepth: int | None = None
+    nodes: int | None = None
+    nps: int | None = None
+    time_ms: int | None = None
+    wdl: tuple[int, int, int] | None = None
+    lines: list[dict] | None = None
 
 
 class Engine:
@@ -82,23 +89,40 @@ class Engine:
                 break
         return lines
 
-    def analyze(self, fen: str, depth: int = 16) -> MoveEval:
+    def analyze(
+        self, fen: str, depth: int = 16, *, mode: str = "depth",
+        value: int | None = None, multipv: int = 1, show_wdl: bool = False,
+        search_moves: list[str] | None = None, on_info=None,
+        cancel_event: threading.Event | None = None,
+    ) -> MoveEval:
         """分析局面，返回最优着法和评分。
 
         不再每次发送 ucinewgame —— 逐局面分析时复用置换表能显著提速；
         需要清空状态时由调用方在新局开始处调用 new_game()。
         """
         with self._lock:
+            multipv = max(1, min(10, int(multipv)))
+            self._cmd(f"setoption name MultiPV value {multipv}")
+            if show_wdl:
+                self._cmd("setoption name UCI_ShowWDL value true")
             self._cmd(f"position fen {fen}")
-            self._cmd(f"go depth {depth}")
+            if mode == "infinite":
+                go = "go infinite"
+            elif mode == "movetime":
+                go = f"go movetime {max(50, int(value or 1000))}"
+            else:
+                go = f"go depth {max(1, int(value or depth))}"
+            if search_moves:
+                go += " searchmoves " + " ".join(search_moves)
+            self._cmd(go)
 
             assert self.proc.stdout
 
             best_move: str | None = None
             score_cp: int | None = None
             score_mate: int | None = None
-            best_depth = -1
-            pv_line: list[str] | None = None
+            latest: dict[int, dict] = {}
+            stopped = False
 
             for line in self.proc.stdout:
                 line = line.strip()
@@ -116,6 +140,12 @@ class Engine:
                         continue
                     d = int(dm.group(1))
 
+                    mp_m = re.search(r"\bmultipv (\d+)", line)
+                    mp = int(mp_m.group(1)) if mp_m else 1
+                    current = latest.get(mp, {})
+                    if d < current.get("depth", -1):
+                        continue
+
                     # 解析 score
                     sc_cp = re.search(r"\bscore cp (-?\d+)", line)
                     sc_mate = re.search(r"\bscore mate (-?\d+)", line)
@@ -123,22 +153,39 @@ class Engine:
                     # 解析整条 pv（着法序列）
                     pv_m = re.search(r"\bpv (.+)$", line)
 
-                    if d > best_depth:
-                        best_depth = d
-                        if sc_cp:
-                            score_cp = int(sc_cp.group(1))
-                            score_mate = None
-                        elif sc_mate:
-                            score_mate = int(sc_mate.group(1))
-                            score_cp = None
-                        if pv_m:
-                            pv_line = re.findall(
-                                r"[a-i][0-9][a-i][0-9][a-zA-Z]{0,2}",
-                                pv_m.group(1),
-                            )
-                        else:
-                            pv_line = None
+                    current = {**current, "multipv": mp, "depth": d}
+                    for key, pattern in (
+                        ("seldepth", r"\bseldepth (\d+)"), ("nodes", r"\bnodes (\d+)"),
+                        ("nps", r"\bnps (\d+)"), ("time_ms", r"\btime (\d+)"),
+                    ):
+                        match = re.search(pattern, line)
+                        if match:
+                            current[key] = int(match.group(1))
+                    if sc_cp:
+                        current["score_cp"] = int(sc_cp.group(1))
+                        current["score_mate"] = None
+                    elif sc_mate:
+                        current["score_mate"] = int(sc_mate.group(1))
+                        current["score_cp"] = None
+                    wdl_m = re.search(r"\bwdl (\d+) (\d+) (\d+)", line)
+                    if wdl_m:
+                        current["wdl"] = tuple(map(int, wdl_m.groups()))
+                    if pv_m:
+                        current["pv"] = re.findall(
+                            r"[a-i][0-9][a-i][0-9][a-zA-Z]{0,2}", pv_m.group(1)
+                        )
+                    latest[mp] = current
+                    if on_info:
+                        on_info({**current})
+                    if cancel_event is not None and cancel_event.is_set() and not stopped:
+                        self._cmd("stop")
+                        stopped = True
 
+        lines = [latest[key] for key in sorted(latest)]
+        first = lines[0] if lines else {}
+        score_cp = first.get("score_cp")
+        score_mate = first.get("score_mate")
+        pv_line = first.get("pv")
         pv_move = pv_line[0] if pv_line else None
         # pv 第一着优先，bestmove 保底
         final_best = pv_move or best_move
@@ -148,6 +195,13 @@ class Engine:
             score_cp=score_cp,
             score_mate=score_mate,
             pv=pv_line,
+            depth=first.get("depth"),
+            seldepth=first.get("seldepth"),
+            nodes=first.get("nodes"),
+            nps=first.get("nps"),
+            time_ms=first.get("time_ms"),
+            wdl=first.get("wdl"),
+            lines=lines,
         )
 
     def close(self) -> None:

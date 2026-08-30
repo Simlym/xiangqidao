@@ -1,6 +1,11 @@
 """人机对弈接口（无状态：局面 FEN 由前端持有）。"""
 
+import json
+import queue
+import threading
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -58,11 +63,26 @@ class MoveResponse(BaseModel):
 
 class EvalRequest(BaseModel):
     fen: str = Field(max_length=_FEN_MAX)
+    depth: int = Field(default=12, ge=1, le=30)
+    mode: str = Field(default="depth", pattern="^(depth|movetime|infinite)$")
+    value: int | None = Field(default=None, ge=1, le=60000)
+    multipv: int = Field(default=1, ge=1, le=10)
+    show_wdl: bool = False
+    search_moves: list[str] = Field(default_factory=list, max_length=20)
 
 
 class EvalResponse(BaseModel):
     cp: int | None = None    # 红方视角 centipawn，正=红优、负=黑优
     mate: int | None = None  # 红方视角几步杀，正=红方可杀、负=黑方可杀
+    best_move: str | None = None
+    pv: list[str] | None = None
+    depth: int | None = None
+    seldepth: int | None = None
+    nodes: int | None = None
+    nps: int | None = None
+    time_ms: int | None = None
+    wdl: tuple[int, int, int] | None = None
+    lines: list[dict] | None = None
 
 
 class StateRequest(BaseModel):
@@ -89,8 +109,111 @@ def position_state(request: Request, req: StateRequest):
 @limiter.limit("60/minute")
 def eval_position(request: Request, req: EvalRequest):
     """评估给定局面的优劣势（红方视角），供对弈界面的评估条按需调用。"""
+    from ..engine import get_shared_engine
+
+    engine = get_shared_engine()
+    if engine is not None:
+        result = engine.analyze(
+            req.fen, depth=req.depth, mode=req.mode, value=req.value,
+            multipv=req.multipv, show_wdl=req.show_wdl, search_moves=req.search_moves,
+        )
+        sign = 1 if side_to_move(req.fen) == "w" else -1
+        def red_line(line):
+            next_line = {**line}
+            if next_line.get("score_cp") is not None:
+                next_line["score_cp"] *= sign
+            if next_line.get("score_mate") is not None:
+                next_line["score_mate"] *= sign
+            if next_line.get("wdl") and sign == -1:
+                win, draw, loss = next_line["wdl"]
+                next_line["wdl"] = (loss, draw, win)
+            return next_line
+        wdl = getattr(result, "wdl", None)
+        if wdl and sign == -1:
+            wdl = (wdl[2], wdl[1], wdl[0])
+        return EvalResponse(
+            cp=None if result.score_cp is None else sign * result.score_cp,
+            mate=None if result.score_mate is None else sign * result.score_mate,
+            best_move=result.best_move, pv=result.pv, depth=getattr(result, "depth", None),
+            seldepth=getattr(result, "seldepth", None), nodes=getattr(result, "nodes", None),
+            nps=getattr(result, "nps", None), time_ms=getattr(result, "time_ms", None), wdl=wdl,
+            lines=[red_line(line) for line in (getattr(result, "lines", None) or [])],
+        )
     e = evaluate_position(req.fen)
     return EvalResponse(cp=e["cp"], mate=e["mate"])
+
+
+@router.post("/eval/stream")
+@limiter.limit("30/minute")
+def stream_eval_position(request: Request, req: EvalRequest):
+    from ..engine import get_shared_engine
+
+    engine = get_shared_engine()
+    if engine is None:
+        e = evaluate_position(req.fen)
+        data = json.dumps({"type": "complete", "data": {"cp": e["cp"], "mate": e["mate"]}}) + "\n"
+        return StreamingResponse(iter([data]), media_type="application/x-ndjson")
+    sign = 1 if side_to_move(req.fen) == "w" else -1
+
+    def red_line(line):
+        item = {**line}
+        if item.get("score_cp") is not None:
+            item["score_cp"] *= sign
+        if item.get("score_mate") is not None:
+            item["score_mate"] *= sign
+        if item.get("wdl") and sign == -1:
+            win, draw, loss = item["wdl"]
+            item["wdl"] = (loss, draw, win)
+        return item
+
+    def payload(line):
+        item = red_line(line)
+        return {
+            "cp": item.get("score_cp"), "mate": item.get("score_mate"),
+            "best_move": (item.get("pv") or [None])[0], "pv": item.get("pv"),
+            "depth": item.get("depth"), "seldepth": item.get("seldepth"),
+            "nodes": item.get("nodes"), "nps": item.get("nps"),
+            "time_ms": item.get("time_ms"), "wdl": item.get("wdl"), "lines": [item],
+        }
+
+    def generate():
+        events: queue.Queue = queue.Queue()
+        cancel = threading.Event()
+
+        def run():
+            try:
+                result = engine.analyze(
+                    req.fen, depth=req.depth, mode=req.mode, value=req.value,
+                    multipv=req.multipv, show_wdl=req.show_wdl,
+                    search_moves=req.search_moves, cancel_event=cancel,
+                    on_info=lambda line: events.put(("info", payload(line))),
+                )
+                wdl = result.wdl
+                if wdl and sign == -1:
+                    wdl = (wdl[2], wdl[1], wdl[0])
+                final = EvalResponse(
+                    cp=None if result.score_cp is None else sign * result.score_cp,
+                    mate=None if result.score_mate is None else sign * result.score_mate,
+                    best_move=result.best_move, pv=result.pv, depth=result.depth,
+                    seldepth=result.seldepth, nodes=result.nodes, nps=result.nps,
+                    time_ms=result.time_ms, wdl=wdl,
+                    lines=[red_line(line) for line in (result.lines or [])],
+                ).model_dump()
+                events.put(("complete", final))
+            except Exception as error:
+                events.put(("error", {"message": str(error)}))
+
+        threading.Thread(target=run, daemon=True).start()
+        try:
+            while True:
+                event, data = events.get()
+                yield json.dumps({"type": event, "data": data}, ensure_ascii=False) + "\n"
+                if event in ("complete", "error"):
+                    break
+        finally:
+            cancel.set()
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
 
 
 class EngineResponse(BaseModel):
