@@ -151,8 +151,8 @@ def test_checkin_endpoint_awards():
     assert me["costs"]["coach_plan"] == credits.DEFAULT_COST["coach_plan"]
 
 
-def test_coach_plan_blocks_when_no_credits(monkeypatch):
-    """大模型已启用但用户积分为 0 时，刷新计划返回 402，不会调用大模型。"""
+def test_coach_plan_falls_back_when_no_credits(monkeypatch):
+    """大模型已启用但积分为 0 时，仍返回基于训练数据的免费计划。"""
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     TestSession = _session_factory()
     _add_user(TestSession)
@@ -162,7 +162,8 @@ def test_coach_plan_blocks_when_no_credits(monkeypatch):
         db.commit()
     client = _client(TestSession)
     r = client.post("/api/coach/plan", headers=_auth())
-    assert r.status_code == 402
+    assert r.status_code == 200
+    assert r.json()["plan"]
 
 
 def test_explain_charges_credits(monkeypatch):

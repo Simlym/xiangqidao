@@ -23,6 +23,7 @@ from .routes import (
     games,
     play,
     stats,
+    today,
     training,
     variants,
 )
@@ -58,6 +59,7 @@ app.include_router(account.router)
 app.include_router(admin.router)
 app.include_router(engine_admin.router)
 app.include_router(training.router)
+app.include_router(today.router)
 app.include_router(challenge.router)
 app.include_router(stats.router)
 app.include_router(coach.router)

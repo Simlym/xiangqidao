@@ -9,12 +9,14 @@ import Challenge from "./Challenge";
 import Auth from "./Auth";
 import Admin from "./Admin";
 import Settings from "./Settings";
-import { fetchMe, getToken, setToken, getCredits, checkinCredits, getEntitlements } from "./api";
+import Today from "./Today";
+import { fetchMe, getToken, setToken, resetGuestId, getCredits, checkinCredits, getEntitlements } from "./api";
 import { useReminders } from "./reminders";
 import { RUNTIME, runtime } from "./platform/runtime";
 import { useCosmeticPreferences } from "./cosmetics";
 
 const TAB_DESCRIPTIONS = {
+  today: "今日任务与下一步行动",
   train: "今日计划与专项训练",
   coach: "个性化棋力建议",
   challenge: "循序渐进提升棋力",
@@ -68,7 +70,7 @@ function CreditsBadge({ credits, onCheckin }) {
 export default function App() {
   const isDesktop = runtime === RUNTIME.TAURI;
   const appearance = useCosmeticPreferences();
-  const [tab, setTab] = React.useState("train");
+  const [tab, setTab] = React.useState("today");
   // 训练目标：null | {puzzleId} | {category}，用于从复盘/弱点跳转到指定练习
   const [trainTarget, setTrainTarget] = React.useState(null);
   // 复盘目标：从对弈结束「一键复盘」跳转时携带的棋局 id
@@ -142,6 +144,7 @@ export default function App() {
 
   function onAuth(res) {
     setToken(res.token);
+    resetGuestId();
     setUser({ username: res.username, role: res.role });
     setAuthOpen(false);
     refreshCredits();
@@ -153,7 +156,7 @@ export default function App() {
     setUser(null);
     setCredits(null);
     setEntitlements(null);
-    if (tab === "admin" || tab === "coach") setTab("train");
+    if (tab === "admin") setTab("today");
   }
 
   // 登录态失效（如收到 401）时，清理并弹出登录框
@@ -161,41 +164,53 @@ export default function App() {
     openAuth("login");
   }
 
-  const mainTabs = [
-    { key: "train", icon: "🎯", desktopIcon: "◎", label: "战术训练", short: "训练" },
-    ...(entitlements?.features?.includes("ai_training")
-      ? [{ key: "coach", icon: "🧑‍🏫", desktopIcon: "✦", label: "AI 教练", short: "教练" }]
-      : []),
-    { key: "challenge", icon: "🏯", desktopIcon: "◇", label: "闯关", short: "闯关" },
-    { key: "stats", icon: "📊", desktopIcon: "▥", label: "进度统计", short: "统计" },
-    { key: "games", icon: "📋", desktopIcon: "≡", label: "棋局复盘", short: "复盘" },
-    { key: "play", icon: "♟️", desktopIcon: "♟", label: "人机对弈", short: "对弈" },
-    { key: "jieqi", icon: "◉", desktopIcon: "◉", label: "揭棋", short: "揭棋" },
-    ...(user?.role === "admin"
-      ? [{ key: "admin", icon: "⚙️", desktopIcon: "⚙", label: "管理后台", short: "后台" }]
-      : []),
+  const primaryGroups = [
+    { key: "today", icon: "◷", label: "今日", short: "今日", defaultTab: "today", tabs: ["today", "stats", "coach"] },
+    { key: "training", icon: "◎", label: "训练", short: "训练", defaultTab: "train", tabs: ["train", "challenge"] },
+    { key: "playing", icon: "♟", label: "对弈", short: "对弈", defaultTab: "play", tabs: ["play", "jieqi"] },
+    { key: "records", icon: "≡", label: "棋谱", short: "棋谱", defaultTab: "games", tabs: ["games"] },
+  ];
+  const pageTabs = [
+    { key: "today", label: "今日计划" },
+    { key: "stats", label: "成长报告" },
+    { key: "coach", label: "教练建议" },
+    { key: "train", label: "每日训练" },
+    { key: "challenge", label: "闯关" },
+    { key: "play", label: "标准象棋" },
+    { key: "jieqi", label: "揭棋" },
+    { key: "games", label: "我的棋局" },
   ];
   const settingsTab = { key: "settings", icon: "⚙️", desktopIcon: "⚙", label: "设置", short: "设置" };
-  const tabs = [...mainTabs, settingsTab];
-  const navTabs = isDesktop ? mainTabs : [...mainTabs, settingsTab];
-
-  const activeTab = tabs.find((item) => item.key === tab) || tabs[0];
+  const adminTab = { key: "admin", icon: "⌁", desktopIcon: "⌁", label: "管理后台", short: "后台" };
+  const utilityTabs = [settingsTab, ...(user?.role === "admin" ? [adminTab] : [])];
+  const activeGroup = primaryGroups.find((group) => group.tabs.includes(tab));
+  const activeTab = [...pageTabs, ...utilityTabs].find((item) => item.key === tab) || pageTabs[0];
 
   const nav = (
     <nav aria-label="主要功能">
-      {navTabs.map((item) => (
+      {primaryGroups.map((item) => (
         <button
           key={item.key}
-          className={tab === item.key ? "active" : ""}
-          onClick={() => setTab(item.key)}
+          className={item.tabs.includes(tab) ? "active" : ""}
+          onClick={() => setTab(item.defaultTab)}
           title={isDesktop ? undefined : item.label}
         >
-          <span className="nav-ico" aria-hidden>{isDesktop ? item.desktopIcon : item.icon}</span>
+          <span className="nav-ico" aria-hidden>{item.icon}</span>
           <span className="nav-label-full">{item.label}</span>
           <span className="nav-label-short">{item.short}</span>
         </button>
       ))}
     </nav>
+  );
+
+  const secondaryNav = activeGroup && activeGroup.tabs.length > 1 && (
+    <div className="section-tabs" role="tablist" aria-label={`${activeGroup.label}二级导航`}>
+      {pageTabs.filter((item) => activeGroup.tabs.includes(item.key)).map((item) => (
+        <button key={item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}>
+          {item.label}
+        </button>
+      ))}
+    </div>
   );
 
   const account = user ? (
@@ -257,6 +272,9 @@ export default function App() {
 
   const pageContent = (
     <>
+      {tab === "today" && (
+        <Today user={user} onNavigate={setTab} onPractice={practiceCategory} />
+      )}
       {tab === "train" && (
         <Trainer
           target={trainTarget}
@@ -272,6 +290,7 @@ export default function App() {
           onNavigate={setTab}
           user={user}
           credits={credits}
+          entitlements={entitlements}
           onCreditsChanged={refreshCredits}
           onRequireLogin={requireLogin}
         />
@@ -334,23 +353,33 @@ export default function App() {
                 <span aria-hidden>⚙</span>
                 <span>设置</span>
               </button>
+              {user?.role === "admin" && (
+                <button
+                  className={`desktop-settings-link${tab === "admin" ? " active" : ""}`}
+                  onClick={() => setTab("admin")}
+                >
+                  <span aria-hidden>⌁</span>
+                  <span>管理后台</span>
+                </button>
+              )}
               {desktopAccount}
             </div>
           </aside>
           <section className={`desktop-workspace desktop-tab-${tab}`}>
             <header className="desktop-toolbar">
               <div>
-                <h1>{activeTab.label}</h1>
+                <h1>{activeGroup?.label || activeTab.label}</h1>
                 <p>{TAB_DESCRIPTIONS[activeTab.key]}</p>
               </div>
               <span className="desktop-runtime-badge"><i />PC 客户端</span>
             </header>
             {reminderBanner}
+            {secondaryNav}
             <main>{pageContent}</main>
             <footer className="desktop-statusbar">
               <span>桌面模式</span>
               <span className="desktop-status-spacer" />
-              <span>{activeTab.label}</span>
+              <span>{activeGroup?.label || activeTab.label}</span>
             </footer>
           </section>
         </>
@@ -359,9 +388,14 @@ export default function App() {
           <header className="web-header">
             <h1>象棋道</h1>
             {nav}
-            <div className="user-box">{account}</div>
+            <div className="user-box">
+              <button className="btn-link" onClick={() => setTab("settings")}>设置</button>
+              {user?.role === "admin" && <button className="btn-link" onClick={() => setTab("admin")}>后台</button>}
+              {account}
+            </div>
           </header>
           {reminderBanner}
+          {secondaryNav}
           <main>{pageContent}</main>
         </>
       )}

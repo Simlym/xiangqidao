@@ -98,6 +98,27 @@ class Attempt(Base):
     had_retry: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否中途重试，用于首答正确率
 
 
+class PuzzleSession(Base):
+    """一次可信解题会话。
+
+    正确步骤、重试次数与是否完成均由服务端推进，最终结算不再相信客户端传入的
+    correct / had_retry。训练与闯关共用该模型，通过 context 区分来源。
+    """
+
+    __tablename__ = "puzzle_sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    puzzle_id: Mapped[int] = mapped_column(ForeignKey("puzzles.id"), index=True)
+    context: Mapped[str] = mapped_column(String(16), default="training")
+    step: Mapped[int] = mapped_column(Integer, default=0)
+    wrong_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    settled: Mapped[bool] = mapped_column(Boolean, default=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
 class Game(Base):
     """棋局复盘记录。"""
 

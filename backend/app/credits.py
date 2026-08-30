@@ -2,7 +2,7 @@
 
 核心目的：防止未登录用户疯狂调用付费大模型接口刷成本。
 - 仅登录用户拥有积分账户；访客（GUEST_USER）无账户、无法消耗，故 LLM 功能必须登录。
-- 调用大模型的功能按动作扣分（AI 教练、对局分析点评、题目讲解、走法点评）。
+- 免费账号调用大模型按动作扣分；PRO 会员已包含，不再重复扣积分。
 - 通过签到 / 对弈 / 做题赚取积分，引导用户多在平台下棋、训练。
 - 默认成本与奖励见 DEFAULT_*，管理员可用 AppSetting 覆盖（键名见 _setting_key），无需重启。
 
@@ -152,6 +152,28 @@ def can_afford(db: Session, user_id: str, action: str) -> bool:
     return balance(db, user_id) >= cost(db, action)
 
 
+def _has_included_ai(db: Session, user_id: str) -> bool:
+    """PRO 的 AI 调用包含在会员内，不再叠加扣积分。"""
+    if not _is_member(user_id):
+        return False
+    from .entitlements import membership_active
+    from .models import User
+
+    user = db.scalar(select(User).where(User.username == user_id))
+    return bool(user and membership_active(user))
+
+
+def can_use_ai(db: Session, user_id: str, action: str) -> bool:
+    return _has_included_ai(db, user_id) or can_afford(db, user_id, action)
+
+
+def charge(db: Session, user_id: str, action: str, ref: str = "") -> bool:
+    """PRO 直接放行；免费用户使用积分兑换单次 AI 调用。"""
+    if _has_included_ai(db, user_id):
+        return True
+    return try_spend(db, user_id, action, ref)
+
+
 def try_spend(db: Session, user_id: str, action: str, ref: str = "") -> bool:
     """扣减一次动作成本；余额不足或非会员返回 False（不抛异常）。
 
@@ -172,7 +194,7 @@ def try_spend(db: Session, user_id: str, action: str, ref: str = "") -> bool:
 
 def refund(db: Session, user_id: str, action: str, ref: str = "") -> None:
     """退回一次动作成本（如大模型调用失败、返回空）。"""
-    if not _is_member(user_id):
+    if not _is_member(user_id) or _has_included_ai(db, user_id):
         return
     price = cost(db, action)
     if price <= 0:

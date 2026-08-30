@@ -55,9 +55,10 @@ def overview(db: Session = Depends(get_db), user: str = Depends(current_user_id)
     learned = repo.count_reviews(db, user)
     due = repo.count_due(db, user, today)
 
-    total_att, correct_att, first_try_att = repo.attempt_totals(db, user)
+    total_att, correct_att, _ = repo.attempt_totals(db, user)
+    first_total, first_correct = repo.first_attempt_totals(db, user)
     acc = round(correct_att / total_att, 3) if total_att else 0.0
-    first_acc = round(first_try_att / total_att, 3) if total_att else 0.0
+    first_acc = round(first_correct / first_total, 3) if first_total else 0.0
 
     # 连续打卡：从今天往前逐日检查是否有作答
     days = repo.attempt_dates(db, user)

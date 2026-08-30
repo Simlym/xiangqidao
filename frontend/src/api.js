@@ -1,6 +1,25 @@
 const base = "/api";
 
 const TOKEN_KEY = "xq_token";
+const GUEST_KEY = "xq_guest_id";
+
+function makeGuestId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID().replaceAll("-", "");
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+}
+
+export function getGuestId() {
+  let id = localStorage.getItem(GUEST_KEY);
+  if (!/^[a-f0-9]{32}$/.test(id || "")) {
+    id = makeGuestId();
+    localStorage.setItem(GUEST_KEY, id);
+  }
+  return id;
+}
+
+export function resetGuestId() {
+  localStorage.setItem(GUEST_KEY, makeGuestId());
+}
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -12,7 +31,11 @@ export function setToken(t) {
 
 function authHeaders(extra = {}) {
   const t = getToken();
-  return t ? { ...extra, Authorization: `Bearer ${t}` } : extra;
+  return {
+    ...extra,
+    "X-Guest-ID": getGuestId(),
+    ...(t ? { Authorization: `Bearer ${t}` } : {}),
+  };
 }
 
 async function req(path, { method = "GET", body, signal } = {}) {
@@ -66,6 +89,7 @@ export const getWeekly = () => req("/stats/weekly");
 export const getForecast = (days = 14) => req(`/stats/forecast?days=${days}`);
 export const getRating = () => req("/stats/rating");
 export const getLeaderboard = (limit = 20) => req(`/stats/leaderboard?limit=${limit}`);
+export const getToday = () => req("/today");
 
 // ── AI 教练 ─────────────────────────────────────────────
 export const getCoachPlan = () => req("/coach/plan");

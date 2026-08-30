@@ -2333,3 +2333,91 @@ body[data-app-theme="night"] {
 .app-theme-night .hint { color: #ead9a6; background: #3a3422; }
 .app-theme-night .game-black { color: #d8e1e8; }
 .app-theme-night .modal-overlay { background: rgba(2, 7, 12, .68); }
+/* ── 四大入口下的二级导航 ───────────────────────────────── */
+.section-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 6px max(16px, calc((100vw - 1180px) / 2));
+  background: rgba(255, 255, 255, .78);
+  border-bottom: 1px solid #e5ddd2;
+}
+.section-tabs button {
+  border: 0;
+  background: transparent;
+  color: #756b61;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.section-tabs button:hover { background: #f4eee7; color: #3e3329; }
+.section-tabs button.active { background: #efe4d8; color: #9d432f; font-weight: 700; }
+.app-desktop .section-tabs { padding-left: 20px; background: #fbfaf7; }
+
+/* ── 今日计划 ─────────────────────────────────────────── */
+.today-page { display: flex; flex-direction: column; gap: 16px; max-width: 1120px; margin: 0 auto; }
+.today-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 30px 34px;
+  border-radius: 16px;
+  color: #fffaf4;
+  background: linear-gradient(130deg, #3a3028 0%, #6f4931 64%, #a34b37 100%);
+  box-shadow: 0 12px 32px rgba(74, 47, 31, .18);
+}
+.today-hero h2 { margin: 7px 0 8px; font-size: clamp(23px, 2.4vw, 34px); }
+.today-hero p { margin: 0; color: rgba(255,255,255,.78); }
+.today-eyebrow { color: #b46a55; font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+.today-hero .today-eyebrow { color: #f0c5a8; }
+.today-primary {
+  flex: 0 0 auto;
+  min-width: 170px;
+  padding: 13px 20px;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 10px;
+  background: #fff8ef;
+  color: #8f3f2e;
+  font-weight: 800;
+  cursor: pointer;
+}
+.today-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.today-metric { padding: 17px 19px; border-radius: 12px; background: #fff; border: 1px solid #e7e0d7; }
+.today-metric strong { display: block; font-size: 25px; line-height: 1.15; color: #332b24; }
+.today-metric span { display: block; margin-top: 5px; color: #8a8178; font-size: 13px; }
+.today-metric.red { border-top: 3px solid #b9533d; }
+.today-metric.amber { border-top: 3px solid #bd7b2e; }
+.today-metric.blue { border-top: 3px solid #557b91; }
+.today-metric.green { border-top: 3px solid #5b8063; }
+.today-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(260px, .75fr); gap: 16px; }
+.today-tasks h3 { margin: 0 0 4px; }
+.today-tasks .panel-head p { margin: 0; }
+.today-task-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.today-task {
+  width: 100%; display: flex; align-items: center; gap: 13px; text-align: left;
+  border: 1px solid #e7e0d7; border-radius: 10px; background: #fffdfb; padding: 12px 14px; cursor: pointer;
+}
+.today-task:hover { border-color: #caa18e; background: #fff9f4; transform: translateY(-1px); }
+.today-task-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #f1e5da; color: #a14734; font-weight: 800; }
+.today-task-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.today-task-copy strong { color: #3c332c; }
+.today-task-copy small { color: #8b8178; line-height: 1.35; }
+.today-task-arrow { color: #b7a89b; font-size: 25px; }
+.today-growth { text-align: center; display: flex; flex-direction: column; align-items: center; }
+.today-rating { margin-top: 12px; font-size: 42px; font-weight: 850; color: #8f402f; line-height: 1; }
+.today-accuracy { width: 100%; display: flex; justify-content: space-between; margin-top: 22px; padding: 13px 0; border-top: 1px solid #ece5dd; border-bottom: 1px solid #ece5dd; color: #756b62; }
+.today-accuracy b { color: #3f342c; }
+.today-growth-actions { display: grid; width: 100%; grid-template-columns: 1fr; gap: 8px; margin-top: 14px; }
+.today-growth-actions button { border: 1px solid #d9c9bc; border-radius: 8px; background: #fff; padding: 9px; color: #774b38; cursor: pointer; }
+
+@media (max-width: 760px) {
+  .today-hero { align-items: flex-start; flex-direction: column; padding: 24px; }
+  .today-primary { width: 100%; }
+  .today-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .today-grid { grid-template-columns: 1fr; }
+  .section-tabs { overflow-x: auto; padding: 6px 12px; }
+  .section-tabs button { white-space: nowrap; }
+}

@@ -25,7 +25,8 @@ def entitlement_payload(user: User) -> dict:
         "plan": "pro" if active else "free",
         "active": active,
         "expires_at": user.membership_expires_at,
-        "features": list(AI_FEATURES) if active else [],
+        # 免费账号也可用积分兑换 AI；PRO 表示不限次包含，不再形成双重门槛。
+        "features": list(AI_FEATURES),
     }
 
 

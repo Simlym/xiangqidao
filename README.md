@@ -203,6 +203,16 @@ python -m app.importer.load app/importer/wukong_puzzles.json
 > 「先弃后杀 / 安静着造杀」等非连续将军的题无法被纯将军搜索求解，会被跳过——保证导入的每题
 > 都是经 `verify_mate` 验证成立的连将杀。仓库已附带产出的 `wukong_puzzles.json`。
 
+正式导入建议使用审计后的题库。以下命令会检查严格 FEN、逐手合法性、终局将死、
+重复局面与同深度多解，并重新校准难度：
+
+```bash
+python -m app.importer.audit_puzzles
+python -m app.importer.load app/importer/wukong_puzzles.audited.json
+```
+
+审计结果见 `app/importer/puzzle_audit_report.md`；原始题源始终保留，便于追溯。
+
 ### 题库分类体系（两级 + 难度 + 步数）
 
 | 字段 | 含义 | 取值示例 |

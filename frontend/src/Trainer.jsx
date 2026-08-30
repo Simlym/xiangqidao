@@ -124,7 +124,9 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     // 乐观更新：玩家这一手立刻落到棋盘上，不必等校验/对方应着返回。
     setCurrentFen(fenAfterMine);
 
-    const res = await checkMove({ puzzle_id: puzzle.id, step, move, attempt: wrongCount });
+    const res = await checkMove({
+      puzzle_id: puzzle.id, session_id: puzzle.session_id, step, move, attempt: wrongCount,
+    });
 
     if (!res.correct) {
       setCurrentFen(prevFen);  // 走错：把棋子还原回走子前
@@ -171,6 +173,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     solveMs.current = Date.now() - startedAt.current;
     const res = await submitRating({
       puzzle_id: puzzle.id,
+      session_id: puzzle.session_id,
       self_rating: "again",
       had_retry: true,
       correct: false,
@@ -186,6 +189,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     solveMs.current = Date.now() - startedAt.current;
     const res = await submitRating({
       puzzle_id: puzzle.id,
+      session_id: puzzle.session_id,
       self_rating: rating,
       had_retry: hadRetry,
       correct: true,

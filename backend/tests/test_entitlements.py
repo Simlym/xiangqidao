@@ -10,10 +10,10 @@ def make_user(**values):
     return User(**defaults)
 
 
-def test_free_user_has_no_ai_features():
+def test_free_user_can_use_points_for_ai_features():
     result = entitlement_payload(make_user())
     assert result["active"] is False
-    assert result["features"] == []
+    assert set(result["features"]) == {"ai_analysis", "ai_training", "cloud_engine"}
 
 
 def test_active_pro_user_has_cloud_ai_features():

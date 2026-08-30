@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from .. import credits
 from ..auth import current_user, current_user_id
-from ..entitlements import require_ai_member
 from ..deps import get_db
 from ..ratelimit import limiter
 from ..engine import get_shared_engine
@@ -178,7 +177,7 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
                 and best_move
                 and best_move != move
                 and llm_active
-                and credits.try_spend(db, owner, "mistake_explain", f"game:{game_id}")
+                and credits.charge(db, owner, "mistake_explain", f"game:{game_id}")
             ):
                 explanation = explain_mistake(
                     fen=fen_before,
@@ -200,17 +199,24 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
                 # 用引擎主变生成多步正解（己方/对方交替），取不到则退化为单手
                 trimmed = _trim_pv(fen_before, best_pv)
                 solution = ",".join(trimmed) if len(trimmed) >= 1 else best_move
-                puzzle = Puzzle(
-                    variant="xiangqi",
-                    fen=fen_before,
-                    solution=solution,
-                    side_to_move=side_to_move,
-                    category="实战漏算",
-                    source=f"game_{game_id}",
-                    user_id=owner,  # 实战漏着题归棋局所有者私有
-                )
-                db.add(puzzle)
-                db.flush()  # 获取 puzzle.id
+                source = f"game_{game_id}_move_{i + 1}"
+                puzzle = db.query(Puzzle).filter(
+                    Puzzle.user_id == owner,
+                    Puzzle.source == source,
+                    Puzzle.fen == fen_before,
+                ).first()
+                if puzzle is None:
+                    puzzle = Puzzle(
+                        variant="xiangqi",
+                        fen=fen_before,
+                        solution=solution,
+                        side_to_move=side_to_move,
+                        category="实战漏算",
+                        source=source,
+                        user_id=owner,  # 实战漏着题归棋局所有者私有
+                    )
+                    db.add(puzzle)
+                    db.flush()  # 获取 puzzle.id
                 puzzle_id = puzzle.id
 
             record = GameAnalysis(
@@ -258,7 +264,7 @@ def _generate_report(db, game_id: int, owner: str = "default") -> None:
     game = db.get(Game, game_id)
     if not game:
         return
-    if not credits.try_spend(db, owner, "game_report", f"game:{game_id}"):
+    if not credits.charge(db, owner, "game_report", f"game:{game_id}"):
         return
     records = (
         db.query(GameAnalysis)
@@ -299,7 +305,7 @@ def analyze_game(
     game_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: User = Depends(require_ai_member),
+    user: User = Depends(current_user),
 ):
     """触发棋局分析（后台执行）。
 

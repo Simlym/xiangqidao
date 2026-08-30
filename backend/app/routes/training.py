@@ -8,11 +8,11 @@ from sqlalchemy.orm import Session
 
 from .. import credits, ratings, repository as repo
 from ..auth import current_user, current_user_id
-from ..entitlements import require_ai_member
 from ..deps import get_db
 from ..importer.verify_mate import FILES, parse_fen
 from ..llm import explain_puzzle
 from ..models import Attempt, Review, User
+from ..puzzle_sessions import create_session, require_session
 from ..play_engine import game_status, legal_moves_uci
 from ..ratelimit import limiter
 from ..settings import get_deepseek_config
@@ -37,6 +37,7 @@ class PuzzleOut(BaseModel):
     category: str
     difficulty: int
     total_steps: int  # 总步数，前端用于显示进度
+    session_id: str   # 服务端可信解题会话
 
 
 class NextResponse(BaseModel):
@@ -47,6 +48,7 @@ class NextResponse(BaseModel):
 
 class CheckMoveRequest(BaseModel):
     puzzle_id: int
+    session_id: str
     step: int        # 0-based，第几步
     move: str        # 用户走的着法，UCI 坐标制
     attempt: int = 0  # 本步已错次数，用于分级提示（越大透露越多）
@@ -62,6 +64,7 @@ class CheckMoveResponse(BaseModel):
 
 class SubmitRequest(BaseModel):
     puzzle_id: int
+    session_id: str
     self_rating: str       # again/hard/good/easy（答对完成后用户主动选）
     had_retry: bool = False
     time_spent_ms: int = 0
@@ -142,9 +145,10 @@ def _target_difficulty(db: Session, user: str) -> int:
 
 # ── 接口 ───────────────────────────────────────────────────────
 
-def _puzzle_out(puzzle) -> PuzzleOut:
+def _puzzle_out(db: Session, puzzle, user: str, context: str = "training") -> PuzzleOut:
     n = len([m for m in puzzle.solution.split(",") if m.strip()])
     steps = (n + 1) // 2  # 仅玩家要走的着法数（对方应着自动走出）
+    session = create_session(db, user, puzzle, context)
     return PuzzleOut(
         id=puzzle.id,
         fen=puzzle.fen,
@@ -153,6 +157,7 @@ def _puzzle_out(puzzle) -> PuzzleOut:
         category=puzzle.category,
         difficulty=puzzle.difficulty,
         total_steps=steps,
+        session_id=session.id,
     )
 
 
@@ -169,7 +174,7 @@ def get_training_puzzle(
     puzzle = repo.get_visible_puzzle(db, puzzle_id, user)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
-    return _puzzle_out(puzzle)
+    return _puzzle_out(db, puzzle, user)
 
 
 @router.get("/next", response_model=NextResponse)
@@ -201,22 +206,35 @@ def next_puzzle(
             # 无到期题才考虑新题，且受每日新题上限约束
             if repo.count_new_today(db, user, today) < NEW_PER_DAY:
                 # 难度自适应：优先选难度最接近目标的新题
-                puzzle = repo.pick_new_puzzle(db, user, _target_difficulty(db, user))
+                puzzle = repo.pick_pending_private_puzzle(db, user) or repo.pick_new_puzzle(
+                    db, user, _target_difficulty(db, user)
+                )
                 # 取不到说明题库已学完；取到则正常返回
             else:
                 # 仍有未学新题但今日额度用尽时才算“达上限”
                 new_limit_reached = repo.count_unlearned(db, user) > 0
 
-    p_out = _puzzle_out(puzzle) if puzzle else None
+    p_out = _puzzle_out(db, puzzle, user) if puzzle else None
     return NextResponse(puzzle=p_out, due_count=due_count, new_limit_reached=new_limit_reached)
 
 
 @router.post("/check_move", response_model=CheckMoveResponse)
-def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
+def check_move(
+    req: CheckMoveRequest,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
     """校验用户走的某一步是否正确，返回新局面 FEN（不写库）。"""
-    puzzle = repo.get_puzzle(db, req.puzzle_id)
+    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
+    session = require_session(db, req.session_id, user, puzzle.id)
+    if session.settled:
+        raise HTTPException(409, "本次解题已经结算")
+    if session.completed:
+        raise HTTPException(409, "题目已经完成，请进行结算")
+    if req.step != session.step:
+        raise HTTPException(409, "解题步骤不同步，请重新进入题目")
 
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
     n = len(solution)
@@ -247,7 +265,9 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
 
     if not correct:
         # 分级提示：随重试次数逐步透露更多
-        hint = _graded_hint(fen_now, expected, req.attempt)
+        hint = _graded_hint(fen_now, expected, session.wrong_count)
+        session.wrong_count += 1
+        db.commit()
         return CheckMoveResponse(correct=False, done=False, fen_after=None, hint=hint)
 
     # 应用玩家这一手（终结步可能是等效变着）
@@ -263,6 +283,11 @@ def check_move(req: CheckMoveRequest, db: Session = Depends(get_db)):
             opponent_move = None
 
     done = sol_idx + 2 >= n  # 没有下一玩家步即完成
+    if done:
+        session.completed = True
+    else:
+        session.step += 1
+    db.commit()
     return CheckMoveResponse(
         correct=True, done=done, fen_after=fen_after, hint=None, opponent_move=opponent_move,
     )
@@ -274,7 +299,7 @@ def explain(
     request: Request,
     req: ExplainRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(require_ai_member),
+    user: User = Depends(current_user),
 ):
     """AI 讲解一道题的解题思路。需登录；首次生成消耗积分，结果缓存后复用免费。"""
     puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user.username)
@@ -288,10 +313,10 @@ def explain(
     if not get_deepseek_config(db).active:
         return ExplainResponse(enabled=False, explanation="")
 
-    if not credits.try_spend(db, user.username, "puzzle_explain", f"puzzle:{puzzle.id}"):
+    if not credits.charge(db, user.username, "puzzle_explain", f"puzzle:{puzzle.id}"):
         raise HTTPException(
             402,
-            f"积分不足，AI 题目讲解需 {credits.cost(db, 'puzzle_explain')} 积分。可通过签到、对弈、做题获取。",
+            f"免费账号本次 AI 讲解需 {credits.cost(db, 'puzzle_explain')} 积分；PRO 会员不限次。",
         )
 
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
@@ -308,9 +333,17 @@ def explain(
 @router.post("/submit", response_model=SubmitResponse)
 def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depends(current_user_id)):
     """记录本次作答结果（含自评），更新 SM-2。"""
-    puzzle = repo.get_puzzle(db, req.puzzle_id)
+    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
+    session = require_session(db, req.session_id, user, puzzle.id, "training")
+    if session.settled:
+        raise HTTPException(409, "本次解题已经结算")
+    if req.correct and not session.completed:
+        raise HTTPException(409, "服务端尚未确认完成全部正确步骤")
+
+    correct = session.completed
+    had_retry = session.wrong_count > 0
 
     solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
 
@@ -319,10 +352,10 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
     first_attempt = not repo.has_attempt(db, user, puzzle.id)
     if first_attempt:
         rating_change = ratings.apply(
-            db, user, puzzle, ratings.score_of(req.correct, req.had_retry)
+            db, user, puzzle, ratings.score_of(correct, had_retry)
         )
     # 首次做对奖励积分（每日封顶，防刷），鼓励多训练
-    if first_attempt and req.correct:
+    if first_attempt and correct:
         credits.earn(db, user, "puzzle", f"puzzle:{puzzle.id}")
 
     rev = repo.get_review(db, puzzle.id, user)
@@ -331,9 +364,9 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
         db.add(rev)
 
     # 答错放弃强制 again；答对但中途重试则自评最多降到 hard
-    if not req.correct:
+    if not correct:
         quality = QUALITY_MAP["again"]
-    elif req.had_retry and req.self_rating in ("good", "easy"):
+    elif had_retry and req.self_rating in ("good", "easy"):
         quality = QUALITY_MAP["hard"]
     else:
         quality = QUALITY_MAP.get(req.self_rating, 4)
@@ -354,11 +387,12 @@ def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depend
         Attempt(
             puzzle_id=puzzle.id,
             user_id=user,
-            correct=req.correct,
+            correct=correct,
             time_spent_ms=req.time_spent_ms,
-            had_retry=req.had_retry,
+            had_retry=had_retry,
         )
     )
+    session.settled = True
     db.commit()
 
     rc = (

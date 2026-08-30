@@ -46,7 +46,7 @@ def test_import_game(db):
         black_player="黑方",
         result="红胜",
     )
-    result = import_game(req, db, user="default")
+    result = import_game.__wrapped__(None, req, db, user="default")
     assert result["move_count"] == len(SAMPLE_MOVES)
     assert isinstance(result["id"], int)
 
@@ -54,13 +54,13 @@ def test_import_game(db):
 def test_import_invalid_move(db):
     req = ImportRequest(moves="h2e2 INVALID")
     with pytest.raises(HTTPException) as exc_info:
-        import_game(req, db, user="default")
+        import_game.__wrapped__(None, req, db, user="default")
     assert exc_info.value.status_code == 400
 
 
 def test_import_comma_separated(db):
     req = ImportRequest(moves="h2e2,h9g7")
-    result = import_game(req, db, user="default")
+    result = import_game.__wrapped__(None, req, db, user="default")
     assert result["move_count"] == 2
 
 
@@ -75,7 +75,7 @@ def test_list_games(db):
 
 def test_get_game_positions(db):
     req = ImportRequest(moves=" ".join(SAMPLE_MOVES))
-    result = import_game(req, db, user="default")
+    result = import_game.__wrapped__(None, req, db, user="default")
     game_id = result["id"]
 
     detail = get_game(game_id, db, user="default")
@@ -109,7 +109,7 @@ def test_get_game_not_found(db):
 
 def test_delete_game(db):
     req = ImportRequest(moves="h2e2")
-    result = import_game(req, db, user="default")
+    result = import_game.__wrapped__(None, req, db, user="default")
     game_id = result["id"]
 
     resp = delete_game(game_id, db, user="default")

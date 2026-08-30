@@ -53,7 +53,7 @@ export default function Stats({ onPractice }) {
       </div>
 
       <div className="panel">
-        <h3>各杀法正确率（最弱在前）</h3>
+        <h3>各杀法新题首答正确率（最弱在前）</h3>
         {cats.length === 0 ? (
           <p className="muted">还没有数据，先去练几题。</p>
         ) : (

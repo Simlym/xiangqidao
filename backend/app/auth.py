@@ -11,6 +11,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import time
 
 from fastapi import Depends, Header, HTTPException
@@ -38,7 +39,9 @@ if _secret == _DEFAULT_SECRET:
 SECRET = _secret.encode()
 TOKEN_TTL = 60 * 60 * 24 * 14  # 14 天
 PBKDF2_ITER = 120_000
-GUEST_USER = "default"  # 未登录时的访客数据归属，保持单用户向后兼容
+GUEST_USER = "default"  # 公共题库归属；旧版单机访客数据也仍使用该值
+GUEST_PREFIX = "guest:"
+GUEST_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 
 
 # ── 密码 ────────────────────────────────────────────────────────
@@ -98,9 +101,18 @@ def _username_from_header(authorization: str | None) -> str | None:
     return parse_token(authorization[7:])
 
 
-def current_user_id(authorization: str | None = Header(default=None)) -> str:
-    """返回数据归属的 user_id：已登录用其用户名，未登录用访客 default。"""
-    return _username_from_header(authorization) or GUEST_USER
+def guest_owner(guest_id: str | None) -> str:
+    """把客户端设备 id 转为数据库归属；非法/旧客户端安全回退到旧访客。"""
+    value = (guest_id or "").strip().lower()
+    return f"{GUEST_PREFIX}{value}" if GUEST_ID_RE.fullmatch(value) else GUEST_USER
+
+
+def current_user_id(
+    authorization: str | None = Header(default=None),
+    x_guest_id: str | None = Header(default=None),
+) -> str:
+    """已登录使用账号；未登录使用设备级游客身份，避免多人共享进度。"""
+    return _username_from_header(authorization) or guest_owner(x_guest_id)
 
 
 def current_user(

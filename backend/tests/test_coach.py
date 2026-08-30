@@ -57,11 +57,11 @@ def test_weak_category_detected():
     """某类目 3 次作答全错：应识别为弱点并给出专项建议。"""
     TestSession = _session_factory()
     with TestSession() as db:
-        p = Puzzle(fen=MATE_FEN, solution="h8f8", side_to_move="w",
-                   category="卧槽马", difficulty=2, source="test")
-        db.add(p)
-        db.flush()
-        for _ in range(3):
+        for index in range(3):
+            p = Puzzle(fen=MATE_FEN, solution="h8f8", side_to_move="w",
+                       category="卧槽马", difficulty=2, source=f"test{index}")
+            db.add(p)
+            db.flush()
             db.add(Attempt(puzzle_id=p.id, user_id="default", correct=False))
         db.commit()
 

@@ -33,8 +33,8 @@ def db():
 # ── 棋局按用户隔离 ───────────────────────────────────────────────
 
 def test_games_isolated_per_user(db):
-    a = import_game(ImportRequest(moves="h2e2"), db, user="alice")["id"]
-    import_game(ImportRequest(moves="h2e2 h9g7"), db, user="bob")
+    a = import_game.__wrapped__(None, ImportRequest(moves="h2e2"), db, user="alice")["id"]
+    import_game.__wrapped__(None, ImportRequest(moves="h2e2 h9g7"), db, user="bob")
 
     alice_games = list_games(limit=50, offset=0, db=db, user="alice")
     assert {g.id for g in alice_games} == {a}

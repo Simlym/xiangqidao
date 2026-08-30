@@ -60,7 +60,7 @@ def load(path: str, verify: bool = False, movetime_ms: int = 1000, mate_check: b
                     bad += 1
                     continue
 
-            verified = False
+            verified = bool(item.get("verified", False))
             if engine:
                 best = engine.bestmove(fen, movetime_ms)
                 if best != first_move:
