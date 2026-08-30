@@ -34,7 +34,7 @@ function buildPreview(initialFen, pv, variant) {
   return items;
 }
 
-export default function EngineAnalysisView({ fen, data, variant = "xiangqi", onAnalyzeMove, log = [] }) {
+export default function EngineAnalysisView({ fen, data, loading = false, variant = "xiangqi", onAnalyzeMove, log = [] }) {
   const [preview, setPreview] = React.useState(null);
   const [previewStep, setPreviewStep] = React.useState(0);
   const lines = data?.lines?.length ? data.lines : data?.pv?.length
@@ -53,12 +53,12 @@ export default function EngineAnalysisView({ fen, data, variant = "xiangqi", onA
   }
 
   return <>
-    {(data?.depth != null || data?.nps != null || data?.timeMs != null) && (
+    {(loading || data) && (
       <div className="engine-search-stats">
-        <span>深度 <b>{data.depth ?? "—"}{data.seldepth ? `/${data.seldepth}` : ""}</b></span>
-        <span>NPS <b>{formatCount(data.nps)}</b></span>
-        <span>节点 <b>{formatCount(data.nodes)}</b></span>
-        <span>用时 <b>{data.timeMs != null ? `${(data.timeMs / 1000).toFixed(1)}s` : "—"}</b></span>
+        <span>深度 <b>{data?.depth ?? "—"}{data?.seldepth ? `/${data.seldepth}` : ""}</b></span>
+        <span>NPS <b>{formatCount(data?.nps)}</b></span>
+        <span>节点 <b>{formatCount(data?.nodes)}</b></span>
+        <span>用时 <b>{data?.timeMs != null ? `${(data.timeMs / 1000).toFixed(1)}s` : "—"}</b></span>
       </div>
     )}
     {wdl && wdlTotal > 0 && (

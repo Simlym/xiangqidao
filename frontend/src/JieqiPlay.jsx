@@ -126,6 +126,7 @@ export default function JieqiPlay({ onOpenSettings }) {
   const [pendingFlip, setPendingFlip] = React.useState(null);
   const [analysisEnabled, setAnalysisEnabled] = React.useState(true);
   const [analysisData, setAnalysisData] = React.useState(null);
+  const [analysisPosition, setAnalysisPosition] = React.useState(null);
   const [analysisLoading, setAnalysisLoading] = React.useState(false);
   const [analysisError, setAnalysisError] = React.useState("");
   const [analysisMode, setAnalysisMode] = React.useState("movetime");
@@ -141,8 +142,6 @@ export default function JieqiPlay({ onOpenSettings }) {
   const initialPlyRef = React.useRef(0);
   const analysisReqId = React.useRef(0);
   const analysisSession = React.useRef(null);
-  const analysisFrame = React.useRef(null);
-  const pendingAnalysisUpdate = React.useRef(null);
   const turnReqId = React.useRef(0);
 
   React.useEffect(() => {
@@ -158,6 +157,7 @@ export default function JieqiPlay({ onOpenSettings }) {
     const requestId = ++analysisReqId.current;
     setAnalysisLoading(true);
     setAnalysisError("");
+    const positionLegalMoves = new Set(legalJieqiMoves(position));
     const options = {
       mode: analysisMode,
       value: analysisMode === "depth" ? analysisDepth : analysisTime,
@@ -167,16 +167,14 @@ export default function JieqiPlay({ onOpenSettings }) {
       searchMoves: analysisSearchMoves,
       onUpdate(update) {
         if (requestId !== analysisReqId.current) return;
-        pendingAnalysisUpdate.current = update;
-        if (analysisFrame.current != null) return;
-        analysisFrame.current = requestAnimationFrame(() => {
-          analysisFrame.current = null;
-          const next = pendingAnalysisUpdate.current;
-          if (!next || requestId !== analysisReqId.current) return;
-          const rawBestMove = next.bestMove;
-          const baseMove = rawBestMove?.slice(0, 4);
-          setAnalysisData({ ...next, bestMove: legalJieqiMoves(position).includes(baseMove) ? baseMove : null, rawBestMove });
+        const rawBestMove = update.bestMove;
+        const baseMove = rawBestMove?.slice(0, 4);
+        setAnalysisData({
+          ...update,
+          bestMove: positionLegalMoves.has(baseMove) ? baseMove : null,
+          rawBestMove,
         });
+        setAnalysisPosition(position);
       },
     };
     const session = jieqiEngine.startAnalysis(position, options);
@@ -189,10 +187,12 @@ export default function JieqiPlay({ onOpenSettings }) {
       }
       if (requestId === analysisReqId.current) {
         setAnalysisData({ ...result, bestMove: baseMove, rawBestMove: result.bestMove });
+        setAnalysisPosition(position);
       }
     } catch (reason) {
       if (requestId === analysisReqId.current && reason?.name !== "AbortError") {
         setAnalysisData(null);
+        setAnalysisPosition(null);
         setAnalysisError(reason.message || "揭棋分析引擎不可用");
       }
     } finally {
@@ -209,7 +209,9 @@ export default function JieqiPlay({ onOpenSettings }) {
     return () => analysisSession.current?.stop();
   }, [gameMode, fen, analysisEnabled, pendingFlip, winner, analysisMode, analysisTime, analysisDepth, analysisMultiPv, analysisSearchMoves]);
 
-  React.useEffect(() => { setAnalysisSearchMoves([]); }, [fen]);
+  React.useEffect(() => {
+    setAnalysisSearchMoves((moves) => moves.length ? [] : moves);
+  }, [fen]);
 
   function toggleAnalysis() {
     if (analysisEnabled) {
@@ -219,6 +221,7 @@ export default function JieqiPlay({ onOpenSettings }) {
       setAnalysisEnabled(false);
       setAnalysisLoading(false);
       setAnalysisData(null);
+      setAnalysisPosition(null);
       setAnalysisError("");
     } else {
       setAnalysisEnabled(true);
@@ -250,6 +253,7 @@ export default function JieqiPlay({ onOpenSettings }) {
     setSaved(false);
     setPendingFlip(null);
     setAnalysisData(null);
+    setAnalysisPosition(null);
     setAnalysisError("");
     setShowHint(true);
     setBoardFlipped(gameMode === "human-ai" && humanSide === "b");
@@ -309,7 +313,6 @@ export default function JieqiPlay({ onOpenSettings }) {
     const mover = parseJieqiFen(previous).side;
     const recordedMove = `${move}${reveal}`;
     try {
-      setAnalysisData(null);
       setAnalysisError("");
       const next = applyJieqiMove(previous, recordedMove, { identifyCapturedHidden: false });
       const finalWinner = winnerFor(jieqiStatus(next), mover);
@@ -523,9 +526,7 @@ export default function JieqiPlay({ onOpenSettings }) {
     setWinner(null);
     setSaved(false);
     setError("");
-    setAnalysisData(null);
     setAnalysisError("");
-    setAnalysisLoading(false);
     setShowHint(true);
   }
 
@@ -556,8 +557,9 @@ export default function JieqiPlay({ onOpenSettings }) {
   for (let index = 0; index < notationTexts.length; index += 2) {
     notationPairs.push([notationTexts[index], notationTexts[index + 1] || ""]);
   }
+  const analysisIsCurrent = analysisPosition === fen;
   const bestMoveText = analysisData?.bestMove
-    ? jieqiMoveToChinese(fen, analysisData.bestMove)
+    ? jieqiMoveToChinese(analysisPosition || fen, analysisData.bestMove)
     : "";
   const analysisRuntime = analysisData?.runtime === "native"
     ? "PC 原生揭棋引擎"
@@ -657,7 +659,7 @@ export default function JieqiPlay({ onOpenSettings }) {
               lastMove={lastMove}
               disabled={thinking || Boolean(winner) || Boolean(pendingFlip)}
               legalMoves={legalMoves}
-              hintMove={gameMode === "free" && showHint && !pendingFlip ? analysisData?.bestMove || null : null}
+              hintMove={gameMode === "free" && showHint && !pendingFlip && analysisIsCurrent ? analysisData?.bestMove || null : null}
               flipped={boardFlipped}
               checkedSide={inCheck ? currentSide : null}
               parsePosition={parseJieqiBoard}
@@ -718,7 +720,7 @@ export default function JieqiPlay({ onOpenSettings }) {
                         <div className="eval-bar-red" style={{ width: `${evalInfo.redPct}%` }} />
                         <span className="eval-bar-value">{analysisLoading && !analysisData ? "…" : evalInfo.value}</span>
                       </div>
-                      <p>{analysisLoading ? "正在分析当前局面…" : evalInfo.label}</p>
+                      <p>{evalInfo.label}</p>
                       <div className="engine-analysis-controls">
                         <select value={analysisMode} onChange={(event) => setAnalysisMode(event.target.value)} aria-label="分析模式">
                           <option value="movetime">限时分析</option>
@@ -733,15 +735,24 @@ export default function JieqiPlay({ onOpenSettings }) {
                           <option value={1}>最佳 1 线</option><option value={3}>候选 3 线</option><option value={5}>候选 5 线</option>
                         </select>
                       </div>
-                      {analysisData && <>
+                      {(analysisLoading || analysisData) && <>
                         <div className="jieqi-best-move">
                           <span>最佳着法</span>
-                          <strong title={analysisData.bestMove}>{bestMoveText}</strong>
+                          <strong title={analysisData?.bestMove || ""}>{bestMoveText || "—"}</strong>
                         </div>
                         {analysisSearchMoves.length > 0 && <button className="engine-searchmove-clear" onClick={() => setAnalysisSearchMoves([])}>正在限定 {analysisSearchMoves[0]} · 取消限定</button>}
-                        <EngineAnalysisView fen={fen} data={analysisData} variant="jieqi" onAnalyzeMove={(move) => setAnalysisSearchMoves([move])} log={jieqiEngine.getLog()} />
-                        <small>{analysisRuntime}{analysisMode === "infinite" ? " · 无限分析" : ""}</small>
                       </>}
+                      {(analysisLoading || analysisData) && (
+                        <EngineAnalysisView
+                          fen={analysisPosition || fen}
+                          data={analysisData}
+                          loading={analysisLoading}
+                          variant="jieqi"
+                          onAnalyzeMove={analysisIsCurrent ? (move) => setAnalysisSearchMoves([move]) : null}
+                          log={jieqiEngine.getLog()}
+                        />
+                      )}
+                      {(analysisLoading || analysisData) && <small>{analysisRuntime}{analysisMode === "infinite" ? " · 无限分析" : ""}</small>}
                       {analysisError && <div className="import-error">{analysisError}</div>}
                       {!analysisEnabled && !analysisData && !analysisError && <p>分析已停止，可从下方重新开启。</p>}
                     </div>

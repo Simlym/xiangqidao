@@ -55,8 +55,16 @@ export class EngineManager {
     for (const adapter of adapters) {
       try {
         if (stopped) throw new DOMException("分析已停止", "AbortError");
-        if (!(await adapter.ready())) continue;
+        const ready = await adapter.ready();
+        // ready() 可能包含原生引擎启动、切换变体等异步工作。等待期间页面可能
+        // 已经切换到新局面；此时绝不能再启动一个无人持有的无限搜索。
+        if (stopped) throw new DOMException("分析已停止", "AbortError");
+        if (!ready) continue;
         active = adapter.analyze(fen, { ...options, onUpdate });
+        if (stopped) {
+          active.stop?.();
+          throw new DOMException("分析已停止", "AbortError");
+        }
         const value = await active.result;
         deliverUpdate();
         return { ...value, runtime: adapter.kind };

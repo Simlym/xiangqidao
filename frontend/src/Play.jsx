@@ -250,7 +250,9 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     };
   }, [showEval, fen, thinking, localReady, analysisMode, analysisTime, analysisDepth, analysisMultiPv, analysisSearchMoves]);
 
-  React.useEffect(() => { setAnalysisSearchMoves([]); }, [fen]);
+  React.useEffect(() => {
+    setAnalysisSearchMoves((moves) => moves.length ? [] : moves);
+  }, [fen]);
 
   // 云库参考：轮到自己时查询当前局面的库着法（含评分/胜率）
   React.useEffect(() => {
@@ -946,7 +948,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
                         <div className="eval-bar-red" style={{ width: `${evalInfo.redPct}%` }} />
                         <span className="eval-bar-value">{evalLoading && !evalData ? "…" : evalInfo.value}</span>
                       </div>
-                      <p>{evalLoading ? "评估中…" : evalInfo.label}</p>
+                      <p>{evalInfo.label}</p>
                       <div className="engine-analysis-controls">
                         <select value={analysisMode} onChange={(event) => setAnalysisMode(event.target.value)} aria-label="分析模式">
                           <option value="movetime">限时分析</option><option value="depth">深度分析</option>{localReady && <option value="infinite">无限分析</option>}
@@ -960,7 +962,15 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
                         </select>
                       </div>
                       {analysisSearchMoves.length > 0 && <button className="engine-searchmove-clear" onClick={() => setAnalysisSearchMoves([])}>正在限定 {analysisSearchMoves[0]} · 取消限定</button>}
-                      {evalData && <EngineAnalysisView fen={fen} data={evalData} onAnalyzeMove={(move) => setAnalysisSearchMoves([move])} log={positionEngine.getLog()} />}
+                      {(evalLoading || evalData) && (
+                        <EngineAnalysisView
+                          fen={fen}
+                          data={evalData}
+                          loading={evalLoading}
+                          onAnalyzeMove={(move) => setAnalysisSearchMoves([move])}
+                          log={positionEngine.getLog()}
+                        />
+                      )}
                     </div>
                   )}
 

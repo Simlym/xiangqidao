@@ -544,7 +544,11 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .engine-pv-line { display: grid; grid-template-columns: 22px 46px minmax(0, 1fr); align-items: start; gap: 4px; padding: 6px; border-radius: 6px; background: #f7f3ed; font-size: 11px; }
 .engine-pv-line > b { color: #91877c; }
 .engine-pv-line > strong { color: #b12b26; }
-.engine-pv-line > div { display: flex; flex-wrap: wrap; gap: 3px; }
+.engine-pv-line > div {
+  display: flex; flex-wrap: nowrap; gap: 3px; min-width: 0; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: #c8c0b7 transparent;
+}
+.engine-pv-line > div button { flex: 0 0 auto; }
 .engine-pv-line button { padding: 0 2px; border: 0; background: transparent; color: #51483f; font: inherit; text-align: left; cursor: pointer; }
 .engine-pv-line button:hover { color: #b12b26; text-decoration: underline; }
 .engine-pv-line .engine-searchmove { grid-column: 3; justify-self: start; margin-top: 2px; color: #9a4d45; font-size: 10px; }
@@ -553,7 +557,7 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .engine-log summary { width: fit-content; border: 0; border-radius: 4px; outline: 0; cursor: pointer; }
 .engine-log summary:focus-visible { box-shadow: 0 0 0 2px rgba(177, 43, 38, .22); }
 .engine-log > div {
-  max-height: 180px; margin-top: 5px; overflow: auto; padding: 7px 9px;
+  height: 180px; margin-top: 5px; overflow: auto; padding: 7px 9px;
   border-radius: 5px; background: #f4f1ea;
   scrollbar-width: thin; scrollbar-color: #b6afa6 transparent;
 }
