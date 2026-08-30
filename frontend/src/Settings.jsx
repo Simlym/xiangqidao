@@ -4,6 +4,7 @@ import { createEngineManager } from "./core/engine/createEngineManager";
 import { evalPosition, evalJieqiPosition, getCosmetics, purchaseCosmetic } from "./api";
 import { cosmeticPreferences, setCosmeticPreference } from "./cosmetics";
 import { playSound, soundMuted, setSoundMuted, soundTheme, setSoundTheme } from "./sounds";
+import { analysisPreferences, saveAnalysisPreferences } from "./analysisPreferences";
 
 const xiangqiEngine = createEngineManager({ remoteEvaluate: evalPosition });
 const jieqiEngine = createEngineManager({ variant: "jieqi", remoteEvaluate: evalJieqiPosition });
@@ -23,6 +24,7 @@ export default function Settings({ user, credits, onCreditsChanged, onRequireLog
   const [catalog, setCatalog] = React.useState([]);
   const [storeBusy, setStoreBusy] = React.useState("");
   const [storeNotice, setStoreNotice] = React.useState(null);
+  const [jieqiAnalysis, setJieqiAnalysis] = React.useState(() => analysisPreferences("jieqi"));
 
   const loadCatalog = React.useCallback(() => getCosmetics().then((result) => {
     setCatalog(result.items || []);
@@ -56,6 +58,10 @@ export default function Settings({ user, credits, onCreditsChanged, onRequireLog
       setAppearance({ ...cosmeticPreferences(), [item.type]: item.theme });
     }
     setStoreNotice({ type: "success", text: `已使用「${item.name}」` });
+  }
+
+  function changeJieqiAnalysis(patch) {
+    setJieqiAnalysis((current) => saveAnalysisPreferences({ ...current, ...patch }, "jieqi"));
   }
 
   async function buyItem(item) {
@@ -159,6 +165,34 @@ export default function Settings({ user, credits, onCreditsChanged, onRequireLog
         {section === "jieqi" && (
           <div className="settings-group">
             <div className="settings-heading"><h2>揭棋引擎</h2><p>揭棋需要支持暗子局面的专用引擎，配置与标准象棋相互独立。</p></div>
+            <section className="analysis-default-settings">
+              <div>
+                <strong>默认分析设置</strong>
+                <p>新进入揭棋对局时采用这些参数；对局中仍可临时修改。无限分析需要本地引擎。</p>
+              </div>
+              <div className="engine-analysis-controls">
+                <label>模式
+                  <select value={jieqiAnalysis.mode} onChange={(event) => changeJieqiAnalysis({ mode: event.target.value })} aria-label="默认分析模式">
+                    <option value="movetime">限时分析</option>
+                    <option value="depth">深度分析</option>
+                    <option value="infinite">无限分析</option>
+                  </select>
+                </label>
+                {jieqiAnalysis.mode === "movetime" && <label>时长
+                  <select value={jieqiAnalysis.time} onChange={(event) => changeJieqiAnalysis({ time: Number(event.target.value) })} aria-label="默认分析时间">
+                    <option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={3000}>3 秒</option><option value={5000}>5 秒</option>
+                  </select>
+                </label>}
+                {jieqiAnalysis.mode === "depth" && <label>深度
+                  <input type="number" min="1" max="30" value={jieqiAnalysis.depth} onChange={(event) => changeJieqiAnalysis({ depth: Number(event.target.value) || 1 })} aria-label="默认分析深度" />
+                </label>}
+                <label>线路
+                  <select value={jieqiAnalysis.multiPv} onChange={(event) => changeJieqiAnalysis({ multiPv: Number(event.target.value) })} aria-label="默认候选线路数">
+                    <option value={1}>最佳 1 线</option><option value={3}>候选 3 线</option><option value={5}>候选 5 线</option>
+                  </select>
+                </label>
+              </div>
+            </section>
             <NativeEngineSettings manager={jieqiEngine} variant="jieqi" label="揭棋 Pikafish" />
           </div>
         )}

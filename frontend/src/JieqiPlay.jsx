@@ -17,6 +17,7 @@ import { evalJieqiPosition, importGame, streamJieqiPosition } from "./api";
 import { RUNTIME, runtime } from "./platform/runtime";
 import { jieqiPieceImage } from "./jieqiPieceImages";
 import EngineAnalysisView from "./components/EngineAnalysisView";
+import { analysisPreferences } from "./analysisPreferences";
 
 const LEVELS = [
   { key: "easy", label: "入门", depth: 6 },
@@ -108,8 +109,33 @@ function ChineseMoveList({ pairs, desktop = false }) {
   );
 }
 
+function JieqiWinChances({ wdl }) {
+  const total = wdl ? wdl.win + wdl.draw + wdl.loss : 0;
+  if (!total) return null;
+  const items = [
+    ["red", "红胜", Math.round((wdl.win / total) * 100)],
+    ["draw", "和棋", Math.round((wdl.draw / total) * 100)],
+    ["black", "黑胜", Math.round((wdl.loss / total) * 100)],
+  ];
+  return (
+    <section className="jieqi-win-chances" aria-label="引擎估算的胜和负概率">
+      <div className="jieqi-analysis-title"><span aria-hidden="true">🏁</span><strong>胜负概率</strong></div>
+      <div className="jieqi-win-chance-grid">
+        {items.map(([kind, label, value]) => (
+          <div className={`jieqi-win-chance ${kind}`} key={kind}>
+            <strong>{value}%</strong>
+            <span>{label}</span>
+            <i style={{ "--chance": `${value}%` }} aria-hidden="true" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function JieqiPlay({ onOpenSettings }) {
   const isDesktop = runtime === RUNTIME.TAURI;
+  const initialAnalysis = React.useMemo(() => analysisPreferences("jieqi"), []);
   const [fen, setFen] = React.useState(null);
   const [gameMode, setGameMode] = React.useState("human-ai");
   const [humanSide, setHumanSide] = React.useState("w");
@@ -129,10 +155,10 @@ export default function JieqiPlay({ onOpenSettings }) {
   const [analysisPosition, setAnalysisPosition] = React.useState(null);
   const [analysisLoading, setAnalysisLoading] = React.useState(false);
   const [analysisError, setAnalysisError] = React.useState("");
-  const [analysisMode, setAnalysisMode] = React.useState("movetime");
-  const [analysisTime, setAnalysisTime] = React.useState(1000);
-  const [analysisDepth, setAnalysisDepth] = React.useState(18);
-  const [analysisMultiPv, setAnalysisMultiPv] = React.useState(1);
+  const [analysisMode, setAnalysisMode] = React.useState(initialAnalysis.mode);
+  const [analysisTime, setAnalysisTime] = React.useState(initialAnalysis.time);
+  const [analysisDepth, setAnalysisDepth] = React.useState(initialAnalysis.depth);
+  const [analysisMultiPv, setAnalysisMultiPv] = React.useState(initialAnalysis.multiPv);
   const [analysisSearchMoves, setAnalysisSearchMoves] = React.useState([]);
   const [showHint, setShowHint] = React.useState(true);
   const [boardFlipped, setBoardFlipped] = React.useState(false);
@@ -143,12 +169,19 @@ export default function JieqiPlay({ onOpenSettings }) {
   const analysisReqId = React.useRef(0);
   const analysisSession = React.useRef(null);
   const turnReqId = React.useRef(0);
+  const desktopMoveLogRef = React.useRef(null);
 
   React.useEffect(() => {
     jieqiEngine.availableKinds().then((kinds) => {
       setRuntimeKind(kinds.includes("native") ? "native" : kinds.includes("wasm") ? "wasm" : "remote");
     });
   }, []);
+
+  React.useEffect(() => {
+    // 无限分析只适用于本地引擎；仅有云端引擎时，本局安全降级为深度分析，
+    // 但不改写系统中的默认值，之后配置好本地引擎仍可继续使用该默认。
+    if (runtimeKind === "remote" && analysisMode === "infinite") setAnalysisMode("depth");
+  }, [runtimeKind, analysisMode]);
 
   const depth = LEVELS.find((item) => item.key === level)?.depth || 10;
 
@@ -212,6 +245,11 @@ export default function JieqiPlay({ onOpenSettings }) {
   React.useEffect(() => {
     setAnalysisSearchMoves((moves) => moves.length ? [] : moves);
   }, [fen]);
+
+  React.useEffect(() => {
+    const log = desktopMoveLogRef.current;
+    if (log) log.scrollTop = log.scrollHeight;
+  }, [moves.length]);
 
   function toggleAnalysis() {
     if (analysisEnabled) {
@@ -635,7 +673,7 @@ export default function JieqiPlay({ onOpenSettings }) {
             side={boardFlipped ? "w" : "b"}
             label={boardFlipped ? "红方" : "黑方"}
           />
-          <div className="jieqi-board-stage">
+          <div className="jieqi-board-stage" style={{ "--jieqi-board-width": `${416 * boardScale}px` }}>
             {gameMode === "free" && (
               <div
                 className={`jieqi-eval-rail${boardFlipped ? " flipped" : ""}`}
@@ -685,7 +723,7 @@ export default function JieqiPlay({ onOpenSettings }) {
               {winner && <span>{saved ? "棋局已存入复盘" : "正在保存棋局…"}</span>}
             </div>
 
-            <div className="desktop-inspector-tabs" role="tablist" aria-label="揭棋对局信息">
+            {gameMode !== "free" && <div className="desktop-inspector-tabs" role="tablist" aria-label="揭棋对局信息">
               <button
                 className={inspectorTab === "moves" ? "active" : ""}
                 onClick={() => setInspectorTab("moves")}
@@ -702,9 +740,78 @@ export default function JieqiPlay({ onOpenSettings }) {
               >
                 {gameMode === "free" ? "分析" : "信息"}
               </button>
-            </div>
+            </div>}
 
-            <div className="desktop-inspector-body">
+            {gameMode === "free" ? (
+              <div className="desktop-inspector-body desktop-jieqi-combined">
+                <section className="desktop-jieqi-score-section">
+                  <div className="desktop-jieqi-section-head">
+                    <span><b aria-hidden="true">📜</b> 棋谱</span>
+                    <small>{moves.length} 步</small>
+                  </div>
+                  <div className="desktop-jieqi-score-scroll" ref={desktopMoveLogRef}>
+                    {moves.length > 0 ? (
+                      <ChineseMoveList pairs={notationPairs} desktop />
+                    ) : (
+                      <div className="desktop-inspector-empty">走子后将在这里记录棋谱</div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="desktop-jieqi-analysis-section">
+                  <div className="desktop-jieqi-section-head">
+                    <span><b aria-hidden="true">🔍</b> 局面分析</span>
+                    <small>{analysisLoading ? "计算中…" : analysisRuntime}</small>
+                  </div>
+                  <div className="jieqi-eval-summary">
+                    <div>
+                      <span>局势评分</span>
+                      <strong>{analysisLoading && !analysisData ? "…" : evalInfo.value}</strong>
+                    </div>
+                    <p>{evalInfo.label}</p>
+                  </div>
+                  <JieqiWinChances wdl={analysisData?.wdl} />
+                  {(analysisLoading || analysisData) && (
+                    <div className="jieqi-best-move">
+                      <span>🎯 推荐着法</span>
+                      <strong title={analysisData?.bestMove || ""}>{bestMoveText || "—"}</strong>
+                    </div>
+                  )}
+                  <details className="jieqi-analysis-settings">
+                    <summary>⚙ 分析设置</summary>
+                    <div className="engine-analysis-controls">
+                      <select value={analysisMode} onChange={(event) => setAnalysisMode(event.target.value)} aria-label="分析模式">
+                        <option value="movetime">限时分析</option>
+                        <option value="depth">深度分析</option>
+                        {runtimeKind !== "remote" && <option value="infinite">无限分析</option>}
+                      </select>
+                      {analysisMode === "movetime" && <select value={analysisTime} onChange={(event) => setAnalysisTime(Number(event.target.value))} aria-label="分析时间">
+                        <option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={3000}>3 秒</option><option value={5000}>5 秒</option>
+                      </select>}
+                      {analysisMode === "depth" && <input type="number" min="1" max="30" value={analysisDepth} onChange={(event) => setAnalysisDepth(Math.max(1, Math.min(30, Number(event.target.value) || 1)))} aria-label="分析深度" />}
+                      <select value={analysisMultiPv} onChange={(event) => setAnalysisMultiPv(Number(event.target.value))} aria-label="候选线路数">
+                        <option value={1}>最佳 1 线</option><option value={3}>候选 3 线</option><option value={5}>候选 5 线</option>
+                      </select>
+                    </div>
+                  </details>
+                  {analysisSearchMoves.length > 0 && <button className="engine-searchmove-clear" onClick={() => setAnalysisSearchMoves([])}>正在限定 {analysisSearchMoves[0]} · 取消限定</button>}
+                  {(analysisLoading || analysisData) && (
+                    <EngineAnalysisView
+                      fen={analysisPosition || fen}
+                      data={analysisData}
+                      loading={analysisLoading}
+                      variant="jieqi"
+                      onAnalyzeMove={analysisIsCurrent ? (move) => setAnalysisSearchMoves([move]) : null}
+                      log={jieqiEngine.getLog()}
+                      showWdl={false}
+                    />
+                  )}
+                  {analysisError && <div className="import-error">{analysisError}</div>}
+                  {!analysisEnabled && !analysisData && !analysisError && <p className="jieqi-analysis-empty">分析已停止，可从下方重新开启。</p>}
+                </section>
+                {error && <div className="import-error">{error}</div>}
+              </div>
+            ) : <div className="desktop-inspector-body">
               {inspectorTab === "moves" && (
                 moves.length > 0 ? (
                   <ChineseMoveList pairs={notationPairs} desktop />
@@ -714,53 +821,6 @@ export default function JieqiPlay({ onOpenSettings }) {
               )}
               {inspectorTab === "info" && (
                 <div className="desktop-analysis-pane">
-                  {gameMode === "free" && (
-                    <div className="desktop-analysis-section jieqi-engine-analysis">
-                      <div className="eval-bar">
-                        <div className="eval-bar-red" style={{ width: `${evalInfo.redPct}%` }} />
-                        <span className="eval-bar-value">{analysisLoading && !analysisData ? "…" : evalInfo.value}</span>
-                      </div>
-                      <p>{evalInfo.label}</p>
-                      <div className="engine-analysis-controls">
-                        <select value={analysisMode} onChange={(event) => setAnalysisMode(event.target.value)} aria-label="分析模式">
-                          <option value="movetime">限时分析</option>
-                          <option value="depth">深度分析</option>
-                          {runtimeKind !== "remote" && <option value="infinite">无限分析</option>}
-                        </select>
-                        {analysisMode === "movetime" && <select value={analysisTime} onChange={(event) => setAnalysisTime(Number(event.target.value))} aria-label="分析时间">
-                          <option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={3000}>3 秒</option><option value={5000}>5 秒</option>
-                        </select>}
-                        {analysisMode === "depth" && <input type="number" min="1" max="30" value={analysisDepth} onChange={(event) => setAnalysisDepth(Math.max(1, Math.min(30, Number(event.target.value) || 1)))} aria-label="分析深度" />}
-                        <select value={analysisMultiPv} onChange={(event) => setAnalysisMultiPv(Number(event.target.value))} aria-label="候选线路数">
-                          <option value={1}>最佳 1 线</option><option value={3}>候选 3 线</option><option value={5}>候选 5 线</option>
-                        </select>
-                      </div>
-                      {(analysisLoading || analysisData) && <>
-                        <div className="jieqi-best-move">
-                          <span>最佳着法</span>
-                          <strong title={analysisData?.bestMove || ""}>{bestMoveText || "—"}</strong>
-                        </div>
-                        {analysisSearchMoves.length > 0 && <button className="engine-searchmove-clear" onClick={() => setAnalysisSearchMoves([])}>正在限定 {analysisSearchMoves[0]} · 取消限定</button>}
-                      </>}
-                      {(analysisLoading || analysisData) && (
-                        <EngineAnalysisView
-                          fen={analysisPosition || fen}
-                          data={analysisData}
-                          loading={analysisLoading}
-                          variant="jieqi"
-                          onAnalyzeMove={analysisIsCurrent ? (move) => setAnalysisSearchMoves([move]) : null}
-                          log={jieqiEngine.getLog()}
-                        />
-                      )}
-                      {(analysisLoading || analysisData) && <small>{analysisRuntime}{analysisMode === "infinite" ? " · 无限分析" : ""}</small>}
-                      {analysisError && <div className="import-error">{analysisError}</div>}
-                      {!analysisEnabled && !analysisData && !analysisError && <p>分析已停止，可从下方重新开启。</p>}
-                    </div>
-                  )}
-                  <div className="desktop-analysis-section">
-                    <strong>揭棋规则</strong>
-                    <p>{gameMode === "free" ? "暗子首次移动时由走子方指定身份；吃掉未揭开的暗子不会改变对方暗子池。" : "暗子按初始位置规则移动，首次移动时随机翻开真实棋子。"}</p>
-                  </div>
                   {gameMode === "human-ai" && <div className="desktop-analysis-section">
                     <strong>当前引擎</strong>
                     <p>{engineDisplay}</p>
@@ -768,7 +828,7 @@ export default function JieqiPlay({ onOpenSettings }) {
                   {error && <div className="import-error">{error}</div>}
                 </div>
               )}
-            </div>
+            </div>}
 
             <div className="desktop-inspector-actions desktop-jieqi-actions">
               {gameMode === "free" && <>

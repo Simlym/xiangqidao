@@ -34,7 +34,7 @@ function buildPreview(initialFen, pv, variant) {
   return items;
 }
 
-export default function EngineAnalysisView({ fen, data, loading = false, variant = "xiangqi", onAnalyzeMove, log = [] }) {
+export default function EngineAnalysisView({ fen, data, loading = false, variant = "xiangqi", onAnalyzeMove, log = [], showWdl = true }) {
   const [preview, setPreview] = React.useState(null);
   const [previewStep, setPreviewStep] = React.useState(0);
   const lines = data?.lines?.length ? data.lines : data?.pv?.length
@@ -61,7 +61,7 @@ export default function EngineAnalysisView({ fen, data, loading = false, variant
         <span>用时 <b>{data?.timeMs != null ? `${(data.timeMs / 1000).toFixed(1)}s` : "—"}</b></span>
       </div>
     )}
-    {wdl && wdlTotal > 0 && (
+    {showWdl && wdl && wdlTotal > 0 && (
       <div className="wdl-wrap" title="红方视角的引擎胜和负估计">
         <div className="wdl-bar">
           <span className="win" style={{ width: `${pct(wdl.win, wdlTotal)}%` }} />
@@ -97,8 +97,8 @@ export default function EngineAnalysisView({ fen, data, loading = false, variant
     )}
     {log.length > 0 && (
       <details className="engine-log">
-        <summary>引擎日志（最近 {Math.min(200, log.length)} 条）</summary>
-        <div>{log.slice(-200).map((item, index) => <code key={`${item.at}-${index}`} className={item.direction}>{item.direction === "sent" ? "→" : item.direction === "recv" ? "←" : "!"} {item.line}</code>)}</div>
+        <summary>引擎日志（最近 {Math.min(200, log.length)} 条，最新在前）</summary>
+        <div>{log.slice(-200).reverse().map((item, index) => <code key={`${item.at}-${index}`} className={item.direction}>{item.direction === "sent" ? "→" : item.direction === "recv" ? "←" : "!"} {item.line}</code>)}</div>
       </details>
     )}
     {preview && previewPositions.length > 0 && (

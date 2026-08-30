@@ -383,9 +383,8 @@ nav .nav-ico, nav .nav-label-short { display: none; }
 .jieqi-move-black { color: #34302c; }
 .jieqi-move-red, .jieqi-move-black { min-width: 0; white-space: nowrap; }
 .jieqi-board-stage {
-  /* 评估条和棋盘共用一个紧凑宽度，棋盘达到最大缩放后不再由剩余空间把两者拉开。 */
-  width: min(100%, 748px); min-width: 0; margin-inline: auto;
-  display: flex; align-items: stretch; justify-content: center;
+  /* 棋盘始终居中；评估条再按棋盘的实际缩放宽度贴边定位。 */
+  position: relative; width: min(100%, 748px); min-width: 0; margin-inline: auto;
 }
 .jieqi-check-alert {
   position: absolute; z-index: 60; top: 0; left: 50%;
@@ -401,11 +400,12 @@ nav .nav-ico, nav .nav-label-short { display: none; }
   from { opacity: 0; transform: translate(-50%, -7px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
-.jieqi-board-stage > .xq-board-measure { flex: 1; min-width: 0; }
+.jieqi-board-stage > .xq-board-measure { min-width: 0; }
 /* JieqiBox 风格的棋盘侧边评估条：上黑下红，红色高度代表红方胜势占比。 */
 .jieqi-eval-rail {
-  position: relative; flex: 0 0 14px; align-self: flex-start;
-  min-height: 0; margin-right: 6px;
+  position: absolute; z-index: 3; top: 0;
+  left: calc(50% - var(--jieqi-board-width) / 2 - 20px);
+  width: 14px; min-height: 0;
   overflow: hidden; border: 1px solid rgba(67, 49, 34, .55); border-radius: 5px;
   background: #292929; box-shadow: 0 2px 5px rgba(45, 27, 12, .2);
 }
@@ -1889,6 +1889,67 @@ body.desktop-runtime {
 }
 .desktop-jieqi-moves li { padding: 6px 1px; border-bottom: 1px solid #f0ebe4; }
 
+/* 自由翻子：棋谱固定在上方，分析持续显示在下方。 */
+.desktop-jieqi-combined {
+  padding: 0; display: flex; flex-direction: column; overflow: hidden;
+}
+.desktop-jieqi-score-section {
+  height: 170px; min-height: 128px; flex: 0 0 170px;
+  display: flex; flex-direction: column;
+  border-bottom: 1px solid #e8dfd4; background: #fffdf9;
+}
+.desktop-jieqi-section-head {
+  min-height: 38px; padding: 0 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border-bottom: 1px solid #f0e9df;
+}
+.desktop-jieqi-section-head span { color: #4b433a; font-size: 13px; font-weight: 700; }
+.desktop-jieqi-section-head b { font-size: 14px; }
+.desktop-jieqi-section-head small {
+  min-width: 0; overflow: hidden; color: #9a9085; font-size: 10px;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.desktop-jieqi-score-scroll {
+  min-height: 0; flex: 1; overflow-y: auto; padding: 4px 12px 8px;
+  scroll-behavior: smooth;
+}
+.desktop-jieqi-score-scroll .desktop-inspector-empty { min-height: 100%; }
+.desktop-jieqi-analysis-section {
+  min-height: 0; flex: 1; overflow-y: auto; padding: 0 12px 14px;
+}
+.desktop-jieqi-analysis-section > .desktop-jieqi-section-head {
+  position: sticky; top: 0; z-index: 2; margin: 0 -12px 10px;
+  background: rgba(255, 253, 249, .96); backdrop-filter: blur(5px);
+}
+.jieqi-eval-summary {
+  padding: 11px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border: 1px solid #eadfce; border-radius: 10px;
+  background: linear-gradient(135deg, #fff9f0, #f7eee2);
+}
+.jieqi-eval-summary > div { display: flex; align-items: baseline; gap: 8px; }
+.jieqi-eval-summary span { color: #867b70; font-size: 11px; }
+.jieqi-eval-summary strong { color: #a9322d; font: 800 22px/1 ui-monospace, monospace; }
+.jieqi-eval-summary p { margin: 0; color: #5f554b; font-size: 12px; font-weight: 600; }
+.jieqi-analysis-title { display: flex; align-items: center; gap: 6px; margin: 11px 0 6px; color: #544a41; font-size: 12px; }
+.jieqi-win-chance-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.jieqi-win-chance {
+  position: relative; overflow: hidden; padding: 8px 7px 10px;
+  border: 1px solid #e7ded3; border-radius: 8px; text-align: center; background: #fff;
+}
+.jieqi-win-chance strong, .jieqi-win-chance span { position: relative; z-index: 1; display: block; }
+.jieqi-win-chance strong { color: #4b433b; font: 700 15px/1.2 ui-monospace, monospace; }
+.jieqi-win-chance span { margin-top: 2px; color: #8b8178; font-size: 10px; }
+.jieqi-win-chance i {
+  position: absolute; left: 0; bottom: 0; width: var(--chance); height: 3px; background: #a9a39b;
+}
+.jieqi-win-chance.red i { background: #bd4138; }
+.jieqi-win-chance.black i { background: #343230; }
+.desktop-jieqi-analysis-section .jieqi-best-move { margin-top: 10px; }
+.jieqi-analysis-settings { margin: 10px 0 5px; }
+.jieqi-analysis-settings summary { color: #7c7167; font-size: 11px; cursor: pointer; }
+.jieqi-analysis-settings .engine-analysis-controls { margin-bottom: 0; }
+.jieqi-analysis-empty { color: #958a80; font-size: 12px; }
+
 .desktop-inspector-actions {
   padding: 11px 12px 12px;
   display: grid;
@@ -2136,6 +2197,13 @@ body.desktop-runtime {
 }
 .settings-content .native-engine-settings > strong { display: none; }
 .settings-content .native-engine-settings > p { margin-top: 0; }
+.analysis-default-settings {
+  margin-bottom: 18px; padding: 14px 16px; border: 1px solid #e4ddd4; border-radius: 10px; background: #fffdf9;
+}
+.analysis-default-settings > div:first-child strong { color: #423b34; font-size: 14px; }
+.analysis-default-settings > div:first-child p { margin: 4px 0 0; color: #948b81; font-size: 12px; }
+.analysis-default-settings .engine-analysis-controls { margin-bottom: 0; }
+.analysis-default-settings .engine-analysis-controls label { display: flex; align-items: center; gap: 6px; color: #6f665d; font-size: 12px; }
 .settings-content .native-engine-input input {
   padding: 8px 10px;
   border: 1px solid #d8cfc2;
@@ -2210,7 +2278,8 @@ body[data-app-theme="night"] {
 }
 :is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
   .settings-sections, .cosmetic-balance, .desktop-runtime-badge, .auth-tabs button,
-  .admin-tabs button, .engine-pv-line, .import-form, code, .tag
+  .admin-tabs button, .engine-pv-line, .import-form, code, .tag,
+  .desktop-jieqi-score-section, .jieqi-win-chance, .jieqi-eval-summary
 ) { background: var(--app-surface-soft); border-color: var(--app-border); }
 :is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
   input, select, textarea, .import-input, .import-textarea, .engine-analysis-controls input,
@@ -2241,8 +2310,12 @@ body[data-app-theme="night"] {
 ) { color: var(--app-accent); background: var(--app-accent-soft); }
 :is(.app-theme-ink, .app-theme-jade, .app-theme-night) :is(
   .settings-page, .settings-sections, .settings-heading, .settings-row, .cosmetic-card,
-  .desktop-toolbar, .desktop-statusbar, .games-list-header, .game-item, .games-list-footer
+  .desktop-toolbar, .desktop-statusbar, .games-list-header, .game-item, .games-list-footer,
+  .desktop-jieqi-score-section, .desktop-jieqi-section-head
 ) { border-color: var(--app-border); }
+:is(.app-theme-ink, .app-theme-jade, .app-theme-night) .desktop-jieqi-analysis-section > .desktop-jieqi-section-head {
+  background: color-mix(in srgb, var(--app-surface) 94%, transparent);
+}
 
 :is(.app-theme-ink, .app-theme-jade, .app-theme-night).app-desktop,
 :is(.app-theme-ink, .app-theme-jade, .app-theme-night) .desktop-workspace {
