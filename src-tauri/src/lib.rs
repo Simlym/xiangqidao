@@ -6,6 +6,99 @@ use std::{
 };
 use tauri::{Emitter, Manager};
 
+fn user_facing_path(path: &Path) -> String {
+    let value = path.to_string_lossy();
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{rest}");
+        }
+        if let Some(rest) = value.strip_prefix(r"\\?\") {
+            return rest.to_owned();
+        }
+    }
+    value.into_owned()
+}
+
+fn is_engine_candidate(path: &Path) -> bool {
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("");
+    if cfg!(target_os = "windows") {
+        extension.eq_ignore_ascii_case("exe")
+    } else {
+        extension.is_empty()
+            || extension.eq_ignore_ascii_case("bin")
+            || extension.eq_ignore_ascii_case("appimage")
+    }
+}
+
+fn engine_candidate_priority(path: &Path) -> u8 {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if name.contains("pikafish") {
+        0
+    } else if name.contains("pika") || name.contains("jieqi") {
+        1
+    } else {
+        2
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EnginePathInspection {
+    engine_path: Option<String>,
+    nnue_path: Option<String>,
+}
+
+#[tauri::command]
+fn inspect_engine_path(path: String) -> Result<EnginePathInspection, String> {
+    let selected = Path::new(&path)
+        .canonicalize()
+        .map_err(|error| format!("无法访问所选路径：{error}"))?;
+    let engine_path = if selected.is_file() {
+        Some(selected.clone())
+    } else if selected.is_dir() {
+        let mut candidates = std::fs::read_dir(&selected)
+            .map_err(|error| format!("无法读取所选目录：{error}"))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|candidate| candidate.is_file() && is_engine_candidate(candidate))
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|candidate| engine_candidate_priority(candidate));
+        candidates.into_iter().next()
+    } else {
+        None
+    };
+
+    let directory = engine_path
+        .as_deref()
+        .and_then(Path::parent)
+        .unwrap_or(&selected);
+    let nnue_path = std::fs::read_dir(directory).ok().and_then(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|candidate| {
+                candidate.is_file()
+                    && candidate
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        .is_some_and(|extension| extension.eq_ignore_ascii_case("nnue"))
+            })
+    });
+
+    Ok(EnginePathInspection {
+        engine_path: engine_path.as_deref().map(user_facing_path),
+        nnue_path: nnue_path.as_deref().map(user_facing_path),
+    })
+}
+
 #[derive(Default)]
 struct EngineProcess {
     child: Option<Child>,
@@ -138,11 +231,13 @@ fn kill_engine(state: tauri::State<'_, Mutex<EngineProcess>>) -> Result<(), Stri
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(EngineProcess::default()))
         .invoke_handler(tauri::generate_handler![
             spawn_engine,
             send_to_engine,
-            kill_engine
+            kill_engine,
+            inspect_engine_path
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
