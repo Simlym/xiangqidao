@@ -398,7 +398,13 @@ export default function App() {
       ) : (
         <>
           <header className="web-header">
-            <h1>象棋道</h1>
+            <div className="web-brand" aria-label="象棋道首页">
+              <span className="web-brand-mark" aria-hidden>象</span>
+              <span className="web-brand-copy">
+                <h1>象棋道</h1>
+                <small>XIANGQI DAO</small>
+              </span>
+            </div>
             {nav}
             <div className="user-box">
               <button className="btn-link" onClick={() => setTab("settings")}>设置</button>
