@@ -40,10 +40,9 @@
 ### 后端
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python -m app.importer.load app/importer/seed_puzzles.json   # 导入种子题库
-uvicorn app.main:app --reload --port 8000
+uv sync
+uv run python -m app.importer.load app/importer/seed_puzzles.json   # 导入种子题库
+uv run python -m app
 ```
 
 ### 前端

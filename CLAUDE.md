@@ -11,12 +11,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Backend (FastAPI, from `backend/`)
 
 ```bash
-pip install -r requirements.txt
-python -m app.importer.load app/importer/seed_puzzles.json   # seed the puzzle DB (first run)
-uvicorn app.main:app --reload --port 8000
+uv sync
+uv run python -m app.importer.load app/importer/seed_puzzles.json   # seed the puzzle DB (first run)
+uv run python -m app
 ```
 
-### Tests (from `backend/`; pytest is not in requirements.txt, install it separately)
+### Tests (from `backend/`)
 
 ```bash
 python -m pytest tests/                          # all tests
