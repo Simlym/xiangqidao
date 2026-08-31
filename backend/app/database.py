@@ -33,7 +33,7 @@ class Base(DeclarativeBase):
 
 
 def _ensure_columns() -> None:
-    """为既有 SQLite 库补齐新增列（本项目暂无迁移框架，做最小兼容）。"""
+    """仅供 Alembic 接管旧库时补齐历史上由应用维护的新增列。"""
     if not DB_URL.startswith("sqlite"):
         return
     insp = inspect(engine)
@@ -125,13 +125,20 @@ def _migrate_reviews_unique() -> None:
         conn.execute(text("DROP TABLE reviews_old"))
 
 
-def init_db() -> None:
-    # 导入 models 以确保所有表都已注册到 Base.metadata
-    from . import models  # noqa: F401
-
+def _bootstrap_legacy_database() -> None:
+    """把没有 Alembic 版本记录的旧数据库整理到基线结构。"""
     Base.metadata.create_all(engine)
     _ensure_columns()
     _migrate_reviews_unique()
+
+
+def init_db() -> None:
+    """启动时使用 Alembic 将数据库升级到最新版本。"""
+    # 导入 models 以确保所有表都已注册到 Base.metadata。
+    from . import models  # noqa: F401
+    from .migrations import upgrade_database
+
+    upgrade_database()
 
 
 @contextmanager

@@ -23,7 +23,7 @@
 | 棋类核心 | Variant + Engine Adapter | 标准象棋/揭棋规则隔离；分别配置原生、WASM、云端引擎并自动降级 |
 | 后端 | FastAPI | 训练调度 / 闯关 / ELO 评分 / 作答 / 统计 / 对弈 / 鉴权 / 后台管理 API |
 | 数据 | SQLite（可配置） | `users` `puzzles`(含 ELO `rating`) `reviews`(SM-2) `attempts` `games`(含归属/复盘报告) `game_analysis` `user_stats`(ELO 评分档案)；连接串经 `XQ_DB_URL` 配置 |
-| 数据访问 | database + repository 层 | `app/database.py` 管引擎/会话/建表，`app/repository.py` 封装查询，业务路由与 ORM 解耦 |
+| 数据访问 | SQLAlchemy + Alembic | `app/database.py` 管引擎/会话，`migrations/` 管结构升级，`app/repository.py` 封装查询，业务路由与 ORM 解耦 |
 | 复习 | SM-2 | `backend/app/srs.py` |
 | 鉴权 | 标准库自实现 | PBKDF2 密码哈希 + HMAC 签名 token，无第三方依赖（`app/auth.py`）|
 | 会员 | 服务端权益校验 | 客户端统一打包 AI 界面代码；登录后按 `/api/account/entitlements` 显示，服务端再次校验，积分作为调用额度 |
@@ -41,6 +41,7 @@
 ```bash
 cd backend
 uv sync
+uv run alembic upgrade head                                      # 手动执行数据库迁移（应用启动时也会自动执行）
 uv run python -m app.importer.load app/importer/seed_puzzles.json   # 导入种子题库
 uv run python -m app
 ```
@@ -228,6 +229,21 @@ python -m app.importer.load app/importer/wukong_puzzles.audited.json
 ```bash
 cd backend && python -m pytest tests/ -q
 ```
+
+## 数据库迁移
+
+应用启动时会自动执行 `alembic upgrade head`。修改 SQLAlchemy 模型后，用以下流程创建并检查迁移：
+
+```bash
+cd backend
+uv run alembic revision --autogenerate -m "describe schema change"
+# 审核 migrations/versions/ 中新生成的脚本
+uv run alembic upgrade head
+uv run alembic check
+```
+
+首次接管没有 `alembic_version` 的既有数据库时，应用会保留原数据、补齐历史结构、标记基线，
+再执行后续增量迁移。生产环境迁移前仍应备份数据库。
 
 ## 训练体验
 
