@@ -1,47 +1,37 @@
 import React from "react";
 import {
-  adminAdjustCredits,
-  adminClearSyslog,
   adminCreatePuzzle,
   adminDeletePuzzle,
   adminDeleteUser,
   adminGetEngine,
+  adminGetJieqiEngine,
   adminGetLlmSettings,
   adminInstallEngine,
-  adminLlmUsage,
-  adminLlmUsageSummary,
   adminLogs,
   adminOverview,
-  adminSetLogLevel,
-  adminSyslog,
   adminPuzzles,
   adminRemoveEngine,
   adminTestLlmSettings,
   adminUpdateLlmSettings,
-  adminUserCredits,
+  adminUpdateJieqiEngine,
+  adminUpdateMembership,
   adminUsers,
 } from "./api";
 
-const EMPTY = { fen: "", solution: "", category: "未分类", difficulty: 3, side_to_move: "w" };
+const EMPTY = { fen: "", solution: "", kind: "杀法", category: "未分类", tags: "", difficulty: 3, side_to_move: "w" };
 
 const TABS = [
   { key: "overview", label: "概览" },
   { key: "users", label: "用户" },
   { key: "puzzles", label: "题库" },
   { key: "settings", label: "系统设置" },
-  { key: "llm", label: "LLM 用量" },
   { key: "logs", label: "日志" },
 ];
-
-// 后端时间戳为 UTC（无时区后缀），补 Z 再转本地时间显示
-const fmtDay = (s) => (s ? new Date(s + "Z").toLocaleDateString() : "—");
-const fmtTime = (s) => (s ? new Date(s + "Z").toLocaleString() : "—");
 
 export default function Admin() {
   const [tab, setTab] = React.useState("overview");
   const [ov, setOv] = React.useState(null);
   const [users, setUsers] = React.useState([]);
-  const [creditUser, setCreditUser] = React.useState(null); // 正在查看积分详情的用户名
 
   const reload = React.useCallback(() => {
     adminOverview().then(setOv).catch(() => {});
@@ -56,6 +46,15 @@ export default function Admin() {
     if (!window.confirm("删除该用户及其训练数据？")) return;
     try {
       await adminDeleteUser(id);
+      reload();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function setMembership(user, days) {
+    try {
+      await adminUpdateMembership(user.id, days);
       reload();
     } catch (e) {
       alert(e.message);
@@ -94,33 +93,21 @@ export default function Admin() {
       {tab === "settings" && (
         <>
           <EnginePanel />
+          <JieqiEnginePanel />
           <LlmSettingsPanel />
         </>
       )}
 
       {/* 日志 */}
-      {tab === "llm" && <LlmUsagePanel />}
-
-      {tab === "logs" && (
-        <>
-          <SyslogPanel />
-          <LogsPanel />
-        </>
-      )}
+      {tab === "logs" && <LogsPanel />}
 
       {/* 用户管理 */}
       {tab === "users" && (
       <div className="panel">
         <h3>用户管理</h3>
-        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-          点击「积分」数值可查看流水并手工调整（补偿 / 纠错）。
-        </p>
         <div className="admin-table-wrap"><table className="admin-table">
           <thead>
-            <tr>
-              <th>ID</th><th>用户名</th><th>角色</th><th>注册</th><th>最近登录</th>
-              <th>做题ELO</th><th>作答</th><th>已学</th><th>对弈</th><th>连签</th><th>积分</th><th></th>
-            </tr>
+            <tr><th>ID</th><th>用户名</th><th>角色</th><th>会员</th><th>作答</th><th>已学</th><th></th></tr>
           </thead>
           <tbody>
             {users.map((u) => (
@@ -128,22 +115,15 @@ export default function Admin() {
                 <td>{u.id}</td>
                 <td>{u.username}</td>
                 <td>{u.role === "admin" ? <span className="tag">管理员</span> : "用户"}</td>
-                <td style={{ whiteSpace: "nowrap" }}>{fmtDay(u.created_at)}</td>
-                <td style={{ whiteSpace: "nowrap" }}>{fmtTime(u.last_login)}</td>
-                <td>{u.rating ?? "—"}</td>
+                <td>
+                  {u.plan === "pro" ? (
+                    <><span className="tag">PRO</span>{" "}<button className="btn-link" onClick={() => setMembership(u, 0)}>取消</button></>
+                  ) : (
+                    <button className="btn-link" onClick={() => setMembership(u, 30)}>开通30天</button>
+                  )}
+                </td>
                 <td>{u.attempts}</td>
                 <td>{u.learned}</td>
-                <td>{u.games}</td>
-                <td>{u.checkin_streak || "—"}</td>
-                <td>
-                  <button
-                    className="btn-import-submit"
-                    style={{ padding: "2px 10px" }}
-                    onClick={() => setCreditUser(u.username)}
-                  >
-                    {u.credits}
-                  </button>
-                </td>
                 <td>
                   <button className="game-delete-btn" onClick={() => delUser(u.id)}>×</button>
                 </td>
@@ -151,128 +131,11 @@ export default function Admin() {
             ))}
           </tbody>
         </table></div>
-        {creditUser && (
-          <CreditsModal
-            username={creditUser}
-            onClose={() => setCreditUser(null)}
-            onChanged={reload}
-          />
-        )}
       </div>
       )}
 
       {/* 题库管理 */}
       {tab === "puzzles" && <PuzzlesPanel />}
-    </div>
-  );
-}
-
-// 积分流水 kind → 中文标签
-function kindLabel(kind) {
-  const MAP = {
-    "grant:signup": "注册赠送",
-    "admin:adjust": "管理员调整",
-    "earn:checkin": "签到",
-    "earn:game": "对弈奖励",
-    "earn:puzzle": "做题奖励",
-  };
-  if (MAP[kind]) return MAP[kind];
-  if (kind.startsWith("spend:")) return "消耗";
-  if (kind.startsWith("refund:")) return "退回";
-  return kind;
-}
-
-function CreditsModal({ username, onClose, onChanged }) {
-  const [data, setData] = React.useState(null);
-  const [delta, setDelta] = React.useState("");
-  const [reason, setReason] = React.useState("");
-  const [msg, setMsg] = React.useState("");
-  const [err, setErr] = React.useState("");
-
-  React.useEffect(() => {
-    adminUserCredits(username).then(setData).catch((e) => setErr(e.message));
-  }, [username]);
-
-  async function adjust(e) {
-    e.preventDefault();
-    setErr("");
-    setMsg("");
-    const d = Number(delta);
-    if (!Number.isInteger(d) || d === 0) {
-      setErr("请输入非 0 整数，负数为扣减");
-      return;
-    }
-    try {
-      const next = await adminAdjustCredits(username, d, reason.trim());
-      setData(next);
-      setDelta("");
-      setReason("");
-      setMsg(`已调整 ${d > 0 ? "+" : ""}${d}，当前余额 ${next.balance}`);
-      onChanged?.(); // 刷新用户列表里的余额
-    } catch (e2) {
-      setErr(e2.message);
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="panel-head">
-          <h3 style={{ margin: 0 }}>积分 · {username}</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-
-        {data && (
-          <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-            余额 <b>{data.balance}</b> ・ 累计获取 {data.total_earned}
-            ・ 连签 {data.checkin_streak} 天
-            {data.last_checkin ? ` ・ 最近签到 ${data.last_checkin}` : ""}
-          </p>
-        )}
-
-        <form className="import-row" onSubmit={adjust} style={{ alignItems: "center" }}>
-          <input
-            className="import-input"
-            style={{ maxWidth: 120 }}
-            placeholder="如 100 / -50"
-            value={delta}
-            onChange={(e) => setDelta(e.target.value)}
-          />
-          <input
-            className="import-input"
-            placeholder="原因（计入审计日志）"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-          <button className="btn-import-submit" type="submit">调整</button>
-        </form>
-        {err && <div className="import-error">{err}</div>}
-        {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
-
-        <div className="admin-table-wrap" style={{ maxHeight: 320, overflowY: "auto" }}>
-          <table className="admin-table">
-            <thead>
-              <tr><th>时间</th><th>类型</th><th>变动</th><th>余额</th><th>备注</th></tr>
-            </thead>
-            <tbody>
-              {(data?.logs || []).map((r, i) => (
-                <tr key={i}>
-                  <td style={{ whiteSpace: "nowrap" }}>{r.ts}</td>
-                  <td>{kindLabel(r.kind)}</td>
-                  <td style={{ color: r.amount >= 0 ? "#27ae60" : "#c0392b" }}>
-                    {r.amount > 0 ? `+${r.amount}` : r.amount}
-                  </td>
-                  <td>{r.balance_after}</td>
-                  <td>{r.ref || "—"}</td>
-                </tr>
-              ))}
-              {data && data.logs.length === 0 && (
-                <tr><td colSpan={5} className="muted" style={{ textAlign: "center" }}>暂无流水</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }
@@ -327,7 +190,7 @@ function PuzzlesPanel() {
     setErr("");
     setMsg("");
     try {
-      await adminCreatePuzzle({ ...form, difficulty: Number(form.difficulty), mate_check: true });
+      await adminCreatePuzzle({ ...form, difficulty: Number(form.difficulty), mate_check: form.kind === "杀法" });
       setMsg("添加成功，已通过将死校验");
       setForm(EMPTY);
       load();
@@ -360,12 +223,12 @@ function PuzzlesPanel() {
               <h3 style={{ margin: 0 }}>新增战术题</h3>
               <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
             </div>
-            <p className="muted" style={{ marginTop: 0 }}>单步杀法会自动做将死校验。</p>
+            <p className="muted" style={{ marginTop: 0 }}>支持开局、中局、残局与杀法；多条可接受变着用 | 分隔，第一条录入对手最强应手。</p>
             <form className="admin-form" onSubmit={addPuzzle}>
               <input className="import-input" name="fen" placeholder="FEN，如 4k4/R8/8R/9/9/9/9/9/9/3K5"
                      value={form.fen} onChange={change} />
               <div className="import-row">
-                <input className="import-input" name="solution" placeholder="正解 UCI，如 i7i9（多步逗号分隔）"
+                <input className="import-input" name="solution" placeholder="多步用逗号，多变着用 | 分隔"
                        value={form.solution} onChange={change} />
                 <select className="import-input" name="side_to_move" value={form.side_to_move} onChange={change}>
                   <option value="w">红方走</option>
@@ -373,12 +236,17 @@ function PuzzlesPanel() {
                 </select>
               </div>
               <div className="import-row">
+                <select className="import-input" name="kind" value={form.kind} onChange={change}>
+                  {['杀法', '开局', '中局', '残局'].map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
                 <input className="import-input" name="category" placeholder="分类，如 双车错"
                        value={form.category} onChange={change} />
                 <select className="import-input" name="difficulty" value={form.difficulty} onChange={change}>
                   {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>难度 {d}</option>)}
                 </select>
               </div>
+              <input className="import-input" name="tags" placeholder="棋理标签，逗号分隔，如 候选着,开放线,先手"
+                     value={form.tags} onChange={change} />
               {err && <div className="import-error">{err}</div>}
               {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
               <button className="btn-import-submit" type="submit">添加题目</button>
@@ -470,9 +338,6 @@ function PuzzlesPanel() {
 
 const OS_LABEL = { windows: "Windows", macos: "macOS", linux: "Linux" };
 const BUSY_STATES = ["downloading", "extracting", "verifying"];
-// 变体三档：推荐（按 CPU 探测）/ 更快（本机可能不支持）/ 更兼容（更稳更慢）
-const TIER_SUFFIX = { recommended: "（推荐）", faster: "（更快）", compatible: "（更兼容）" };
-const TIER_LABEL = { recommended: "推荐", faster: "更快", compatible: "更兼容" };
 
 function fmtMB(n) {
   return `${(n / 1048576).toFixed(1)} MB`;
@@ -552,24 +417,10 @@ function EnginePanel() {
         </span>
       </div>
 
-      {st.recommended_variant ? (
-        <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
-          推荐变体 <code>{st.recommended_variant}</code>
-          {st.recommended_label ? <span>（{st.recommended_label}）</span> : null}
-        </div>
-      ) : (
-        <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
-          未能探测 CPU 指令集，「自动」将选择最兼容的变体以保证能运行。
-          {st.cpu_detect_note ? (
-            <span style={{ color: "#e67e22" }}>（原因：{st.cpu_detect_note}）</span>
-          ) : null}
-        </div>
-      )}
-
       {busy && (
         <div style={{ margin: "8px 0" }}>
           <div className="eval-bar" style={{ height: 16 }}>
-            <div className="eval-bar-red" style={{ width: `${pct ?? 0}%`, background: "#2e7d32" }} />
+            <div className="eval-bar-red" style={{ width: `${pct ?? 30}%`, background: "#2e7d32" }} />
             <span className="eval-bar-value">
               {st.state === "downloading"
                 ? pct != null
@@ -595,20 +446,10 @@ function EnginePanel() {
           disabled={busy}
           onChange={(e) => setVariant(e.target.value)}
         >
-          <option value="">
-            {st.recommended_variant
-              ? `自动（按本机 CPU：${st.recommended_variant}）`
-              : "自动（最兼容）"}
-          </option>
-          {(st.variant_info && st.variant_info.length
-            ? st.variant_info.map((vi) => (
-                <option key={vi.name} value={vi.name}>
-                  {`${vi.name}${TIER_SUFFIX[vi.tier] || ""}${vi.label ? " — " + vi.label : ""}`}
-                </option>
-              ))
-            : (st.variants || []).map((v) => (
-                <option key={v} value={v}>{v}</option>
-              )))}
+          <option value="">自动（最兼容）</option>
+          {(st.variants || []).map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
         </select>
         <button className="btn-import-submit" disabled={busy} onClick={install}>
           {busy ? (
@@ -634,32 +475,82 @@ function EnginePanel() {
         )}
       </div>
 
-      {st.variant_info && st.variant_info.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-            可用变体（性能从高到低）：
-          </div>
-          <ul className="variant-guide">
-            {st.variant_info.map((vi) => (
-              <li key={vi.name} className={"variant-" + vi.tier}>
-                <code>{vi.name}</code>
-                <span className="variant-tier">{TIER_LABEL[vi.tier] || ""}</span>
-                {vi.label ? <span className="muted"> {vi.label}</span> : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-        推荐直接用「自动」：按 CPU 挑最快变体，失败会自动回退到更兼容版本。
-        手动选择时——
-        <span style={{ color: "#27ae60" }}>● 推荐</span>
-        <span style={{ color: "#e67e22" }}> ● 更快</span>（更强，本机可能不支持）
-        <span style={{ color: "#888" }}> ● 更兼容</span>（更稳更慢）。
+        若自检提示与 CPU 不兼容，请在上方下拉选择更兼容的变体（如含 <code>sse41</code> / <code>ssse3</code>）后重试。
+        变体列表在首次下载后出现。
       </p>
 
       {err && <div className="import-error">{err}</div>}
+    </div>
+  );
+}
+
+function JieqiEnginePanel() {
+  const [status, setStatus] = React.useState(null);
+  const [path, setPath] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(() => {
+    adminGetJieqiEngine().then((next) => {
+      setStatus(next);
+      setPath(next.configured_path || next.effective_path || "");
+    }).catch((e) => setErr(e.message));
+  }, []);
+
+  async function save(nextPath = path.trim()) {
+    setBusy(true);
+    setMsg("");
+    setErr("");
+    try {
+      const next = await adminUpdateJieqiEngine(nextPath);
+      setStatus(next);
+      setPath(next.configured_path || next.effective_path || "");
+      setMsg(next.available ? "配置已保存，引擎文件已找到" : "已清除配置，当前未发现揭棋引擎");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h3>揭棋引擎（Pikafish）</h3>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+        填写运行 Web 后端的服务器上的揭棋 Pikafish 可执行文件绝对路径。必须使用支持暗子局面和暗子池扩展 FEN 的揭棋专用构建，不能复用标准象棋官方版；配套 NNUE 请放在可执行文件同一目录。
+      </p>
+      {status && (
+        <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
+          <span className={"tag" + (status.available ? "" : " muted")}>
+            {status.available ? "● 已找到引擎文件（尚未验证揭棋协议）" : "○ 未配置揭棋引擎"}
+          </span>
+          {status.effective_path && <span className="muted" style={{ fontSize: 12 }}>{status.effective_path}</span>}
+        </div>
+      )}
+      <div className="import-row">
+        <input
+          className="import-input"
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder="例如 /opt/jieqi/pikafish 或 D:\\engines\\jieqi\\pikafish.exe"
+          spellCheck={false}
+        />
+        <button className="btn-import-submit" disabled={busy || !path.trim()} onClick={() => save()}>
+          {busy ? "保存中…" : "保存配置"}
+        </button>
+        {status?.configured_path && (
+          <button className="game-delete-btn" style={{ width: "auto", padding: "0 12px" }} disabled={busy} onClick={() => save("")}>
+            清除
+          </button>
+        )}
+      </div>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+        也可用环境变量 <code>XQ_JIEQI_ENGINE</code> 配置；后台保存的路径优先，并会立即生效，无需重启服务。
+      </p>
+      {err && <div className="import-error">{err}</div>}
+      {msg && <div className={status?.available ? "import-ok" : "muted"}>{msg}</div>}
     </div>
   );
 }
@@ -707,25 +598,16 @@ function LlmSettingsPanel() {
     }
   }
 
-  const statusClass = cfg.active ? "on" : cfg.has_key ? "warn" : "off";
-  const statusText = cfg.active
-    ? "已生效"
-    : cfg.has_key
-    ? "已配置但未启用"
-    : "未配置密钥";
-
   return (
-    <div className="panel ai-settings">
-      <div className="panel-head">
-        <h3>AI 复盘设置（DeepSeek）</h3>
-      </div>
-      <p className="ai-intro">
+    <div className="panel">
+      <h3>AI 复盘设置（DeepSeek）</h3>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
         开启后，复盘时会调用大模型生成失误讲解与整局总评。
         密钥也可用环境变量 <code>DEEPSEEK_API_KEY</code> 配置，此处填写优先生效。
       </p>
 
-      <div className="ai-toggle-bar">
-        <label className="ai-switch-label">
+      <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <input
             type="checkbox"
             checked={cfg.enabled}
@@ -734,71 +616,31 @@ function LlmSettingsPanel() {
           />
           启用 AI 复盘
         </label>
-        <span className={`ai-status ${statusClass}`}>{statusText}</span>
+        <span className={"tag" + (cfg.active ? "" : " muted")}>
+          {cfg.active ? "● 已生效" : cfg.has_key ? "○ 已配置但未启用" : "○ 未配置密钥"}
+        </span>
       </div>
 
-      <div className="ai-grid">
-        <div className="ai-field ai-field-key">
-          <label className="ai-field-label" htmlFor="ai-key">
-            API 密钥
-          </label>
-          <input
-            id="ai-key"
-            className="import-input"
-            type="password"
-            placeholder={cfg.has_key ? `已配置（${cfg.key_hint}），留空则不变` : "填入 DeepSeek API Key"}
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-          />
-          <p className="ai-field-hint">
-            密钥仅保存在服务器，页面不会回显；测试连接可校验密钥是否可用。
-          </p>
-        </div>
-
-        <div className="ai-field">
-          <label className="ai-field-label" htmlFor="ai-model">
-            模型
-          </label>
-          <select
-            id="ai-model"
-            className="import-input"
-            value={cfg.model}
-            disabled={busy}
-            onChange={(e) => save({ model: e.target.value })}
-          >
-            <option value="deepseek-v4-flash">deepseek-v4-flash（推荐，快且便宜）</option>
-            <option value="deepseek-v4-pro">deepseek-v4-pro（能力强，贵一些）</option>
-          </select>
-          <p className="ai-field-hint">flash 适合日常复盘；pro 讲解更深但更贵。</p>
-        </div>
-
-        <div className="ai-field">
-          <label className="ai-field-label">思考模式</label>
-          <div className="ai-think-row">
-            <label className="ai-check">
-              <input
-                type="checkbox"
-                checked={cfg.thinking_enabled}
-                disabled={busy}
-                onChange={(e) => save({ thinking_enabled: e.target.checked })}
-              />
-              启用深度思考
-            </label>
-            <select
-              className="import-input"
-              value={cfg.reasoning_effort}
-              disabled={busy || !cfg.thinking_enabled}
-              onChange={(e) => save({ reasoning_effort: e.target.value })}
-            >
-              <option value="high">high（思考强度）</option>
-              <option value="max">max（思考强度）</option>
-            </select>
-          </div>
-          <p className="ai-field-hint">开启后讲解更细致，但耗时与费用更高。</p>
-        </div>
+      <div className="import-row">
+        <input
+          className="import-input"
+          type="password"
+          placeholder={cfg.has_key ? `已配置（${cfg.key_hint}），留空则不变` : "填入 DeepSeek API Key"}
+          value={keyInput}
+          onChange={(e) => setKeyInput(e.target.value)}
+        />
+        <select
+          className="import-input"
+          value={cfg.model}
+          disabled={busy}
+          onChange={(e) => save({ model: e.target.value })}
+        >
+          <option value="deepseek-chat">deepseek-chat</option>
+          <option value="deepseek-reasoner">deepseek-reasoner</option>
+        </select>
       </div>
 
-      <div className="ai-actions">
+      <div className="import-row" style={{ marginTop: 8 }}>
         <button
           className="btn-import-submit"
           disabled={busy || !keyInput.trim()}
@@ -806,356 +648,23 @@ function LlmSettingsPanel() {
         >
           保存密钥
         </button>
-        <button className="btn-ghost" disabled={busy} onClick={test}>
-          测试连接
-        </button>
         {cfg.has_key && (
           <button
-            className="btn-ghost danger"
+            className="game-delete-btn"
+            style={{ width: "auto", padding: "0 12px" }}
             disabled={busy}
             onClick={() => save({ api_key: "" })}
           >
             清除密钥
           </button>
         )}
+        <button className="btn-import-submit" disabled={busy} onClick={test}>
+          测试连接
+        </button>
       </div>
-
-      {err && <div className="import-error" style={{ marginTop: 10 }}>{err}</div>}
-      {msg && <div className="ai-msg-ok">{msg}</div>}
-    </div>
-  );
-}
-
-// 美元金额：费用通常很小，保留 4 位小数；总额够大时退到 2 位
-const fmtUsd = (v) => "$" + (v >= 1 ? v.toFixed(2) : v.toFixed(4));
-const fmtNum = (n) => (n ?? 0).toLocaleString();
-const LLM_PAGE = 50;
-
-function LlmUsagePanel() {
-  const [summary, setSummary] = React.useState(null);
-  const [rows, setRows] = React.useState([]);
-  const [total, setTotal] = React.useState(0);
-  const [features, setFeatures] = React.useState([]);
-  const [filter, setFilter] = React.useState("");
-  const [offset, setOffset] = React.useState(0);
-  const [err, setErr] = React.useState("");
-
-  React.useEffect(() => {
-    adminLlmUsageSummary().then(setSummary).catch((e) => setErr(e.message));
-  }, []);
-
-  React.useEffect(() => {
-    adminLlmUsage(LLM_PAGE, offset, filter)
-      .then((d) => {
-        setRows(d.items);
-        setTotal(d.total);
-        setFeatures(d.features);
-      })
-      .catch((e) => setErr(e.message));
-  }, [filter, offset]);
-
-  const pickFilter = (key) => {
-    setFilter(key);
-    setOffset(0);
-  };
-
-  const card = (title, agg, hint) => (
-    <div className="usage-card">
-      <div className="usage-card-title">{title}</div>
-      <div className="usage-card-cost">{agg ? fmtUsd(agg.cost_usd) : "—"}</div>
-      <div className="usage-card-sub">
-        {agg ? `${fmtNum(agg.calls)} 次 · ${fmtNum(agg.total_tokens)} token` : ""}
-      </div>
-      {hint && <div className="usage-card-hint">{hint}</div>}
-    </div>
-  );
-
-  return (
-    <div className="panel">
-      <h3>LLM 用量与费用</h3>
-      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        逐笔记录每次大模型调用的 token 与折算费用（按 DeepSeek 官方单价，USD）。
-        费用为实际产生的额外开销，请与官方账单对账。
-      </p>
 
       {err && <div className="import-error">{err}</div>}
-
-      <div className="usage-cards">
-        {card("今日", summary?.today)}
-        {card("本月", summary?.month)}
-        {card("全部", summary?.all)}
-      </div>
-
-      {summary?.by_feature?.length > 0 && (
-        <div className="usage-feature-wrap">
-          <div className="usage-feature-title">按事项分布（全部）</div>
-          <div className="admin-table-wrap"><table className="admin-table">
-            <thead>
-              <tr><th>事项</th><th>调用次数</th><th>Token</th><th>费用</th></tr>
-            </thead>
-            <tbody>
-              {summary.by_feature.map((f) => (
-                <tr key={f.feature}>
-                  <td>{f.label}</td>
-                  <td>{fmtNum(f.calls)}</td>
-                  <td>{fmtNum(f.total_tokens)}</td>
-                  <td>{fmtUsd(f.cost_usd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table></div>
-        </div>
-      )}
-
-      <div className="usage-detail-title">调用明细</div>
-      <div className="admin-tabs" style={{ marginBottom: 12 }}>
-        <button className={filter === "" ? "active" : ""} onClick={() => pickFilter("")}>全部</button>
-        {features
-          .filter((f) => f.key !== "unknown")
-          .map((f) => (
-            <button
-              key={f.key}
-              className={filter === f.key ? "active" : ""}
-              onClick={() => pickFilter(f.key)}
-            >
-              {f.label}
-            </button>
-          ))}
-      </div>
-
-      <div className="admin-table-wrap"><table className="admin-table">
-        <thead>
-          <tr>
-            <th>时间</th><th>事项</th><th>用户</th><th>模型</th>
-            <th>输入(缓存)</th><th>输出(思考)</th><th>费用</th><th>耗时</th><th>状态</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className={r.success ? "" : "usage-row-fail"}>
-              <td style={{ whiteSpace: "nowrap" }}>{fmtTime(r.ts)}</td>
-              <td>{r.label}</td>
-              <td>{r.user_id || "—"}</td>
-              <td><code>{r.model.replace("deepseek-", "")}</code></td>
-              <td>
-                {fmtNum(r.prompt_tokens)}
-                {r.cached_tokens > 0 && <span className="muted"> ({fmtNum(r.cached_tokens)})</span>}
-              </td>
-              <td>
-                {fmtNum(r.completion_tokens)}
-                {r.reasoning_tokens > 0 && <span className="muted"> ({fmtNum(r.reasoning_tokens)})</span>}
-              </td>
-              <td>{fmtUsd(r.cost_usd)}</td>
-              <td className="muted">{(r.duration_ms / 1000).toFixed(1)}s</td>
-              <td>
-                {r.success ? (
-                  <span className="tag" style={{ background: "#e6f4ea", color: "#2e7d32" }}>成功</span>
-                ) : (
-                  <span className="tag off" title={r.error}>失败</span>
-                )}
-              </td>
-            </tr>
-          ))}
-          {rows.length === 0 && (
-            <tr><td colSpan={9} className="muted" style={{ textAlign: "center" }}>暂无调用记录</td></tr>
-          )}
-        </tbody>
-      </table></div>
-
-      <div className="import-row" style={{ marginTop: 10, alignItems: "center" }}>
-        <button
-          className="btn-import-submit"
-          disabled={offset === 0}
-          onClick={() => setOffset((o) => Math.max(0, o - LLM_PAGE))}
-        >
-          上一页
-        </button>
-        <span className="muted" style={{ fontSize: 13 }}>
-          第 {offset / LLM_PAGE + 1} 页 / 共 {total} 条
-        </span>
-        <button
-          className="btn-import-submit"
-          disabled={offset + LLM_PAGE >= total}
-          onClick={() => setOffset((o) => o + LLM_PAGE)}
-        >
-          下一页
-        </button>
-      </div>
-    </div>
-  );
-}
-
-const LEVEL_CLASS = { DEBUG: "debug", INFO: "info", WARNING: "warn", ERROR: "error" };
-
-function SyslogPanel() {
-  const [data, setData] = React.useState({ level: "INFO", supported_levels: [], records: [] });
-  const [auto, setAuto] = React.useState(true);
-  const [err, setErr] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [query, setQuery] = React.useState("");
-  const [onlyLevel, setOnlyLevel] = React.useState("");
-  const boxRef = React.useRef(null);
-
-  const load = React.useCallback(async () => {
-    try {
-      // 全量拉取（缓冲只有最多 500 条），简单可靠
-      const d = await adminSyslog(0);
-      setData(d);
-      setErr("");
-    } catch (e) {
-      setErr(e.message);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    load();
-  }, [load]);
-
-  React.useEffect(() => {
-    if (!auto) return undefined;
-    const id = setInterval(load, 3000);
-    return () => clearInterval(id);
-  }, [auto, load]);
-
-  async function changeLevel(level) {
-    setBusy(true);
-    try {
-      const r = await adminSetLogLevel(level);
-      setData((d) => ({ ...d, level: r.level }));
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function clear() {
-    if (!window.confirm("确定清空当前进程内的运行日志缓冲？")) return;
-    setBusy(true);
-    try {
-      await adminClearSyslog();
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // 等级过滤 + 关键字搜索
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return data.records.filter((r) => {
-      if (onlyLevel && r.level !== onlyLevel) return false;
-      if (!q) return true;
-      return (
-        r.message.toLowerCase().includes(q) ||
-        r.logger.toLowerCase().includes(q)
-      );
-    });
-  }, [data.records, query, onlyLevel]);
-
-  // 各等级计数，给筛选标签用
-  const counts = React.useMemo(() => {
-    const c = { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0 };
-    for (const r of data.records) if (r.level in c) c[r.level] += 1;
-    return c;
-  }, [data.records]);
-
-  // 新日志到达且未筛选时，自动滚到底部
-  React.useEffect(() => {
-    if (auto && !query && !onlyLevel && boxRef.current) {
-      boxRef.current.scrollTop = boxRef.current.scrollHeight;
-    }
-  }, [filtered, auto, query, onlyLevel]);
-
-  const levels = data.supported_levels.length
-    ? data.supported_levels
-    : ["DEBUG", "INFO", "WARNING", "ERROR"];
-
-  return (
-    <div className="panel">
-      <div className="syslog-head">
-        <h3 style={{ margin: 0 }}>系统运行日志</h3>
-        <span className="syslog-count">
-          {filtered.length}
-          {filtered.length !== data.records.length ? ` / ${data.records.length}` : ""} 条
-        </span>
-        {auto && <span className="syslog-live"><i />实时</span>}
-      </div>
-      <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-        进程内最近 500 条运行日志（重启即清空），用于排查问题。
-        等级调到 <code>DEBUG</code> 可看到 LLM 的完整提示词、思考与输出。
-      </p>
-
-      <div className="syslog-toolbar">
-        <label className="syslog-field">
-          等级
-          <select
-            value={data.level}
-            disabled={busy}
-            onChange={(e) => changeLevel(e.target.value)}
-          >
-            {levels.map((lv) => (
-              <option key={lv} value={lv}>{lv}</option>
-            ))}
-          </select>
-        </label>
-
-        <input
-          className="syslog-search"
-          type="search"
-          placeholder="搜索日志内容 / 模块…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-
-        <div className="syslog-spacer" />
-
-        <label className="ai-check" style={{ fontSize: 13 }}>
-          <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-          自动刷新
-        </label>
-        <button className="btn-ghost" disabled={busy} onClick={load}>刷新</button>
-        <button className="btn-ghost danger" disabled={busy} onClick={clear}>清空</button>
-      </div>
-
-      <div className="syslog-chips">
-        <button
-          className={"syslog-chip" + (onlyLevel === "" ? " active" : "")}
-          onClick={() => setOnlyLevel("")}
-        >
-          全部
-        </button>
-        {["ERROR", "WARNING", "INFO", "DEBUG"].map((lv) => (
-          <button
-            key={lv}
-            className={"syslog-chip " + LEVEL_CLASS[lv] + (onlyLevel === lv ? " active" : "")}
-            onClick={() => setOnlyLevel(onlyLevel === lv ? "" : lv)}
-          >
-            {lv} <b>{counts[lv]}</b>
-          </button>
-        ))}
-      </div>
-
-      {err && <div className="import-error" style={{ marginTop: 10 }}>{err}</div>}
-
-      <div className="syslog-box" ref={boxRef}>
-        {filtered.length === 0 && (
-          <div className="syslog-empty">
-            {data.records.length === 0 ? "暂无日志" : "没有匹配的日志"}
-          </div>
-        )}
-        {filtered.map((r) => (
-          <div key={r.seq} className={"syslog-line " + (LEVEL_CLASS[r.level] || "")}>
-            <span className="syslog-ts">{r.ts}</span>
-            <span className={"syslog-level " + (LEVEL_CLASS[r.level] || "")}>{r.level}</span>
-            <span className="syslog-logger">{r.logger.replace(/^xiangqidao\./, "")}</span>
-            <pre className="syslog-msg">{r.message}</pre>
-          </div>
-        ))}
-      </div>
+      {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
     </div>
   );
 }

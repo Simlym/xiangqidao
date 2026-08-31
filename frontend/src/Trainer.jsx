@@ -1,11 +1,7 @@
 import React from "react";
 import Board from "./Board";
 import { applyMove, uciToChinese } from "./xiangqi";
-import { getNext, getTrainingPuzzle, checkMove, submitRating, explainPuzzle, getRating, getOverview } from "./api";
-import { useBoardMaxHeight } from "./useBoardMaxHeight";
-
-// 今日训练目标：本会话已做 + 到期题数，撑起左栏进度环
-const DAILY_GOAL = 15;
+import { getNext, getTrainingPuzzle, checkMove, submitRating, explainPuzzle, completeLearningPack } from "./api";
 
 // 训练状态机
 // phase: 'loading' | 'thinking' | 'step_ok' | 'wrong' | 'rating' | 'done' | 'empty'
@@ -24,6 +20,8 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [newCapped, setNewCapped] = React.useState(false);
   // 弱点专项：非空时「下一题」继续在该类目内取题
   const [activeCategory, setActiveCategory] = React.useState(null);
+  const [pack, setPack] = React.useState(null); // {id,type,title,puzzleIds,index}
+  const [packResult, setPackResult] = React.useState(null);
   const didInit                   = React.useRef(false);
 
   // 多步追踪
@@ -39,42 +37,18 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const [solution, setSolution]   = React.useState([]);
   const [nextReview, setNextReview] = React.useState(null);
   const [ratingChange, setRatingChange] = React.useState(null); // 首次遇题的 ELO 变化
+  const [ruleText, setRuleText] = React.useState("");
   const startedAt                 = React.useRef(0);
 
   // AI 讲解（完成后按需请求，后端缓存同题结果）
   const [aiText, setAiText]         = React.useState("");
   const [aiLoading, setAiLoading]   = React.useState(false);
   const [aiDisabled, setAiDisabled] = React.useState(false); // 后端未配置 AI
-  // 完成面板：默认折叠评分/用时/复习/AI 等次要信息，移动端做减法
-  const [detailsOpen, setDetailsOpen] = React.useState(false);
 
   // 计时训练
   const [timed, setTimed]   = React.useState(true);
   const [elapsed, setElapsed] = React.useState(0);  // 秒
   const solveMs               = React.useRef(0);     // 完成时定格的用时
-
-  // 左栏成长面板：ELO 档案 + 今日进度（本会话已做 / 连续打卡）
-  const [ratingInfo, setRatingInfo] = React.useState(null); // {rating, peak, solved, title}
-  const [streakDays, setStreakDays] = React.useState(0);
-  const [solvedToday, setSolvedToday] = React.useState(0);   // 本会话已完成题数
-
-  // 棋盘区可用高度：防止上方数字坐标被挤出、下方最后一行被截断。
-  // 移动端多留出空间（轮次条 + 解题卡顶部的「查看答案」等操作），避免棋盘铺满到底栏、
-  // 把答案/操作按钮顶到屏幕外。
-  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight(12, 150);
-
-  // 拉取 ELO 档案与连续打卡（挂载一次；每题完成后刷新）
-  const refreshGrowth = React.useCallback(async () => {
-    try {
-      const [r, ov] = await Promise.all([getRating(), getOverview()]);
-      setRatingInfo(r);
-      setStreakDays(ov.streak_days || 0);
-    } catch {
-      /* 未登录或离线时静默：左栏退化为初始值，不打断解题 */
-    }
-  }, []);
-
-  React.useEffect(() => { refreshGrowth(); }, [refreshGrowth]);
 
   // 解题进行中实时计时；完成/答错面板出现后停表
   React.useEffect(() => {
@@ -96,10 +70,10 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     setStepMsg("");
     setSolution([]);
     setRatingChange(null);
+    setRuleText("");
     setElapsed(0);
     setAiText("");
     setAiLoading(false);
-    setDetailsOpen(false);
   }, []);
 
   const beginPuzzle = React.useCallback((p) => {
@@ -110,19 +84,19 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   }, []);
 
   // 常规取题（可带类目做弱点专项）
-  const load = React.useCallback(async (category = null) => {
+  const load = React.useCallback(async (category = null, kind = null) => {
     resetState();
-    const d = await getNext(category);
+    const d = await getNext(category, kind);
     setDueCount(d.due_count);
     if (!d.puzzle) { setNewCapped(!!d.new_limit_reached); setPhase("empty"); return; }
     beginPuzzle(d.puzzle);
   }, [resetState, beginPuzzle]);
 
   // 按 id 取指定题（来自复盘报告/实战漏着推荐）
-  const loadById = React.useCallback(async (id) => {
+  const loadById = React.useCallback(async (id, context = "training") => {
     resetState();
     try {
-      const p = await getTrainingPuzzle(id);
+      const p = await getTrainingPuzzle(id, context);
       beginPuzzle(p);
     } catch {
       setPhase("empty");
@@ -135,9 +109,21 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
       setActiveCategory(null);
       loadById(target.puzzleId);
       onTargetConsumed?.();
+    } else if (target?.puzzleIds?.length) {
+      const nextPack = { id: target.packId, type: target.packType, title: target.title,
+        puzzleIds: target.puzzleIds, index: 0 };
+      setActiveCategory(null);
+      setPack(nextPack);
+      setPackResult(null);
+      loadById(target.puzzleIds[0], `${target.packType}:${target.packId}`);
+      onTargetConsumed?.();
     } else if (target?.category) {
       setActiveCategory(target.category);
       load(target.category);
+      onTargetConsumed?.();
+    } else if (target?.kind) {
+      setActiveCategory(target.kind);
+      load(null, target.kind);
       onTargetConsumed?.();
     } else if (!didInit.current) {
       didInit.current = true;
@@ -154,7 +140,9 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     // 乐观更新：玩家这一手立刻落到棋盘上，不必等校验/对方应着返回。
     setCurrentFen(fenAfterMine);
 
-    const res = await checkMove({ puzzle_id: puzzle.id, step, move, attempt: wrongCount });
+    const res = await checkMove({
+      puzzle_id: puzzle.id, session_id: puzzle.session_id, step, move, attempt: wrongCount,
+    });
 
     if (!res.correct) {
       setCurrentFen(prevFen);  // 走错：把棋子还原回走子前
@@ -186,7 +174,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
         setStepMsg("");
         setLastMove(null);
         setPhase("thinking");
-      }, 1500);
+      }, 1100);
     }
   }
 
@@ -201,6 +189,7 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     solveMs.current = Date.now() - startedAt.current;
     const res = await submitRating({
       puzzle_id: puzzle.id,
+      session_id: puzzle.session_id,
       self_rating: "again",
       had_retry: true,
       correct: false,
@@ -209,15 +198,15 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     setSolution(res.solution);
     setNextReview(res.next_review);
     setRatingChange(res.rating || null);
+    setRuleText(res.rule_explanation || "");
     setPhase("done");
-    setSolvedToday((n) => n + 1);
-    refreshGrowth();
   }
 
   async function onRate(rating) {
     solveMs.current = Date.now() - startedAt.current;
     const res = await submitRating({
       puzzle_id: puzzle.id,
+      session_id: puzzle.session_id,
       self_rating: rating,
       had_retry: hadRetry,
       correct: true,
@@ -226,10 +215,29 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
     setSolution(res.solution);
     setNextReview(res.next_review);
     setRatingChange(res.rating || null);
+    setRuleText(res.rule_explanation || "");
     setPhase("done");
-    setSolvedToday((n) => n + 1);
-    refreshGrowth();
     onCreditsChanged?.(); // 首次做对可能奖励积分
+  }
+
+  async function onNext() {
+    if (!pack) {
+      load(activeCategory);
+      return;
+    }
+    if (pack.index + 1 < pack.puzzleIds.length) {
+      const next = { ...pack, index: pack.index + 1 };
+      setPack(next);
+      loadById(next.puzzleIds[next.index], `${next.type}:${next.id}`);
+      return;
+    }
+    try {
+      const result = await completeLearningPack(pack.id);
+      setPackResult(result);
+      setPhase("pack_done");
+    } catch (e) {
+      setAiText(e.message || "训练包结算失败");
+    }
   }
 
   async function onAiExplain() {
@@ -274,6 +282,17 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   // ── 渲染 ──────────────────────────────────────────────────────
 
   if (phase === "loading") return <div className="panel">加载中…</div>;
+  if (phase === "pack_done") return (
+    <div className="panel learning-pack-result">
+      <span className="eyebrow">{pack?.title}</span>
+      <h2>训练包完成</h2>
+      <div className="cards">
+        <div className="card"><div className="card-value">{Math.round((packResult?.score || 0) * 100)}%</div><div className="card-label">本次首答率</div></div>
+        {pack?.type === "assessment" && <div className="card"><div className="card-value">{packResult?.delta >= 0 ? "+" : ""}{Math.round((packResult?.delta || 0) * 100)}%</div><div className="card-label">较训练基线</div></div>}
+      </div>
+      <button onClick={() => { setPack(null); setPackResult(null); load(); }}>回到每日训练 →</button>
+    </div>
+  );
   if (phase === "empty")
     return (
       <div className="panel">
@@ -302,114 +321,85 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
   const sideText = puzzle?.side_to_move === "w" ? "红方" : "黑方";
   const boardDisabled = phase !== "thinking";
 
-  const solvedGoal = solvedToday + dueCount; // 进度环分母：本会话已做 + 到期堆积，至少 DAILY_GOAL
-  const ringGoal = Math.max(DAILY_GOAL, solvedGoal);
-
   return (
-    <div className="trainer trainer-3col">
-      {/* ── 左栏：成长面板（今日进度环 + ELO 卡）────────────────── */}
-      <aside className="trainer-side growth">
-        <ProgressRing solved={solvedToday} goal={ringGoal} due={dueCount} streak={streakDays} />
-        <EloCard info={ratingInfo} change={phase === "done" ? ratingChange : null} />
-      </aside>
-
-      {/* ── 中栏：棋盘 ─────────────────────────────────────────── */}
-      <div className="trainer-main">
-        <div className="trainer-board-area" ref={boardAreaRef}>
-          <Board
-            fen={currentFen}
-            onMove={onMove}
-            lastMove={lastMove}
-            disabled={boardDisabled}
-            maxHeight={boardMaxHeight}
-          />
-        </div>
-        {/* 轮到谁走 + 多步进度，压在棋盘正下方一行 */}
-        <div className="turn-bar">
-          <span className={"turn-chip " + (puzzle.side_to_move === "w" ? "red" : "black")}>
-            轮到 <b>{sideText}</b> 走子
-          </span>
-          {totalSteps > 1 && (
-            <span className="turn-step">
-              <span className="step-bar">
-                {Array.from({ length: totalSteps }, (_, i) => (
-                  <span
-                    key={i}
-                    className={"step-dot" + (i < step ? " done" : i === step ? " current" : "")}
-                  />
-                ))}
-              </span>
-              第 {step + 1} / {totalSteps} 步
+    <div className="trainer">
+      {/* 题目信息栏 */}
+      <div className="panel info">
+        <div className="info-top">
+          {activeCategory && (
+            <span className="tag" style={{ background: "#fff3e0", color: "#e67e22" }}>
+              弱点专项
             </span>
           )}
+          {pack && <span className="tag pack-tag">{pack.title} {pack.index + 1}/{pack.puzzleIds.length}</span>}
+          {puzzle.kind && puzzle.kind !== puzzle.category && (
+            <span className="tag" style={{ background: "#e8f0fe", color: "#2980b9" }}>
+              {puzzle.kind}
+            </span>
+          )}
+          <span className="tag">{puzzle.category}</span>
+          <span className="tag">难度 {"★".repeat(puzzle.difficulty)}</span>
+          {totalSteps > 1 && (
+            <span className="tag">共 {totalSteps} 步</span>
+          )}
+          {timed && <span className="tag timer">⏱ {elapsed}s</span>}
+          <span
+            className="tag clickable"
+            onClick={() => setTimed((v) => !v)}
+            title="切换计时模式"
+          >
+            计时{timed ? "开" : "关"}
+          </span>
+          <span className="due-badge">到期 {dueCount} 题</span>
+        </div>
+        {/* 多步进度条 */}
+        {totalSteps > 1 && (
+          <div className="step-bar">
+            {Array.from({ length: totalSteps }, (_, i) => (
+              <div
+                key={i}
+                className={"step-dot" + (i < step ? " done" : i === step ? " current" : "")}
+              />
+            ))}
+          </div>
+        )}
+        <p>
+          轮到 <b>{sideText}</b> 走子，请走出制胜着法
+          {totalSteps > 1 ? `（第 ${step + 1} / ${totalSteps} 步）` : ""}。
+        </p>
+        {/* 反馈槽常驻占位，提示/步骤反馈出现时不再撑高面板导致棋盘抖动 */}
+        <div className="feedback-slot">
+          {hint && <span className="hint">提示：{hint}</span>}
+          {stepMsg && <span className="step-msg">{stepMsg}</span>}
         </div>
       </div>
 
-      {/* ── 右栏：解题工作区（题目卡 + 随 phase 切换的反馈/自评/结果）── */}
-      <aside className="trainer-side solve">
-        {/* 题目信息卡 */}
-        <div className="panel solve-card">
-          <div className="info-top">
-            {/* 核心只留 3 个 tag：类目、难度、步数 */}
-            <div className="info-tags">
-              {activeCategory && (
-                <span className="tag" style={{ background: "#fff3e0", color: "#e67e22" }}>
-                  弱点专项
-                </span>
-              )}
-              {puzzle.kind && puzzle.kind !== puzzle.category && (
-                <span className="tag" style={{ background: "#e8f0fe", color: "#2980b9" }}>
-                  {puzzle.kind}
-                </span>
-              )}
-              <span className="tag">{puzzle.category}</span>
-              <span className="tag">难度 {"★".repeat(puzzle.difficulty)}</span>
-              {totalSteps > 1 && <span className="tag">共 {totalSteps} 步</span>}
-            </div>
-            {/* 计时器与到期数收到右上角，不挤压核心 tag */}
-            <div className="info-corner">
-              {dueCount > 0 && (
-                <span className="tag due-tag" title="到期复习题数">到期 {dueCount}</span>
-              )}
-              <span
-                className="tag clickable timer-toggle"
-                onClick={() => setTimed((v) => !v)}
-                title="切换计时模式"
-              >
-                {timed ? `⏱ ${elapsed}s` : "计时关"}
-              </span>
-            </div>
-          </div>
+      {/* 棋盘（答题完成后，结果/自评面板直接覆盖在棋面下方，免去上下滑动） */}
+      <div className="trainer-board-area">
+        <Board
+          fen={currentFen}
+          onMove={onMove}
+          lastMove={lastMove}
+          disabled={boardDisabled}
+        />
 
-          {/* 解题进行中：目标说明 + 反馈槽 + 放弃 */}
-          {(phase === "thinking" || phase === "step_ok") && (
-            <>
-              <p className="solve-prompt">
-                请走出制胜着法
-                {totalSteps > 1 ? `（第 ${step + 1} / ${totalSteps} 步）` : ""}。
-              </p>
-              <div className="feedback-slot">
-                {hint && <span className="hint">提示：{hint}</span>}
-              </div>
-              <button className="btn-giveup wide" onClick={onGiveUp}>看不出？查看答案</button>
-            </>
-          )}
-
-          {/* 答错 */}
-          {phase === "wrong" && (
-            <div className="result bad">
+        {/* 答错面板 */}
+        {phase === "wrong" && (
+          <div className="board-overlay">
+            <div className="panel result bad">
               <h3>✗ 不对</h3>
-              {hint && <span className="hint">提示：{hint}</span>}
               <div className="btn-row">
                 <button className="btn-retry" onClick={onRetry}>再试一次</button>
                 <button className="btn-giveup" onClick={onGiveUp}>查看答案</button>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* 答对自评 */}
-          {phase === "rating" && (
-            <div className="result ok">
+        {/* 答对自评面板 */}
+        {phase === "rating" && (
+          <div className="board-overlay">
+            <div className="panel result ok">
               <h3>✓ 全部走出！</h3>
               <p className="muted">
                 {hadRetry ? "中途重试过，自评最高计入「困难」。" : "你觉得这题对你来说……"}
@@ -428,109 +418,38 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
                 ))}
               </div>
             </div>
-          )}
-
-          {/* 完成：默认只显示正解 + 下一题；评分/用时/复习/AI 折叠，点到再看 */}
-          {phase === "done" && (
-            <div className="result ok">
-              <h3>{ratingChange?.delta >= 0 ? "✓ 完成！" : "已查看答案"}</h3>
-              <p>正解：<code>{solutionText}</code></p>
-              <div className="done-actions">
-                <button className="btn-next" onClick={() => load(activeCategory)}>
-                  {activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
-                </button>
-                <button
-                  className="btn-detail-toggle"
-                  onClick={() => setDetailsOpen((o) => !o)}
-                >
-                  {detailsOpen ? "收起详情 ▴" : "评分 · 详情 ▾"}
-                </button>
-              </div>
-              {detailsOpen && (
-                <div className="done-details">
-                  {ratingChange && (
-                    <p>评分 {ratingChange.old} →{" "}
-                      <b>{ratingChange.new}</b>{" "}
-                      <span className={ratingChange.delta >= 0 ? "delta-up" : "delta-down"}>
-                        ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
-                      </span>
-                    </p>
-                  )}
-                  {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
-                  <p className="muted">下次复习：{nextReview}</p>
-                  {aiText && (
-                    <div className="analysis-explanation ai-explain">{aiText}</div>
-                  )}
-                  {!aiDisabled && !aiText && (
-                    <button className="btn-ai" onClick={onAiExplain} disabled={aiLoading}>
-                      {aiLoading ? "AI 思考中…" : "🤖 AI 讲解这道题"}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* 走棋反馈：底部 toast 滑入，1.5 秒自动消失，避免被手指遮挡、不占棋盘空间 */}
-      {stepMsg && (
-        <div className="move-toast" role="status" aria-live="polite">{stepMsg}</div>
-      )}
-    </div>
-  );
-}
-
-// ── 左栏：今日进度环 ────────────────────────────────────────────
-function ProgressRing({ solved, goal, due, streak }) {
-  const R = 34, C = 2 * Math.PI * R;
-  const pct = goal > 0 ? Math.min(1, solved / goal) : 0;
-  return (
-    <div className="panel growth-card">
-      <div className="growth-title">今日训练</div>
-      <div className="ring-wrap">
-        <svg viewBox="0 0 80 80" className="ring-svg" aria-hidden>
-          <circle cx="40" cy="40" r={R} className="ring-bg" />
-          <circle
-            cx="40" cy="40" r={R} className="ring-fg"
-            strokeDasharray={C}
-            strokeDashoffset={C * (1 - pct)}
-          />
-        </svg>
-        <div className="ring-center">
-          <span className="ring-num">{solved}</span>
-          <span className="ring-den">/ {goal}</span>
-        </div>
-      </div>
-      <div className="growth-rows">
-        <div className="growth-row"><span>到期复习</span><b>{due} 题</b></div>
-        <div className="growth-row"><span>连续打卡</span><b>🔥 {streak} 天</b></div>
-      </div>
-    </div>
-  );
-}
-
-// ── 左栏：ELO 评分卡 ───────────────────────────────────────────
-function EloCard({ info, change }) {
-  const rating = info?.rating ?? 1200;
-  const peak = info?.peak ?? rating;
-  const title = info?.title ?? "";
-  return (
-    <div className="panel growth-card elo-card">
-      <div className="growth-title">战术评分</div>
-      <div className="elo-main">
-        <span className="elo-num">{rating}</span>
-        {change && (
-          <span className={"elo-delta " + (change.delta >= 0 ? "delta-up" : "delta-down")}>
-            {change.delta >= 0 ? "▲" : "▼"}{Math.abs(change.delta)}
-          </span>
+          </div>
         )}
-      </div>
-      {title && <div className="elo-title">{title}</div>}
-      <div className="growth-rows">
-        <div className="growth-row"><span>历史最高</span><b>{peak}</b></div>
-        {info?.solved != null && (
-          <div className="growth-row"><span>累计解题</span><b>{info.solved}</b></div>
+
+        {/* 完成面板 */}
+        {phase === "done" && (
+          <div className="board-overlay">
+            <div className="panel result ok">
+              <p>正解：<code>{solutionText}</code></p>
+              {ratingChange && (
+                <p>评分 {ratingChange.old} →{" "}
+                  <b>{ratingChange.new}</b>{" "}
+                  <span className={ratingChange.delta >= 0 ? "delta-up" : "delta-down"}>
+                    ({ratingChange.delta >= 0 ? "+" : ""}{ratingChange.delta})
+                  </span>
+                </p>
+              )}
+              {timed && <p className="muted">本题用时：{fmtSec(solveMs.current)}</p>}
+              <p className="muted">下次复习：{nextReview}</p>
+              {aiText && (
+                <div className="analysis-explanation ai-explain">{aiText}</div>
+              )}
+              {ruleText && <div className="analysis-explanation rule-explain"><strong>棋理拆解</strong><br />{ruleText}</div>}
+              {!aiDisabled && !aiText && (
+                <button className="btn-ai" onClick={onAiExplain} disabled={aiLoading}>
+                  {aiLoading ? "AI 思考中…" : "🤖 AI 讲解这道题"}
+                </button>
+              )}
+              <button onClick={onNext}>
+                {pack ? (pack.index + 1 < pack.puzzleIds.length ? "训练包下一题 →" : "完成训练包 →") : activeCategory ? `下一题（${activeCategory}）→` : "下一题 →"}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

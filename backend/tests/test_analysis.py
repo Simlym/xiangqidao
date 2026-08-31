@@ -1,6 +1,7 @@
 """棋局分析模块测试。"""
 import sys
 import os
+from datetime import datetime, timedelta
 
 # 确保可以找到 app 模块
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -83,12 +84,8 @@ def test_get_engine_returns_none_when_not_installed():
 
 
 def test_get_engine_none_for_default_when_not_installed(monkeypatch):
-    """PATH 中没有 pikafish 时，get_engine() 应返回 None。"""
-    import shutil
-    # 如果真的有 pikafish，跳过此测试
-    if shutil.which("pikafish"):
-        pytest.skip("pikafish is installed, skipping absence test")
-
+    """所有可发现位置均没有 pikafish 时，get_engine() 应返回 None。"""
+    monkeypatch.setattr("app.engine.find_engine", lambda: None)
     result = get_engine()
     assert result is None
 
@@ -115,7 +112,12 @@ def test_analyze_endpoint_returns_analyzing_without_engine():
 
     # /analyze 现要求登录：插入用户与其名下的 game 记录
     with TestSessionLocal() as db:
-        db.add(User(username="tester", password_hash=hash_password("password1")))
+        db.add(User(
+            username="tester",
+            password_hash=hash_password("password1"),
+            plan="pro",
+            membership_expires_at=datetime.utcnow() + timedelta(days=1),
+        ))
         game = Game(moves="h2e2 h7e7", played_on="2026-01-01", user_id="tester")
         db.add(game)
         db.commit()

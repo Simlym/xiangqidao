@@ -2,8 +2,8 @@ import React from "react";
 import { login, register } from "./api";
 
 // 登录 / 注册弹窗。成功后回调 onAuth({token, username, role})。
-export default function Auth({ onClose, onAuth }) {
-  const [mode, setMode] = React.useState("login"); // login | register
+export default function Auth({ initialMode = "login", onClose, onAuth }) {
+  const [mode, setMode] = React.useState(initialMode); // login | register
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState("");
@@ -24,19 +24,37 @@ export default function Auth({ onClose, onAuth }) {
     }
   }
 
+  function switchMode(nextMode) {
+    setMode(nextMode);
+    setError("");
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal auth-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === "login" ? "登录" : "注册账号"}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="modal-close auth-close" type="button" aria-label="关闭" onClick={onClose}>×</button>
+        <h2>{mode === "login" ? "欢迎回来" : "创建账号"}</h2>
+        <p className="auth-intro">
+          {mode === "login" ? "登录后同步你的训练进度和棋局。" : "注册后即可保存个人训练进度和棋局。"}
+        </p>
         <div className="auth-tabs">
           <button
+            type="button"
             className={mode === "login" ? "active" : ""}
-            onClick={() => setMode("login")}
+            onClick={() => switchMode("login")}
           >
             登录
           </button>
           <button
+            type="button"
             className={mode === "register" ? "active" : ""}
-            onClick={() => setMode("register")}
+            onClick={() => switchMode("register")}
           >
             注册
           </button>
@@ -47,6 +65,10 @@ export default function Auth({ onClose, onAuth }) {
             placeholder="用户名"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            minLength={2}
+            maxLength={40}
+            required
             autoFocus
           />
           <input
@@ -55,14 +77,18 @@ export default function Auth({ onClose, onAuth }) {
             placeholder="密码"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            minLength={8}
+            maxLength={128}
+            required
           />
           {error && <div className="import-error">{error}</div>}
           <button className="btn-start" type="submit" disabled={busy}>
             {busy ? "处理中…" : mode === "login" ? "登录" : "注册"}
           </button>
           {mode === "register" && (
-            <p className="muted" style={{ fontSize: 12 }}>
-              首位注册用户将成为管理员。
+            <p className="muted auth-note">
+              用户名至少 2 位，密码至少 8 位。首位注册用户将成为管理员。
             </p>
           )}
         </form>

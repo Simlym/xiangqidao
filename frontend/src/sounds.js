@@ -21,6 +21,12 @@ export const SOUND_THEMES = [
   { key: "crisp", label: "清脆" },
   { key: "beep", label: "电子" },
 ];
+const ALL_SOUND_KEYS = [...SOUND_THEMES.map((item) => item.key), "temple"];
+const SOUND_LABELS = { wood: "木质", crisp: "清脆", beep: "电子", temple: "古寺梵音" };
+
+export function soundThemeLabel(key) {
+  return SOUND_LABELS[key] || "木质";
+}
 
 export function soundMuted() {
   try {
@@ -39,7 +45,7 @@ export function setSoundMuted(muted) {
 export function soundTheme() {
   try {
     const t = localStorage.getItem(THEME_KEY);
-    return SOUND_THEMES.some((x) => x.key === t) ? t : "wood";
+    return ALL_SOUND_KEYS.includes(t) ? t : "wood";
   } catch {
     return "wood";
   }
@@ -182,6 +188,30 @@ const THEMES = {
     draw(c) {
       tone(c, { freq: 440, dur: 0.12, gain: 0.15 });
       tone(c, { freq: 440, dur: 0.16, time: 0.16, gain: 0.15 });
+    },
+  },
+  // 古寺：低沉木鱼与钟磬，为商店买断音色。
+  temple: {
+    move(c) {
+      knock(c, { freq: 760, q: 8, dur: 0.11, gain: 0.38 });
+      tone(c, { freq: 196, to: 150, dur: 0.24, type: "sine", gain: 0.12 });
+    },
+    capture(c) {
+      knock(c, { freq: 610, q: 7, dur: 0.16, gain: 0.48 });
+      tone(c, { freq: 174, to: 95, dur: 0.32, type: "sine", gain: 0.16 });
+    },
+    check(c) {
+      [523, 659].forEach((f, i) => tone(c, { freq: f, dur: 0.45, time: i * 0.16, gain: 0.11 }));
+    },
+    win(c) {
+      [392, 523, 659, 784].forEach((f, i) => tone(c, { freq: f, dur: 0.4, time: i * 0.17, gain: 0.1 }));
+    },
+    lose(c) {
+      [330, 247, 196].forEach((f, i) => tone(c, { freq: f, dur: 0.38, time: i * 0.2, gain: 0.1 }));
+    },
+    draw(c) {
+      knock(c, { freq: 690, q: 9, dur: 0.16, gain: 0.34 });
+      knock(c, { freq: 690, q: 9, dur: 0.16, gain: 0.34, time: 0.24 });
     },
   },
 };

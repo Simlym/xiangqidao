@@ -2,16 +2,17 @@ import React from "react";
 import Board from "./Board";
 import { applyMove, uciToChinese, parseFen, INITIAL_FEN } from "./xiangqi";
 import {
-  newPlayGame, playMove, importGame, analyzeGame, evalPosition,
-  getPlayEngine, getBookMoves, getHint, coachHintMove,
+  newPlayGame, playMove, getPositionState, importGame, analyzeGame, evalPosition,
+  getPlayEngine, getBookMoves, getHint, coachHintMove, streamEvalPosition,
 } from "./api";
-import { localEval, localEngineReady } from "./localEngine";
-import { useBoardMaxHeight } from "./useBoardMaxHeight";
-import { formatLocalTimestamp } from "./datetime";
+import { createEngineManager } from "./core/engine/createEngineManager";
+import { RUNTIME, runtime } from "./platform/runtime";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
+  soundThemeLabel,
 } from "./sounds";
+import EngineAnalysisView from "./components/EngineAnalysisView";
 
 const LEVELS = [
   { key: "easy", label: "入门" },
@@ -23,6 +24,17 @@ const SIDES = [
   { key: "w", label: "执红先手" },
   { key: "b", label: "执黑后手" },
 ];
+
+// 当前为 Web：WASM 优先，失败后自动降级 FastAPI。
+// Tauri 接入后只在工厂中增加原生适配器，页面无需出现平台分支。
+const positionEngine = createEngineManager({ remoteEvaluate: evalPosition, remoteStream: streamEvalPosition });
+const PLAY_DEPTH = { easy: 6, medium: 10, hard: 14 };
+
+function terminalResult(status, winner) {
+  if (status === "checkmate") return { game_over: true, winner };
+  if (status === "stalemate") return { game_over: true, winner: "draw" };
+  return { game_over: false, winner: null };
+}
 
 // 把红方视角的评分（cp/mate）转成评估条所需的展示信息。
 // humanSide: "w"/"b"，用于给出「你/对方」相对优劣的措辞。
@@ -127,8 +139,8 @@ function fmtDuration(ms) {
   return s < 60 ? `${s}秒` : `${Math.floor(s / 60)}分${s % 60}秒`;
 }
 
-export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin }) {
-  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight();
+export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin, onOpenSettings }) {
+  const isDesktop = runtime === RUNTIME.TAURI;
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);
@@ -144,8 +156,14 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const [showEval, setShowEval] = React.useState(false); // 是否显示优劣势评估条
   const [evalData, setEvalData] = React.useState(null);  // 红方视角 {cp, mate}
   const [evalLoading, setEvalLoading] = React.useState(false);
+  const [analysisMode, setAnalysisMode] = React.useState("movetime");
+  const [analysisTime, setAnalysisTime] = React.useState(1000);
+  const [analysisDepth, setAnalysisDepth] = React.useState(18);
+  const [analysisMultiPv, setAnalysisMultiPv] = React.useState(1);
+  const [analysisSearchMoves, setAnalysisSearchMoves] = React.useState([]);
   const [engineInfo, setEngineInfo] = React.useState(null); // {engine,label,available}
   const [localReady, setLocalReady] = React.useState(false); // 浏览器本地引擎是否就绪
+  const [localRuntime, setLocalRuntime] = React.useState(null); // native | wasm | null
   const [showBook, setShowBook] = React.useState(false);  // 云库参考面板开关
   const [bookData, setBookData] = React.useState(null);   // {available, moves}
   const [bookLoading, setBookLoading] = React.useState(false);
@@ -159,11 +177,13 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const [soundKey, setSoundKey] = React.useState(soundTheme); // 音效主题（持久化）
   const [overDismissed, setOverDismissed] = React.useState(false); // 结果浮层被关闭，露出终局棋盘
   const [timesLog, setTimesLog] = React.useState([]);       // 每步用时（ms），与 moveLog 对齐
+  const [inspectorTab, setInspectorTab] = React.useState("moves"); // PC 右侧栏：棋谱 | 分析
   const moves = React.useRef([]);                     // 累计着法（红黑交替）
   const moveTimes = React.useRef([]);                 // 每步用时（ms），与 moves 对齐
   const turnStart = React.useRef(0);                  // 本方思考开始时刻
   const history = React.useRef([]);                   // 悔棋快照栈
   const evalReqId = React.useRef(0);                  // 评分请求序号，丢弃过期响应
+  const evalSession = React.useRef(null);
   const logRef = React.useRef(null);                  // 棋谱滚动容器
   const keysRef = React.useRef({});                   // 键盘快捷键的最新处理函数
 
@@ -193,7 +213,13 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   // 同时探测浏览器本地引擎（public/engine/ 下有产物即启用，评分不再占用服务器）
   React.useEffect(() => {
     getPlayEngine().then(setEngineInfo).catch(() => {});
-    localEngineReady().then(setLocalReady).catch(() => {});
+    positionEngine.availableKinds()
+      .then((kinds) => {
+        const kind = kinds.includes("native") ? "native" : kinds.includes("wasm") ? "wasm" : null;
+        setLocalRuntime(kind);
+        setLocalReady(Boolean(kind));
+      })
+      .catch(() => {});
   }, []);
 
   // 开启评分后，每当局面稳定（轮到你/对局结束、引擎不在思考）就拉取一次评估。
@@ -202,14 +228,31 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     if (!showEval || !fen || thinking) return;
     const id = ++evalReqId.current;
     setEvalLoading(true);
-    const request = localReady
-      ? localEval(fen).catch(() => evalPosition(fen))
-      : evalPosition(fen);
-    request
+    evalSession.current?.stop();
+    const session = positionEngine.startAnalysis(fen, {
+      mode: analysisMode,
+      value: analysisMode === "depth" ? analysisDepth : analysisTime,
+      depth: analysisDepth,
+      multiPv: analysisMultiPv,
+      showWdl: true,
+      searchMoves: analysisSearchMoves,
+      onUpdate: (data) => { if (id === evalReqId.current) setEvalData(data); },
+    });
+    evalSession.current = session;
+    session.result
       .then((d) => { if (id === evalReqId.current) setEvalData(d); })
-      .catch(() => { if (id === evalReqId.current) setEvalData(null); })
+      .catch((error) => { if (id === evalReqId.current && error?.name !== "AbortError") setEvalData(null); })
       .finally(() => { if (id === evalReqId.current) setEvalLoading(false); });
-  }, [showEval, fen, thinking, localReady]);
+    return () => {
+      evalReqId.current++;
+      session.stop();
+      if (evalSession.current === session) evalSession.current = null;
+    };
+  }, [showEval, fen, thinking, localReady, analysisMode, analysisTime, analysisDepth, analysisMultiPv, analysisSearchMoves]);
+
+  React.useEffect(() => {
+    setAnalysisSearchMoves((moves) => moves.length ? [] : moves);
+  }, [fen]);
 
   // 云库参考：轮到自己时查询当前局面的库着法（含评分/胜率）
   React.useEffect(() => {
@@ -235,7 +278,12 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
       let source = "";
       if (localReady) {
         try {
-          const r = await localEval(fen, { depth: 14 });
+          // 提示只尝试当前本地运行时；失败后走 getHint，以保留服务端云库优先策略。
+          const r = await positionEngine.evaluate(
+            fen,
+            { depth: 14 },
+            { onlyKinds: [localRuntime] },
+          );
           move = r.bestMove;
           source = "本地引擎";
         } catch { /* 降级到服务器 */ }
@@ -246,6 +294,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         source = r.source === "book" ? "云库" : "服务器引擎";
       }
       setHint(move ? { move, text: uciToChinese(fen, move), source } : null);
+      if (move && isDesktop) setInspectorTab("analysis");
     } catch {
       setHint(null);
     } finally {
@@ -282,6 +331,15 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     } catch { /* 剪贴板不可用时静默 */ }
   }
 
+  function restart() {
+    if (
+      !over &&
+      moves.current.length > 0 &&
+      !window.confirm("对局尚未结束，确定放弃本局重新开始吗？")
+    ) return;
+    setFen(null);
+  }
+
   async function start(side, lvl) {
     setThinking(true);
     setOver(null);
@@ -295,7 +353,32 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     moveTimes.current = [];
     history.current = [];
     const t0 = Date.now();
-    const d = await newPlayGame({ human_side: side, level: lvl });
+    let d;
+    if (side === "b" && localRuntime) {
+      try {
+        const initialState = await getPositionState(INITIAL_FEN);
+        const analysis = await positionEngine.evaluate(
+          INITIAL_FEN,
+          { depth: PLAY_DEPTH[lvl] },
+          { onlyKinds: [localRuntime] },
+        );
+        if (!analysis.bestMove || !initialState.legal_moves.includes(analysis.bestMove)) {
+          throw new Error("本地引擎返回了不合法着法");
+        }
+        const nextFen = applyMove(INITIAL_FEN, analysis.bestMove);
+        const nextState = await getPositionState(nextFen);
+        d = {
+          fen: nextFen,
+          engine_move: analysis.bestMove,
+          status: nextState.status,
+          legal_moves: nextState.legal_moves,
+        };
+      } catch {
+        d = await newPlayGame({ human_side: side, level: lvl });
+      }
+    } else {
+      d = await newPlayGame({ human_side: side, level: lvl });
+    }
     setFen(d.fen);
     setLegalMoves(d.legal_moves || []);
     setLastMove(d.engine_move || null);
@@ -331,8 +414,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         source: "人机对弈",
         [me]: "我",
         [foe]: `引擎·${lvlLabel}`,
-        // 存完整本地时间戳（YYYY-MM-DD HH:MM:SS），复盘列表可精确到秒区分对局
-        played_on: formatLocalTimestamp(new Date()),
+        played_on: new Date().toISOString().slice(0, 10),
       });
       setSaved(true);
       setSavedGameId(res.id);
@@ -362,7 +444,49 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     playSound(isCapture(fen, move) ? "capture" : "move");
     try {
       const t0 = Date.now();
-      const d = await playMove({ fen, move, level });
+      let d;
+      if (localRuntime) {
+        try {
+          const afterHumanFen = applyMove(fen, move);
+          const afterHuman = await getPositionState(afterHumanFen);
+          const humanResult = terminalResult(afterHuman.status, "human");
+          if (humanResult.game_over) {
+            d = {
+              fen: afterHumanFen,
+              engine_move: null,
+              status: afterHuman.status,
+              legal_moves: [],
+              your_turn: false,
+              ...humanResult,
+            };
+          } else {
+            const analysis = await positionEngine.evaluate(
+              afterHumanFen,
+              { depth: PLAY_DEPTH[level] },
+              { onlyKinds: [localRuntime] },
+            );
+            if (!analysis.bestMove || !afterHuman.legal_moves.includes(analysis.bestMove)) {
+              throw new Error("本地引擎返回了不合法着法");
+            }
+            const afterEngineFen = applyMove(afterHumanFen, analysis.bestMove);
+            const afterEngine = await getPositionState(afterEngineFen);
+            const engineResult = terminalResult(afterEngine.status, "engine");
+            d = {
+              fen: afterEngineFen,
+              engine_move: analysis.bestMove,
+              status: afterEngine.status,
+              legal_moves: engineResult.game_over ? [] : afterEngine.legal_moves,
+              your_turn: true,
+              ...engineResult,
+            };
+          }
+        } catch {
+          // 本地进程、WASM 或规则校验任一失败，都用原始局面整步回退服务器。
+          d = await playMove({ fen, move, level });
+        }
+      } else {
+        d = await playMove({ fen, move, level });
+      }
       moves.current.push(move);                          // 记录人走的着法
       moveTimes.current.push(humanMs);
       if (d.engine_move) {
@@ -402,18 +526,6 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     } finally {
       setThinking(false);
     }
-  }
-
-  // 认输：按引擎获胜结束本局，正常走存盘/分析闭环
-  function resign() {
-    if (over || thinking) return;
-    if (!window.confirm("确定认输本局吗？")) return;
-    setOver({ winner: "engine", status: "resigned" });
-    setOverDismissed(false);
-    setLegalMoves([]);
-    setYourTurn(false);
-    playSound("lose");
-    recordGame("engine");
   }
 
   function undo() {
@@ -498,6 +610,19 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             ))}
           </div>
         </div>
+        <div className="engine-setup-summary">
+          <div>
+            <strong>当前引擎</strong>
+            <span>
+              {localReady
+                ? localRuntime === "native" ? "PC 原生 Pikafish · 已就绪" : "浏览器本地引擎 · 已就绪"
+                : engineInfo?.label ? `${engineInfo.label} · 自动降级可用` : "正在检测可用引擎…"}
+            </span>
+          </div>
+          {onOpenSettings && (
+            <button className="btn-newgame" onClick={onOpenSettings}>引擎设置</button>
+          )}
+        </div>
         <button className="btn-start" onClick={() => start(humanSide, level)}>
           开始对弈
         </button>
@@ -508,8 +633,6 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const winnerText = over
     ? over.winner === "human"
       ? "🎉 你赢了！"
-      : over.status === "resigned"
-      ? "你认输了，下盘再战"
       : over.winner === "engine"
       ? "引擎获胜，再接再厉"
       : "和棋"
@@ -517,12 +640,22 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
 
   const capt = capturedPieces(fen);          // 双方被吃的子与子力差
   const totalMs = timesLog.reduce((a, b) => a + b, 0); // 全局累计用时
-  const evalInfo = describeEval(evalData || {}, humanSide); // 评估条展示信息
+  const currentTurnText = over
+    ? winnerText
+    : thinking
+    ? "引擎思考中…"
+    : status === "check"
+    ? "将军！轮到你"
+    : "轮到你走";
+  const engineDisplay = localReady
+    ? localRuntime === "native" ? "Pikafish · 本地" : "本地分析引擎"
+    : engineInfo?.available ? engineInfo.label : "内置引擎";
+  const evalInfo = describeEval(evalData || {}, humanSide);
 
   return (
     <div className="play">
       {/* 状态与操作分两行：状态文案变化（引擎思考中 ↔ 轮到你走）不再挤动按钮换行，棋盘不跳动 */}
-      <div className="panel play-status-bar">
+      {!isDesktop && <div className="panel play-status-bar">
         <div className="play-status-line">
           <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
           <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
@@ -532,8 +665,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             </span>
           )}
           {localReady && (
-            <span className="tag" title="评估/提示在你的浏览器内计算，不占用服务器">
-              ⚡ 本地分析
+            <span className="tag" title="评估/提示在本机计算，不占用服务器">
+              ⚡ {localRuntime === "native" ? "PC 原生分析" : "本地分析"}
             </span>
           )}
           <span className="play-turn">
@@ -585,16 +718,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           >
             {muted
               ? "🔇 静音"
-              : `🔊 ${SOUND_THEMES.find((t) => t.key === soundKey)?.label || ""}`}
-          </button>
-          <button
-            className="btn-newgame"
-            onClick={resign}
-            disabled={!!over || thinking}
-            style={{ opacity: over || thinking ? 0.5 : 1 }}
-            title="放弃本局，判引擎获胜"
-          >
-            认输
+              : `🔊 ${soundThemeLabel(soundKey)}`}
           </button>
           {over && overDismissed && (
             <button className="btn-newgame" onClick={() => setOverDismissed(false)}>
@@ -603,25 +727,107 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           )}
           <button
             className="btn-newgame"
-            onClick={() => {
-              if (
-                !over &&
-                moves.current.length > 0 &&
-                !window.confirm("对局尚未结束，确定放弃本局重新开始吗？")
-              )
-                return;
-              setFen(null);
-            }}
+            onClick={restart}
           >
             重开
           </button>
         </div>
-      </div>
+      </div>}
 
-      {/* PC：棋盘居左、右侧侧栏常驻（评分/云库/棋谱都在其中），
-          开关评分、云库只在侧栏内增删，不再推动棋盘上移或下移；移动端堆叠 */}
+      {!isDesktop && showEval && (() => {
+        const info = describeEval(evalData || {}, humanSide);
+        return (
+          <div className="panel eval-bar-wrap">
+            <div className="eval-bar">
+              <div className="eval-bar-red" style={{ width: `${info.redPct}%` }} />
+              <span className="eval-bar-value">{evalLoading && !evalData ? "…" : info.value}</span>
+            </div>
+            <div className="eval-bar-label">
+              <span className="muted">{evalLoading ? "评估中…" : info.label}</span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {!isDesktop && hint && (
+        <div className="panel hint-strip">
+          💡 推荐：<strong>{hint.text}</strong>
+          <span className="muted">（{hint.source}）</span>
+          {!coach && (
+            <button
+              className="btn-newgame hint-coach-btn"
+              onClick={requestCoach}
+              disabled={coachLoading}
+            >
+              {coachLoading ? "AI 思考中…" : "🤖 AI 详解"}
+            </button>
+          )}
+          {coach?.text && (
+            <div className="analysis-explanation ai-explain">{coach.text}</div>
+          )}
+          {coach?.disabled && (
+            <div className="muted" style={{ marginTop: 6 }}>
+              未启用 AI 点评（管理员可在后台配置大模型）
+            </div>
+          )}
+          {coach?.error && (
+            <div className="import-error" style={{ marginTop: 6 }}>{coach.error}</div>
+          )}
+        </div>
+      )}
+
+      {!isDesktop && showBook && (
+        <div className="panel book-panel">
+          <div className="book-panel-head">
+            <strong>云库着法</strong>
+            <span className="muted">
+              {bookLoading
+                ? "查询中…"
+                : !bookData || !bookData.available
+                ? "云库暂不可用"
+                : bookData.moves.length === 0
+                ? "云库未收录此局面"
+                : "点击着法直接走子（评分为走子方视角）"}
+            </span>
+          </div>
+          {bookData?.available && bookData.moves.length > 0 && (
+            <div className="book-moves">
+              {bookData.moves.slice(0, 8).map((m) => {
+                const playable = yourTurn && !thinking && !over && legalMoves.includes(m.uci);
+                return (
+                  <button
+                    key={m.uci}
+                    className="book-move"
+                    disabled={!playable}
+                    onClick={() => playable && onMove(m.uci)}
+                    title={m.note || m.uci}
+                  >
+                    <span className="book-move-name">{uciToChinese(fen, m.uci)}</span>
+                    {m.score != null && (
+                      <span className={"book-move-score" + (m.score >= 0 ? " pos" : " neg")}>
+                        {m.score > 0 ? "+" : ""}{m.score}
+                      </span>
+                    )}
+                    {m.winrate != null && (
+                      <span className="book-move-rate">{m.winrate.toFixed(0)}%</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PC：棋盘居左、棋谱在右侧伴随显示；移动端自动堆叠回上下布局 */}
       <div className="play-main">
-        <div className="play-board-area" ref={boardAreaRef}>
+        <div className="play-board-area">
+          {isDesktop && (
+            <div className="desktop-board-playerbar">
+              <span>电脑</span>
+              <strong>{currentTurnText}</strong>
+            </div>
+          )}
           <Board
             fen={fen}
             onMove={onMove}
@@ -630,7 +836,6 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             legalMoves={over ? [] : legalMoves}
             hintMove={hint?.move || null}
             flipped={humanSide === "b"}
-            maxHeight={boardMaxHeight}
           />
 
           {/* 被吃子展示：有吃子后出现，直观看出物质差 */}
@@ -685,92 +890,174 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           )}
         </div>
 
-        {/* 右侧常驻侧栏：宽度固定，从对局一开始就占好位置，棋盘不再左右挪动。
-            评分、云库、提示、棋谱都在栏内，开关时只在栏内增删，不影响棋盘位置。 */}
-        <div className="play-side">
-          {showEval && (
-            <div className="panel eval-bar-wrap">
-              <div className="eval-bar">
-                <div className="eval-bar-red" style={{ width: `${evalInfo.redPct}%` }} />
-                <span className="eval-bar-value">{evalLoading && !evalData ? "…" : evalInfo.value}</span>
-              </div>
-              <div className="eval-bar-label">
-                <span className="muted">{evalLoading ? "评估中…" : evalInfo.label}</span>
-              </div>
+        {isDesktop ? (
+          <aside className="panel move-log desktop-play-inspector">
+            <div className="desktop-game-summary">
+              <strong>本局信息</strong>
+              <span>{humanSide === "w" ? "你执红" : "你执黑"} · {LEVELS.find((item) => item.key === level)?.label}</span>
+              <span>{engineDisplay}</span>
             </div>
-          )}
 
-          {showBook && (
-            <div className="panel book-panel">
-              <div className="book-panel-head">
-                <strong>云库着法</strong>
-                <span className="muted">
-                  {bookLoading
-                    ? "查询中…"
-                    : !bookData || !bookData.available
-                    ? "云库暂不可用"
-                    : bookData.moves.length === 0
-                    ? "云库未收录此局面"
-                    : "点击直接走子（评分为走子方视角）"}
-                </span>
-              </div>
-              {bookData?.available && bookData.moves.length > 0 && (
-                <div className="book-moves">
-                  {bookData.moves.slice(0, 8).map((m) => {
-                    const playable = yourTurn && !thinking && !over && legalMoves.includes(m.uci);
-                    return (
-                      <button
-                        key={m.uci}
-                        className="book-move"
-                        disabled={!playable}
-                        onClick={() => playable && onMove(m.uci)}
-                        title={m.note || m.uci}
-                      >
-                        <span className="book-move-name">{uciToChinese(fen, m.uci)}</span>
-                        {m.score != null && (
-                          <span className={"book-move-score" + (m.score >= 0 ? " pos" : " neg")}>
-                            {m.score > 0 ? "+" : ""}{m.score}
-                          </span>
-                        )}
-                        {m.winrate != null && (
-                          <span className="book-move-rate">{m.winrate.toFixed(0)}%</span>
-                        )}
-                      </button>
-                    );
-                  })}
+            <div className="desktop-inspector-tabs" role="tablist" aria-label="对局信息">
+              <button
+                className={inspectorTab === "moves" ? "active" : ""}
+                onClick={() => setInspectorTab("moves")}
+                role="tab"
+                aria-selected={inspectorTab === "moves"}
+              >
+                棋谱
+              </button>
+              <button
+                className={inspectorTab === "analysis" ? "active" : ""}
+                onClick={() => setInspectorTab("analysis")}
+                role="tab"
+                aria-selected={inspectorTab === "analysis"}
+              >
+                分析
+              </button>
+            </div>
+
+            <div className="desktop-inspector-body">
+              {inspectorTab === "moves" && (
+                moveLog.length > 0 ? (
+                  <ol className="move-log-list" ref={logRef}>
+                    {moveLogItems(moveLog).map((pair, i) => (
+                      <li key={i}>
+                        <span className="move-log-no">{i + 1}.</span>
+                        <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 ? " latest" : "")}>
+                          {pair[0] || "…"}
+                          {timesLog[i * 2] != null && <i className="move-time">{fmtMoveTime(timesLog[i * 2])}</i>}
+                        </span>
+                        <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 + 1 ? " latest" : "")}>
+                          {pair[1] || ""}
+                          {pair[1] && timesLog[i * 2 + 1] != null && <i className="move-time">{fmtMoveTime(timesLog[i * 2 + 1])}</i>}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <div className="desktop-inspector-empty">对局刚刚开始<br />走子后将在这里记录棋谱</div>
+                )
+              )}
+
+              {inspectorTab === "analysis" && (
+                <div className="desktop-analysis-pane">
+                  {showEval && (
+                    <div className="desktop-analysis-section">
+                      <div className="eval-bar">
+                        <div className="eval-bar-red" style={{ width: `${evalInfo.redPct}%` }} />
+                        <span className="eval-bar-value">{evalLoading && !evalData ? "…" : evalInfo.value}</span>
+                      </div>
+                      <p>{evalInfo.label}</p>
+                      <div className="engine-analysis-controls">
+                        <select value={analysisMode} onChange={(event) => setAnalysisMode(event.target.value)} aria-label="分析模式">
+                          <option value="movetime">限时分析</option><option value="depth">深度分析</option>{localReady && <option value="infinite">无限分析</option>}
+                        </select>
+                        {analysisMode === "movetime" && <select value={analysisTime} onChange={(event) => setAnalysisTime(Number(event.target.value))} aria-label="分析时间">
+                          <option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={3000}>3 秒</option><option value={5000}>5 秒</option>
+                        </select>}
+                        {analysisMode === "depth" && <input type="number" min="1" max="30" value={analysisDepth} onChange={(event) => setAnalysisDepth(Math.max(1, Math.min(30, Number(event.target.value) || 1)))} aria-label="分析深度" />}
+                        <select value={analysisMultiPv} onChange={(event) => setAnalysisMultiPv(Number(event.target.value))} aria-label="候选线路数">
+                          <option value={1}>最佳 1 线</option><option value={3}>候选 3 线</option><option value={5}>候选 5 线</option>
+                        </select>
+                      </div>
+                      {analysisSearchMoves.length > 0 && <button className="engine-searchmove-clear" onClick={() => setAnalysisSearchMoves([])}>正在限定 {analysisSearchMoves[0]} · 取消限定</button>}
+                      {(evalLoading || evalData) && (
+                        <EngineAnalysisView
+                          fen={fen}
+                          data={evalData}
+                          loading={evalLoading}
+                          onAnalyzeMove={(move) => setAnalysisSearchMoves([move])}
+                          log={positionEngine.getLog()}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {hint && (
+                    <div className="desktop-analysis-section desktop-hint-result">
+                      <strong>推荐 {hint.text}</strong>
+                      <span>{hint.source}</span>
+                      {!coach && (
+                        <button onClick={requestCoach} disabled={coachLoading}>
+                          {coachLoading ? "AI 思考中…" : "AI 详解"}
+                        </button>
+                      )}
+                      {coach?.text && <div className="analysis-explanation ai-explain">{coach.text}</div>}
+                      {coach?.disabled && <p>未启用 AI 点评</p>}
+                      {coach?.error && <p className="import-error">{coach.error}</p>}
+                    </div>
+                  )}
+
+                  {showBook && (
+                    <div className="desktop-analysis-section">
+                      <strong>云库着法</strong>
+                      <p>
+                        {bookLoading
+                          ? "查询中…"
+                          : !bookData || !bookData.available
+                          ? "云库暂不可用"
+                          : bookData.moves.length === 0
+                          ? "云库未收录此局面"
+                          : "点击着法直接走子"}
+                      </p>
+                      {bookData?.available && bookData.moves.length > 0 && (
+                        <div className="desktop-book-moves">
+                          {bookData.moves.slice(0, 5).map((item) => {
+                            const playable = yourTurn && !thinking && !over && legalMoves.includes(item.uci);
+                            return (
+                              <button key={item.uci} disabled={!playable} onClick={() => playable && onMove(item.uci)}>
+                                {uciToChinese(fen, item.uci)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!showEval && !showBook && !hint && (
+                    <div className="desktop-inspector-empty">开启评分、云库或请求提示后<br />分析结果会显示在这里</div>
+                  )}
                 </div>
               )}
             </div>
-          )}
 
-          {hint && (
-            <div className="panel hint-strip">
-              💡 推荐：<strong>{hint.text}</strong>
-              <span className="muted">（{hint.source}）</span>
-              {!coach && (
-                <button
-                  className="btn-newgame hint-coach-btn"
-                  onClick={requestCoach}
-                  disabled={coachLoading}
-                >
-                  {coachLoading ? "AI 思考中…" : "🤖 AI 详解"}
-                </button>
-              )}
-              {coach?.text && (
-                <div className="analysis-explanation ai-explain">{coach.text}</div>
-              )}
-              {coach?.disabled && (
-                <div className="muted" style={{ marginTop: 6 }}>
-                  未启用 AI 点评（管理员可在后台配置大模型）
-                </div>
-              )}
-              {coach?.error && (
-                <div className="import-error" style={{ marginTop: 6 }}>{coach.error}</div>
+            <div className="desktop-inspector-actions">
+              <button
+                className="primary"
+                onClick={requestHint}
+                disabled={!yourTurn || thinking || !!over || hintLoading}
+              >
+                {hintLoading ? "思考中…" : "提示"}
+              </button>
+              <button onClick={undo} disabled={!canUndo || thinking}>悔棋</button>
+              <button
+                className={showEval ? "active" : ""}
+                onClick={() => {
+                  setShowEval((value) => !value);
+                  setInspectorTab("analysis");
+                }}
+              >
+                评分 {showEval ? "开" : "关"}
+              </button>
+              <button
+                className={showBook ? "active" : ""}
+                onClick={() => {
+                  setShowBook((value) => !value);
+                  setInspectorTab("analysis");
+                }}
+              >
+                云库 {showBook ? "开" : "关"}
+              </button>
+              <button onClick={copyFen}>{fenCopied ? "已复制" : "复制 FEN"}</button>
+              <button className="danger" onClick={restart}>重开</button>
+              {over && overDismissed && (
+                <button className="wide" onClick={() => setOverDismissed(false)}>查看结果</button>
               )}
             </div>
-          )}
-
-          {/* 棋谱：常驻显示，无着法时给出占位提示，避免出现后挤动棋盘 */}
+          </aside>
+        ) : moveLog.length > 0 && (
           <div className="panel move-log">
             <div className="move-log-head">
               <strong>棋谱</strong>
@@ -778,31 +1065,27 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
                 {fenCopied ? "已复制" : "复制 FEN"}
               </button>
             </div>
-            {moveLog.length === 0 ? (
-              <p className="move-log-empty muted">尚无着法，落子后这里会逐步记录中文棋谱。</p>
-            ) : (
-              <ol className="move-log-list" ref={logRef}>
-                {moveLogItems(moveLog).map((pair, i) => (
-                  <li key={i}>
-                    <span className="move-log-no">{i + 1}.</span>
-                    <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 ? " latest" : "")}>
-                      {pair[0] || "…"}
-                      {timesLog[i * 2] != null && (
-                        <i className="move-time">{fmtMoveTime(timesLog[i * 2])}</i>
-                      )}
-                    </span>
-                    <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 + 1 ? " latest" : "")}>
-                      {pair[1] || ""}
-                      {pair[1] && timesLog[i * 2 + 1] != null && (
-                        <i className="move-time">{fmtMoveTime(timesLog[i * 2 + 1])}</i>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
+            <ol className="move-log-list" ref={logRef}>
+              {moveLogItems(moveLog).map((pair, i) => (
+                <li key={i}>
+                  <span className="move-log-no">{i + 1}.</span>
+                  <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 ? " latest" : "")}>
+                    {pair[0] || "…"}
+                    {timesLog[i * 2] != null && (
+                      <i className="move-time">{fmtMoveTime(timesLog[i * 2])}</i>
+                    )}
+                  </span>
+                  <span className={"move-log-cell" + (moveLog.length - 1 === i * 2 + 1 ? " latest" : "")}>
+                    {pair[1] || ""}
+                    {pair[1] && timesLog[i * 2 + 1] != null && (
+                      <i className="move-time">{fmtMoveTime(timesLog[i * 2 + 1])}</i>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ol>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

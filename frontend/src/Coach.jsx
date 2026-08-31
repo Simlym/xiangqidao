@@ -101,7 +101,7 @@ function fmtTime(iso) {
   }
 }
 
-export default function Coach({ onPractice, onNavigate, user, credits, onCreditsChanged, onRequireLogin }) {
+export default function Coach({ onPractice, onNavigate, user, credits, entitlements, onCreditsChanged, onRequireLogin }) {
   const [data, setData] = React.useState(null);       // {plan, llm_enabled}
   const [rating, setRating] = React.useState(null);   // {rating, title, peak, solved}
   const [overview, setOverview] = React.useState(null);
@@ -144,6 +144,9 @@ export default function Coach({ onPractice, onNavigate, user, credits, onCredits
   }
 
   const planCost = credits?.costs?.coach_plan;
+  const aiPriceText = entitlements?.active
+    ? "（PRO 已包含）"
+    : planCost ? `（AI 叙述 ${planCost} 积分）` : "";
 
   if (loading) return <div className="panel">加载中…</div>;
 
@@ -187,7 +190,7 @@ export default function Coach({ onPractice, onNavigate, user, credits, onCredits
             {refreshing
               ? "教练备课中…"
               : `${plan ? "更新计划" : "生成计划"}${
-                  llmEnabled && planCost ? `（消耗 ${planCost} 积分）` : ""
+                  llmEnabled ? aiPriceText : ""
                 }`}
           </button>
         </div>
@@ -204,8 +207,8 @@ export default function Coach({ onPractice, onNavigate, user, credits, onCredits
             制定一份针对性的训练安排；之后每局对弈复盘完成时会自动更新。
             {llmEnabled && (
               <>
-                <br />AI 教练点评由大模型生成，需登录并消耗积分
-                {planCost ? `（每次 ${planCost} 积分）` : ""}；积分可通过每日签到、对弈、做题获取。
+                <br />AI 教练点评需登录；免费账号可用积分兑换
+                {planCost ? `（每次 ${planCost} 积分）` : ""}，PRO 会员不限次。
               </>
             )}
           </p>

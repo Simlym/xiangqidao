@@ -16,7 +16,10 @@ from sqlalchemy.orm import Session
 from .. import ratings, repository as repo
 from ..auth import current_user_id
 from ..deps import get_db
-from ..models import Attempt
+from ..models import Attempt, Review
+from ..puzzle_sessions import create_session, require_session
+from ..puzzle_content import primary_line, solution_lines
+from ..srs import SrsState, review as srs_review
 
 router = APIRouter(prefix="/api/challenge", tags=["challenge"])
 
@@ -33,6 +36,7 @@ class LevelPuzzle(BaseModel):
     difficulty: int
     total_steps: int
     solved: bool       # 本用户是否已做对过
+    session_id: str
 
 
 class LevelOut(BaseModel):
@@ -56,6 +60,7 @@ class LevelDetail(BaseModel):
 
 class ChallengeSubmitRequest(BaseModel):
     puzzle_id: int
+    session_id: str
     correct: bool = True
     had_retry: bool = False
     time_spent_ms: int = 0
@@ -80,7 +85,7 @@ def _chunks(puzzles: list) -> list[list]:
 
 
 def _steps(puzzle) -> int:
-    n = len([m for m in puzzle.solution.split(",") if m.strip()])
+    n = len(primary_line(puzzle.solution))
     return (n + 1) // 2
 
 
@@ -140,8 +145,10 @@ def get_level(index: int, db: Session = Depends(get_db), user: str = Depends(cur
         raise HTTPException(403, "请先通关前一关")
 
     chunk = chunks[index]
-    puzzles = [
-        LevelPuzzle(
+    puzzles = []
+    for p in chunk:
+        session = create_session(db, user, p, "challenge")
+        puzzles.append(LevelPuzzle(
             id=p.id,
             fen=p.fen,
             side_to_move=p.side_to_move,
@@ -149,9 +156,8 @@ def get_level(index: int, db: Session = Depends(get_db), user: str = Depends(cur
             difficulty=p.difficulty,
             total_steps=_steps(p),
             solved=p.id in solved_ids,
-        )
-        for p in chunk
-    ]
+            session_id=session.id,
+        ))
     return LevelDetail(
         index=index,
         title=_level_title(index),
@@ -171,22 +177,44 @@ def submit(
     puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user)
     if puzzle is None:
         raise HTTPException(404, "题目不存在")
+    session = require_session(db, req.session_id, user, puzzle.id, "challenge")
+    if session.settled:
+        raise HTTPException(409, "本次解题已经结算")
+    if req.correct and not session.completed:
+        raise HTTPException(409, "服务端尚未确认完成全部正确步骤")
+    correct = session.completed
+    had_retry = session.wrong_count > 0
 
     rating_change = None
     if not repo.has_attempt(db, user, puzzle.id):
         rating_change = ratings.apply(
-            db, user, puzzle, ratings.score_of(req.correct, req.had_retry)
+            db, user, puzzle, ratings.score_of(correct, had_retry)
         )
+
+    # 闯关也进入统一复习模型：通关不是一次性消费，错题会回到后续复习。
+    review = repo.get_review(db, puzzle.id, user)
+    if review is None:
+        review = Review(puzzle_id=puzzle.id, user_id=user)
+        db.add(review)
+    state = SrsState(
+        repetitions=review.repetitions or 0, interval=review.interval or 0,
+        ease_factor=review.ease_factor or 2.5, next_review=review.next_review,
+    )
+    updated = srs_review(state, 1 if not correct else 3 if had_retry else 4)
+    review.repetitions, review.interval = updated.repetitions, updated.interval
+    review.ease_factor, review.next_review = updated.ease_factor, updated.next_review
 
     db.add(
         Attempt(
             puzzle_id=puzzle.id,
             user_id=user,
-            correct=req.correct,
+            correct=correct,
             time_spent_ms=req.time_spent_ms,
-            had_retry=req.had_retry,
+            had_retry=had_retry,
+            context="challenge",
         )
     )
+    session.settled = True
     db.commit()
 
     rc = (
@@ -194,5 +222,7 @@ def submit(
         if rating_change
         else None
     )
-    solution = [m.strip() for m in puzzle.solution.split(",") if m.strip()]
-    return ChallengeSubmitResponse(solution=solution, solved=req.correct, rating=rc)
+    lines = solution_lines(puzzle.solution)
+    chosen = session.line_index if 0 <= session.line_index < len(lines) else 0
+    solution = lines[chosen] if lines else []
+    return ChallengeSubmitResponse(solution=solution, solved=correct, rating=rc)

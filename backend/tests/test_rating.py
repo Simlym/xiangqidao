@@ -12,7 +12,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app import elo, ratings
 from app import repository as repo
-from app.models import Base, Puzzle
+from app.models import Base, Puzzle, PuzzleSession
+from app.puzzle_sessions import create_session
 from app.routes.challenge import (
     ChallengeSubmitRequest,
     get_level,
@@ -51,6 +52,13 @@ def _seed_public_puzzles(db, n=14):
                 user_id="default",
             )
         )
+    db.commit()
+
+
+def _complete(db, session_id, retries=0):
+    session = db.get(PuzzleSession, session_id)
+    session.completed = True
+    session.wrong_count = retries
     db.commit()
 
 
@@ -132,8 +140,9 @@ def test_clearing_unlocks_next_and_awards_stars(db):
     _seed_public_puzzles(db, 12)  # 2 关
     detail = get_level(0, db=db, user="alice")
     for lp in detail.puzzles:
+        _complete(db, lp.session_id)
         challenge_submit(
-            ChallengeSubmitRequest(puzzle_id=lp.id, correct=True, had_retry=False),
+            ChallengeSubmitRequest(puzzle_id=lp.id, session_id=lp.session_id, correct=True),
             db=db,
             user="alice",
         )
@@ -148,8 +157,9 @@ def test_retry_reduces_stars(db):
     _seed_public_puzzles(db, 6)  # 1 关
     detail = get_level(0, db=db, user="alice")
     for i, lp in enumerate(detail.puzzles):
+        _complete(db, lp.session_id, retries=1 if i % 2 == 0 else 0)
         challenge_submit(
-            ChallengeSubmitRequest(puzzle_id=lp.id, correct=True, had_retry=(i % 2 == 0)),
+            ChallengeSubmitRequest(puzzle_id=lp.id, session_id=lp.session_id, correct=True),
             db=db,
             user="alice",
         )
@@ -164,8 +174,9 @@ def test_rating_overview_and_leaderboard(db):
     _seed_public_puzzles(db, 6)
     detail = get_level(0, db=db, user="alice")
     for lp in detail.puzzles:
+        _complete(db, lp.session_id)
         challenge_submit(
-            ChallengeSubmitRequest(puzzle_id=lp.id, correct=True),
+            ChallengeSubmitRequest(puzzle_id=lp.id, session_id=lp.session_id, correct=True),
             db=db,
             user="alice",
         )
@@ -182,7 +193,11 @@ def test_rating_settled_once_per_puzzle(db):
     p = Puzzle(fen="x", solution="h2e2", difficulty=3, rating=1300, user_id="default")
     db.add(p)
     db.commit()
-    r1 = challenge_submit(ChallengeSubmitRequest(puzzle_id=p.id, correct=True), db=db, user="bob")
+    first = create_session(db, "bob", p, "challenge")
+    _complete(db, first.id)
+    r1 = challenge_submit(ChallengeSubmitRequest(puzzle_id=p.id, session_id=first.id, correct=True), db=db, user="bob")
     assert r1.rating is not None
-    r2 = challenge_submit(ChallengeSubmitRequest(puzzle_id=p.id, correct=True), db=db, user="bob")
+    second = create_session(db, "bob", p, "challenge")
+    _complete(db, second.id)
+    r2 = challenge_submit(ChallengeSubmitRequest(puzzle_id=p.id, session_id=second.id, correct=True), db=db, user="bob")
     assert r2.rating is None  # 二次作答不再结算

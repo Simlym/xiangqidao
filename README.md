@@ -1,6 +1,6 @@
 # 象棋道 Xiangqidao
 
-一套循序渐进辅助提升中国象棋水平的训练系统。第一版聚焦**战术题训练 + 间隔重复（SM-2）**——
+一套覆盖 Web、Windows PC 与 Android 的象棋/揭棋训练系统。第一版聚焦**战术题训练 + 间隔重复（SM-2）**——
 针对业余棋手最大的失分点「漏算」，用可量化的方式回答「我到底有没有进步」。
 
 ## 为什么这样设计
@@ -19,11 +19,14 @@
 | 层 | 技术 | 说明 |
 |----|------|------|
 | 前端 | React + Vite (PWA) | 交叉点棋盘（含楚河汉界/九宫）；训练 / 闯关 / 统计 / 复盘 / 对弈 / 后台；可安装到桌面/主屏 |
+| 多端壳 | Tauri 2 | PC 与 Android 复用同一套 React 代码；PC 可在独立子进程加载原生 Pikafish |
+| 棋类核心 | Variant + Engine Adapter | 标准象棋/揭棋规则隔离；分别配置原生、WASM、云端引擎并自动降级 |
 | 后端 | FastAPI | 训练调度 / 闯关 / ELO 评分 / 作答 / 统计 / 对弈 / 鉴权 / 后台管理 API |
 | 数据 | SQLite（可配置） | `users` `puzzles`(含 ELO `rating`) `reviews`(SM-2) `attempts` `games`(含归属/复盘报告) `game_analysis` `user_stats`(ELO 评分档案)；连接串经 `XQ_DB_URL` 配置 |
 | 数据访问 | database + repository 层 | `app/database.py` 管引擎/会话/建表，`app/repository.py` 封装查询，业务路由与 ORM 解耦 |
 | 复习 | SM-2 | `backend/app/srs.py` |
 | 鉴权 | 标准库自实现 | PBKDF2 密码哈希 + HMAC 签名 token，无第三方依赖（`app/auth.py`）|
+| 会员 | 服务端权益校验 | 客户端统一打包 AI 界面代码；登录后按 `/api/account/entitlements` 显示，服务端再次校验，积分作为调用额度 |
 | 杀法校验 | 内置规则引擎 | `app/importer/verify_mate.py` 判定将军/将死，校验一步杀题，无需 Pikafish |
 | 对弈引擎 | 云库 + 内置 negamax / Pikafish | 开局优先查云库（秒回、省 CPU），其后 Pikafish，未装则回退内置 alpha-beta 搜索（`app/play_engine.py` `app/cloudbook.py`）|
 | 分析引擎 | Pikafish (可选) | 复盘逐步分析；导入题库时校验正解 |
@@ -49,6 +52,30 @@ cd frontend
 npm install
 npm run dev      # 打开 http://localhost:5173（已代理 /api 到 8000）
 ```
+
+### PC 桌面端（开发中）
+
+桌面端使用 Tauri 2 包装同一套 React 前端，仍通过 FastAPI 使用账号、训练和 AI 服务；
+局面评分会按“PC 原生 Pikafish → 浏览器 WASM → FastAPI”顺序自动降级。
+
+```bash
+cd frontend
+npm install
+npm run tauri dev
+```
+
+首次进入桌面端“人机对弈”页面，可填写标准象棋 Pikafish 可执行文件的绝对路径并检测。
+揭棋页面使用独立的揭棋 Pikafish 路径，两个引擎配置互不覆盖。默认只给引擎使用不超过
+4 个线程与 256MB 哈希，也可在界面调整；搜索在独立子进程执行，前端只异步收取 UCI 输出。
+请将对应的 NNUE 文件放在引擎同一目录。原生引擎可负责人机应着、评分与提示；FastAPI
+提供权威棋规校验，且在本地引擎异常时自动接管整步计算。
+
+```bash
+cd frontend
+npm run tauri build   # 产物位于 src-tauri/target/release/bundle
+```
+
+更完整的边界、降级链与性能保障见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ### 安装 Pikafish（可选，强力引擎）
 
@@ -176,6 +203,16 @@ python -m app.importer.load app/importer/wukong_puzzles.json
 > 「先弃后杀 / 安静着造杀」等非连续将军的题无法被纯将军搜索求解，会被跳过——保证导入的每题
 > 都是经 `verify_mate` 验证成立的连将杀。仓库已附带产出的 `wukong_puzzles.json`。
 
+正式导入建议使用审计后的题库。以下命令会检查严格 FEN、逐手合法性、终局将死、
+重复局面与同深度多解，并重新校准难度：
+
+```bash
+python -m app.importer.audit_puzzles
+python -m app.importer.load app/importer/wukong_puzzles.audited.json
+```
+
+审计结果见 `app/importer/puzzle_audit_report.md`；原始题源始终保留，便于追溯。
+
 ### 题库分类体系（两级 + 难度 + 步数）
 
 | 字段 | 含义 | 取值示例 |
@@ -220,11 +257,8 @@ cd backend && python -m pytest tests/ -q
 | `XQ_ORIGINS` | 允许的前端来源（CORS），逗号分隔，如 `https://xq.example.com`；留空则放开（仅限本地开发）| 空（`*`）|
 | `XQ_DB_URL` | 数据库连接串 | `sqlite:///./data/puzzles.db` |
 | `XQ_ENGINE_DIR` | 管理后台一键安装 Pikafish 的受管目录（发现引擎时优先于 PATH）| `./data/engine` |
-| `XQ_TZ` | 积分体系（签到 / 每日赚取上限）按此时区切换「一天」，应与目标用户群一致 | `Asia/Shanghai` |
-| `DEEPSEEK_API_KEY` | DeepSeek API Key（可选）：AI 教练/复盘/讲解/对弈提示；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
-| `DEEPSEEK_MODEL` | 默认模型，只支持 V4：`deepseek-v4-flash`（默认）、`deepseek-v4-pro` | `deepseek-v4-flash` |
-| `DEEPSEEK_THINKING` | 是否开启 V4 思考模式：`1`（默认，更严谨但 token 更多）、`0` | `1` |
-| `DEEPSEEK_REASONING_EFFORT` | 思考强度：`high`（默认）、`max` | `high` |
+| `XQ_JIEQI_ENGINE` | 揭棋 Pikafish 可执行文件路径；也可在「管理后台 → 系统设置 → 揭棋引擎」填写，后台配置优先 | `./data/engine/jieqi/pikafish[.exe]` |
+| `DEEPSEEK_API_KEY` | AI 教练（可选）：个性化训练计划叙述 + 复盘逐步失误讲解 + 整局综合复盘报告 + 训练题「AI 讲解」+ 对弈提示「AI 详解」；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
 
 ## 公网部署安全清单
 
@@ -244,8 +278,7 @@ cd backend && python -m pytest tests/ -q
 - 不登录也能用（数据归属访客 `default`），登录后训练/统计按用户隔离。
 - 首位注册用户自动成为**管理员**；也可用环境变量 `XQ_ADMIN=<用户名>` 指定（留空时仅首位注册者为管理员）。
 - 生产部署务必设置 `XQ_SECRET` 环境变量（token 签名密钥）。
-- 管理后台（管理员可见「管理后台」页）：用户管理（注册 / 最近登录 / 做题 ELO / 作答 / 对弈 / 积分等
-  运营维度，可查看积分流水并手工调整）、题库增删、概览统计、AI 复盘开关与密钥配置、
+- 管理后台（管理员可见「管理后台」页）：用户管理、题库增删、概览统计、AI 复盘开关与密钥配置、
   **Pikafish 引擎一键安装/更新**。新增单步杀法题会用内置规则自动校验是否真为「一步杀」。
 
 ## AI 教练
@@ -268,6 +301,22 @@ cd backend && python -m pytest tests/ -q
 对局结束**自动存入「复盘」并后台触发分析**，终局面板可**一键跳转复盘本局**；
 复盘页除逐步失误外，还给出 LLM **综合复盘报告**，并把实战漏着生成专属练习题（私有），
 配合统计页「弱点专项」形成完整闭环：对弈→分析→报告→针对薄弱点再练。
+
+## P1 学习内容与多变着
+
+题目按 `kind`（杀法/开局/中局/残局）、`category` 和逗号分隔的 `tags` 形成三级内容体系。
+多条可接受主变使用 `|` 分隔，每条内部仍用逗号分隔着法；第一条应录入引擎给出的对手最强应手，例如：
+
+```json
+{
+  "kind": "中局",
+  "category": "开放线争夺",
+  "tags": "候选着,开放线,先手",
+  "solution": "h2e2,h9g7,e2e7|c3c4,h9g7,c4c7"
+}
+```
+
+规则型棋理解说不依赖大模型且对游客开放；AI 讲解作为登录用户的增强层。阶段测评和单局关键问题训练包复用可信解题会话，作答来源统一写入学习画像。
 
 ## 路线图
 

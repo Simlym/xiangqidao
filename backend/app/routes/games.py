@@ -1,10 +1,11 @@
 """棋局复盘路由。"""
 
+import json
 import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from .. import credits
@@ -18,14 +19,17 @@ router = APIRouter(prefix="/api/games", tags=["games"])
 
 INITIAL_FEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
 
-UCI_RE = re.compile(r"^[a-i][0-9][a-i][0-9]$")
+UCI_RE = re.compile(r"^[a-i][0-9][a-i][0-9][a-zA-Z]{0,2}$")
 
 # 一着 5 字符（4 着法 + 分隔），上限约对应数千手，足够任何真实对局
 _MOVES_MAX = 8000
 
 
 class ImportRequest(BaseModel):
+    variant: str = Field(default="xiangqi", pattern="^(xiangqi|jieqi)$")
     moves: str = Field(max_length=_MOVES_MAX)
+    initial_fen: str = Field(default="", max_length=240)
+    positions: list[str] = Field(default_factory=list, max_length=2000)
     red_player: Optional[str] = Field(default="", max_length=40)
     black_player: Optional[str] = Field(default="", max_length=40)
     played_on: Optional[str] = Field(default=None, max_length=40)
@@ -34,9 +38,17 @@ class ImportRequest(BaseModel):
     source: Optional[str] = Field(default="", max_length=80)
     notes: Optional[str] = Field(default="", max_length=2000)
 
+    @field_validator("positions")
+    @classmethod
+    def validate_positions(cls, positions: list[str]):
+        if any(len(fen) > 240 for fen in positions):
+            raise ValueError("局面 FEN 过长")
+        return positions
+
 
 class GameSummary(BaseModel):
     id: int
+    variant: str
     played_on: Optional[str]
     red_player: str
     black_player: str
@@ -56,6 +68,8 @@ class Position(BaseModel):
 
 class GameDetail(BaseModel):
     id: int
+    variant: str
+    initial_fen: str
     played_on: Optional[str]
     red_player: str
     black_player: str
@@ -86,6 +100,7 @@ def list_games(
     return [
         GameSummary(
             id=g.id,
+            variant=g.variant or "xiangqi",
             played_on=g.played_on,
             red_player=g.red_player,
             black_player=g.black_player,
@@ -112,10 +127,15 @@ def import_game(
 
     for m in move_list:
         if not UCI_RE.match(m):
-            raise HTTPException(status_code=400, detail=f"非法着法格式: {m!r}，需要4字符UCI如h2e2")
+            raise HTTPException(status_code=400, detail=f"非法着法格式: {m!r}")
+    if body.variant == "jieqi" and len(body.positions) != len(move_list) + 1:
+        raise HTTPException(status_code=400, detail="揭棋棋谱必须携带每一步局面")
 
     game = Game(
+        variant=body.variant,
         user_id=user,
+        initial_fen=body.initial_fen or (INITIAL_FEN if body.variant == "xiangqi" else ""),
+        positions_json=json.dumps(body.positions, ensure_ascii=False) if body.positions else "",
         moves=" ".join(move_list),
         red_player=body.red_player or "",
         black_player=body.black_player or "",
@@ -144,15 +164,29 @@ def get_game(
         raise HTTPException(status_code=404, detail="棋局不存在")
 
     move_list = game.moves.split() if game.moves.strip() else []
-    positions: List[Position] = [Position(move_index=0, move="", fen=INITIAL_FEN)]
-
-    fen = INITIAL_FEN
-    for i, m in enumerate(move_list, start=1):
-        fen = apply_move(fen, m)
-        positions.append(Position(move_index=i, move=m, fen=fen))
+    if game.positions_json:
+        try:
+            stored = json.loads(game.positions_json)
+        except (TypeError, json.JSONDecodeError):
+            raise HTTPException(status_code=422, detail="棋谱局面数据已损坏")
+        if not isinstance(stored, list) or len(stored) != len(move_list) + 1:
+            raise HTTPException(status_code=422, detail="棋谱局面数据不完整")
+        positions = [
+            Position(move_index=index, move="" if index == 0 else move_list[index - 1], fen=fen)
+            for index, fen in enumerate(stored)
+        ]
+    else:
+        start_fen = game.initial_fen or INITIAL_FEN
+        positions = [Position(move_index=0, move="", fen=start_fen)]
+        fen = start_fen
+        for i, m in enumerate(move_list, start=1):
+            fen = apply_move(fen, m)
+            positions.append(Position(move_index=i, move=m, fen=fen))
 
     return GameDetail(
         id=game.id,
+        variant=game.variant or "xiangqi",
+        initial_fen=game.initial_fen or INITIAL_FEN,
         played_on=game.played_on,
         red_player=game.red_player,
         black_player=game.black_player,

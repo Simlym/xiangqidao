@@ -10,6 +10,12 @@ backend/data/engine/
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/dist-tauri/
+frontend/.verify-dist/
+.npm-cache/
+src-tauri/target/
+.cargo-target/
+src-tauri/gen/
 
 # 浏览器本地引擎产物（自行放置，体积大不入库）
 frontend/public/engine/*

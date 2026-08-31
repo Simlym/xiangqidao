@@ -80,11 +80,16 @@ def _client_with_puzzle(solution: str):
     return TestClient(app), pid
 
 
+def _session(client, pid):
+    return client.get(f"/api/training/puzzle/{pid}").json()["session_id"]
+
+
 def test_exact_solution_accepted():
     client, pid = _client_with_puzzle("h7f7")
     try:
+        sid = _session(client, pid)
         r = client.post("/api/training/check_move",
-                        json={"puzzle_id": pid, "step": 0, "move": "h7f7"})
+                        json={"puzzle_id": pid, "session_id": sid, "step": 0, "move": "h7f7"})
         assert r.status_code == 200
         data = r.json()
         assert data["correct"] is True and data["done"] is True
@@ -96,8 +101,9 @@ def test_alternative_mate_accepted():
     """录入正解是 h7f7，用户走等效杀着 h1f1 也应判对（变着容错）。"""
     client, pid = _client_with_puzzle("h7f7")
     try:
+        sid = _session(client, pid)
         r = client.post("/api/training/check_move",
-                        json={"puzzle_id": pid, "step": 0, "move": "h1f1"})
+                        json={"puzzle_id": pid, "session_id": sid, "step": 0, "move": "h1f1"})
         assert r.status_code == 200
         data = r.json()
         assert data["correct"] is True
@@ -110,16 +116,17 @@ def test_multistep_autoplays_opponent_reply():
     """多步题：玩家走己方着后，系统自动走出对方应着，玩家只输入己方着法。"""
     client, pid = _client_with_fen(MATE_IN_TWO_FEN, MATE_IN_TWO_SOL)
     try:
+        sid = _session(client, pid)
         # 第 0 步（己方）：f0e0
         r0 = client.post("/api/training/check_move",
-                         json={"puzzle_id": pid, "step": 0, "move": "f0e0"}).json()
+                         json={"puzzle_id": pid, "session_id": sid, "step": 0, "move": "f0e0"}).json()
         assert r0["correct"] is True
         assert r0["done"] is False
         assert r0["opponent_move"] == "f8f7"   # 对方应着已自动走出
 
         # 第 1 步（己方）：a3f3 —— 终结杀着
         r1 = client.post("/api/training/check_move",
-                         json={"puzzle_id": pid, "step": 1, "move": "a3f3"}).json()
+                         json={"puzzle_id": pid, "session_id": sid, "step": 1, "move": "a3f3"}).json()
         assert r1["correct"] is True
         assert r1["done"] is True
     finally:
@@ -140,8 +147,9 @@ def test_non_mating_move_rejected():
     """非杀着即便合法也应判错，并给出起点提示。"""
     client, pid = _client_with_puzzle("h7f7")
     try:
+        sid = _session(client, pid)
         r = client.post("/api/training/check_move",
-                        json={"puzzle_id": pid, "step": 0, "move": "h7h8", "attempt": 0})
+                        json={"puzzle_id": pid, "session_id": sid, "step": 0, "move": "h7h8", "attempt": 0})
         assert r.status_code == 200
         data = r.json()
         assert data["correct"] is False
@@ -154,9 +162,10 @@ def test_graded_hint_escalates():
     """错的次数越多，提示透露越多：起点 → 棋子名 → 完整正解。"""
     client, pid = _client_with_puzzle("h7f7")
     try:
+        sid = _session(client, pid)
         def hint(attempt):
             return client.post("/api/training/check_move",
-                               json={"puzzle_id": pid, "step": 0, "move": "h7h8",
+                               json={"puzzle_id": pid, "session_id": sid, "step": 0, "move": "h7h8",
                                      "attempt": attempt}).json()["hint"]
         assert "h7" in hint(0)
         assert "车" in hint(1)            # h7 处是白车
@@ -176,7 +185,7 @@ def _client_multi(n: int):
     TestSession = sessionmaker(bind=eng, autoflush=False)
     with TestSession() as db:
         for i in range(n):
-            db.add(Puzzle(fen=MULTI_MATE_FEN, solution=f"h7f{i}", side_to_move="w",
+            db.add(Puzzle(fen=MULTI_MATE_FEN, solution="h7f7", side_to_move="w",
                           category="测试", difficulty=1, source="t"))
         db.commit()
 
@@ -196,11 +205,16 @@ def test_first_try_accuracy_excludes_retry():
     client = _client_multi(2)
     try:
         # 第 1 题：一次做对（first try）
+        sid1 = _session(client, 1)
+        client.post("/api/training/check_move", json={"puzzle_id": 1, "session_id": sid1, "step": 0, "move": "h7f7"})
         client.post("/api/training/submit",
-                    json={"puzzle_id": 1, "self_rating": "good", "had_retry": False, "correct": True})
+                    json={"puzzle_id": 1, "session_id": sid1, "self_rating": "good", "correct": True})
         # 第 2 题：重试后做对（非 first try）
+        sid2 = _session(client, 2)
+        client.post("/api/training/check_move", json={"puzzle_id": 2, "session_id": sid2, "step": 0, "move": "h7h8"})
+        client.post("/api/training/check_move", json={"puzzle_id": 2, "session_id": sid2, "step": 0, "move": "h7f7"})
         client.post("/api/training/submit",
-                    json={"puzzle_id": 2, "self_rating": "good", "had_retry": True, "correct": True})
+                    json={"puzzle_id": 2, "session_id": sid2, "self_rating": "good", "correct": True})
         ov = client.get("/api/stats/overview").json()
         assert ov["overall_accuracy"] == 1.0       # 两次都最终做对
         assert ov["first_try_accuracy"] == 0.5      # 只有 1/2 是首答对
@@ -269,9 +283,9 @@ def test_forecast_buckets_overdue_into_today():
     client = _client_multi(1)
     try:
         # 学一道新题 → 产生一条 next_review<=today 的复习记录（间隔1天其实是明天）
+        sid = _session(client, 1)
         client.post("/api/training/submit",
-                    json={"puzzle_id": 1, "self_rating": "again",
-                          "had_retry": False, "correct": False})
+                    json={"puzzle_id": 1, "session_id": sid, "self_rating": "again", "correct": False})
         fc = client.get("/api/stats/forecast?days=7").json()
         assert len(fc) == 7
         assert fc[0]["label"] == "今天"
@@ -290,9 +304,13 @@ def test_daily_new_limit(monkeypatch):
         first = client.get("/api/training/next").json()
         assert first["puzzle"] is not None
         # 学掉这道新题（生成 created_at=today 的 Review）
+        p = first["puzzle"]
+        client.post("/api/training/check_move", json={
+            "puzzle_id": p["id"], "session_id": p["session_id"], "step": 0, "move": "h7f7",
+        })
         client.post("/api/training/submit",
-                    json={"puzzle_id": first["puzzle"]["id"], "self_rating": "good",
-                          "had_retry": False, "correct": True})
+                    json={"puzzle_id": p["id"], "session_id": p["session_id"],
+                          "self_rating": "good", "correct": True})
         nxt = client.get("/api/training/next").json()
         assert nxt["puzzle"] is None
         assert nxt["new_limit_reached"] is True

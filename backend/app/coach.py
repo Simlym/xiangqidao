@@ -33,7 +33,8 @@ def build_profile(db: Session, user: str) -> dict:
     stat = repo.get_user_stat(db, user)
     rating = stat.rating if stat else 1200
 
-    total_att, _, first_try_att = repo.attempt_totals(db, user)
+    total_att, _, _ = repo.attempt_totals(db, user)
+    first_total, first_try_att = repo.first_attempt_totals(db, user)
     recent = repo.recent_attempts(db, user, limit=20)
     recent_first = sum(1 for c, r in recent if c and not r)
 
@@ -84,7 +85,7 @@ def build_profile(db: Session, user: str) -> dict:
         "solved": stat.solved if stat else 0,
         "due_today": repo.count_due(db, user, date.today()),
         "total_attempts": total_att,
-        "first_try_accuracy": round(first_try_att / total_att, 2) if total_att else None,
+        "first_try_accuracy": round(first_try_att / first_total, 2) if first_total else None,
         "recent20_first_try_accuracy": round(recent_first / len(recent), 2) if recent else None,
         "weak_categories": weak[:3],
         "recent_games": recent_games,
@@ -196,9 +197,9 @@ def generate_plan(db: Session, user: str, trigger: str = "manual") -> CoachPlan:
     recs = build_recommendations(profile)
     progress = build_progress(db, user, profile)
     text = ""
-    # 教练叙述由大模型生成，需消耗积分；能扣则生成，扣不动则降级为纯数据计划。
-    if get_deepseek_config(db).active and credits.try_spend(db, user, "coach_plan", "coach"):
-        text = write_coach_plan(profile, recs, progress, user_id=user, ref="coach")
+    # PRO 已包含 AI；免费账号按次使用积分，余额不足则降级为纯数据计划。
+    if get_deepseek_config(db).active and credits.charge(db, user, "coach_plan", "coach"):
+        text = write_coach_plan(profile, recs, progress)
         if not text:
             credits.refund(db, user, "coach_plan", "coach")  # 调用失败退回积分
     plan = CoachPlan(

@@ -98,6 +98,29 @@ def pick_new_puzzle(
     return db.scalar(stmt)
 
 
+def pick_pending_private_puzzle(db: Session, user: str) -> Puzzle | None:
+    """优先取尚未练过的实战错题，让复盘结果直接进入今日训练。"""
+    if user == PUBLIC_OWNER:
+        return None
+    learned = select(Review.puzzle_id).where(Review.user_id == user)
+    return db.scalar(
+        select(Puzzle)
+        .where(Puzzle.user_id == user, Puzzle.id.not_in(learned))
+        .order_by(Puzzle.id.desc())
+        .limit(1)
+    )
+
+
+def count_pending_private_puzzles(db: Session, user: str) -> int:
+    if user == PUBLIC_OWNER:
+        return 0
+    learned = select(Review.puzzle_id).where(Review.user_id == user)
+    return db.scalar(
+        select(func.count()).select_from(Puzzle)
+        .where(Puzzle.user_id == user, Puzzle.id.not_in(learned))
+    ) or 0
+
+
 def catalog(db: Session, user: str) -> list[tuple[str, str, int, int]]:
     """题库目录：可见题按 (kind, category) 分组的 (大类, 名目, 题数, 已学数)。
 
@@ -152,6 +175,23 @@ def attempt_totals(db: Session, user: str) -> tuple[int, int, int]:
     return total, correct, first_try
 
 
+def first_attempt_totals(db: Session, user: str) -> tuple[int, int]:
+    """返回（首次遇到的题数，其中一次做对的题数）。"""
+    first_ids = (
+        select(func.min(Attempt.id).label("attempt_id"))
+        .where(Attempt.user_id == user)
+        .group_by(Attempt.puzzle_id)
+        .subquery()
+    )
+    total = db.scalar(select(func.count()).select_from(first_ids)) or 0
+    correct = db.scalar(
+        select(func.count()).select_from(Attempt)
+        .join(first_ids, Attempt.id == first_ids.c.attempt_id)
+        .where(Attempt.correct.is_(True), Attempt.had_retry.is_(False))
+    ) or 0
+    return total, correct
+
+
 def attempt_dates(db: Session, user: str) -> set[str]:
     """该用户有作答的日期集合（ISO 字符串），用于连续打卡。"""
     return {
@@ -162,7 +202,13 @@ def attempt_dates(db: Session, user: str) -> set[str]:
 
 
 def category_stats(db: Session, user: str) -> list[tuple[str, int, int | None]]:
-    """各分类的 (category, 作答数, 做对数)。"""
+    """各分类按“每题首次作答”去重后的 (category, 题数, 首答做对数)。"""
+    first_ids = (
+        select(func.min(Attempt.id).label("attempt_id"))
+        .where(Attempt.user_id == user)
+        .group_by(Attempt.puzzle_id)
+        .subquery()
+    )
     return db.execute(
         select(
             Puzzle.category,
@@ -170,7 +216,7 @@ def category_stats(db: Session, user: str) -> list[tuple[str, int, int | None]]:
             func.sum(func.cast(Attempt.correct, Integer)),
         )
         .join(Attempt, Attempt.puzzle_id == Puzzle.id)
-        .where(Attempt.user_id == user)
+        .join(first_ids, Attempt.id == first_ids.c.attempt_id)
         .group_by(Puzzle.category)
     ).all()
 
@@ -235,7 +281,11 @@ def leaderboard(db: Session, limit: int = 20) -> list[UserStat]:
     return list(
         db.scalars(
             select(UserStat)
-            .where(UserStat.user_id != PUBLIC_OWNER, UserStat.solved > 0)
+            .where(
+                UserStat.user_id != PUBLIC_OWNER,
+                ~UserStat.user_id.like("guest:%"),
+                UserStat.solved > 0,
+            )
             .order_by(UserStat.rating.desc())
             .limit(limit)
         )

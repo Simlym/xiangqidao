@@ -1,5 +1,5 @@
 // 象棋道 PWA service worker（极简）：提供安装能力与离线壳缓存。
-const CACHE = "xq-shell-v1";
+const CACHE = "xq-shell-v2";
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
@@ -13,6 +13,8 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const { request } = e;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
+  // API 响应含账号/设备级进度，绝不能按 URL 跨身份缓存。
+  if (new URL(request.url).pathname.startsWith("/api/")) return;
   e.respondWith(
     fetch(request)
       .then((resp) => {
