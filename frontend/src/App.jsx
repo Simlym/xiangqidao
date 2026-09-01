@@ -11,7 +11,7 @@ import Admin from "./Admin";
 import Settings from "./Settings";
 import Today from "./Today";
 import Learning from "./Learning";
-import { fetchMe, getToken, setToken, resetGuestId, getCredits, checkinCredits, getEntitlements } from "./api";
+import { API_BASE_URL, fetchMe, getToken, setToken, resetGuestId, getCredits, checkinCredits, getEntitlements } from "./api";
 import { useReminders } from "./reminders";
 import { RUNTIME, runtime } from "./platform/runtime";
 import { useCosmeticPreferences } from "./cosmetics";
@@ -25,7 +25,7 @@ const TAB_DESCRIPTIONS = {
   games: "查看棋谱并分析得失",
   play: "与本地或云端引擎对弈",
   jieqi: "揭棋对弈",
-  admin: "用户、权益与系统配置",
+  admin: "当前 Web 服务的用户、内容与云端配置",
   settings: "应用偏好与本地引擎配置",
 };
 
@@ -81,6 +81,7 @@ export default function App() {
   const [entitlements, setEntitlements] = React.useState(null);
   const [authOpen, setAuthOpen] = React.useState(false);
   const [authMode, setAuthMode] = React.useState("login");
+  const desktopUserMenuRef = React.useRef(null);
 
   function openAuth(mode = "login") {
     setAuthMode(mode);
@@ -114,6 +115,22 @@ export default function App() {
     document.body.dataset.appTheme = appearance.app;
     return () => { delete document.body.dataset.appTheme; };
   }, [appearance.app]);
+
+  React.useEffect(() => {
+    function closeUserMenu(event) {
+      const menu = desktopUserMenuRef.current;
+      if (menu?.open && !menu.contains(event.target)) menu.removeAttribute("open");
+    }
+    function closeUserMenuOnEscape(event) {
+      if (event.key === "Escape") desktopUserMenuRef.current?.removeAttribute("open");
+    }
+    document.addEventListener("pointerdown", closeUserMenu);
+    document.addEventListener("keydown", closeUserMenuOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeUserMenu);
+      document.removeEventListener("keydown", closeUserMenuOnEscape);
+    };
+  }, []);
 
   // 跳到训练并指定要练的题/类目
   function practicePuzzle(puzzleId) {
@@ -190,8 +207,8 @@ export default function App() {
     { key: "jieqi", label: "揭棋" },
     { key: "games", label: "我的棋局" },
   ];
-  const settingsTab = { key: "settings", icon: "⚙️", desktopIcon: "⚙", label: "设置", short: "设置" };
-  const adminTab = { key: "admin", icon: "⌁", desktopIcon: "⌁", label: "管理后台", short: "后台" };
+  const settingsTab = { key: "settings", icon: "⚙️", desktopIcon: "⚙", label: isDesktop ? "本机设置" : "设置", short: "设置" };
+  const adminTab = { key: "admin", icon: "◎", desktopIcon: "◎", label: isDesktop ? "Web 管理后台" : "管理后台", short: "后台" };
   const utilityTabs = [settingsTab, ...(user?.role === "admin" ? [adminTab] : [])];
   const activeGroup = primaryGroups.find((group) => group.tabs.includes(tab));
   const activeTab = [...pageTabs, ...utilityTabs].find((item) => item.key === tab) || pageTabs[0];
@@ -238,7 +255,7 @@ export default function App() {
   );
 
   const desktopAccount = user ? (
-    <details className="desktop-user-menu">
+    <details className="desktop-user-menu" ref={desktopUserMenuRef}>
       <summary>
         <span className="desktop-avatar">{user.username?.slice(0, 1) || "棋"}</span>
         <span className="desktop-user-summary">
@@ -320,7 +337,9 @@ export default function App() {
       {tab === "jieqi" && (
         <JieqiPlay onOpenSettings={isDesktop ? () => setTab("settings") : null} />
       )}
-      {tab === "admin" && user?.role === "admin" && <Admin />}
+      {tab === "admin" && user?.role === "admin" && (
+        <Admin desktop={isDesktop} serviceUrl={API_BASE_URL} />
+      )}
       {tab === "settings" && (
         <Settings
           user={user}
@@ -362,16 +381,21 @@ export default function App() {
                 className={`desktop-settings-link${tab === "settings" ? " active" : ""}`}
                 onClick={() => setTab("settings")}
               >
-                <span aria-hidden>⚙</span>
-                <span>设置</span>
+                <span className="desktop-settings-icon" aria-hidden>⚙</span>
+                <span>本机设置</span>
               </button>
               {user?.role === "admin" && (
                 <button
                   className={`desktop-settings-link${tab === "admin" ? " active" : ""}`}
                   onClick={() => setTab("admin")}
                 >
-                  <span aria-hidden>⌁</span>
-                  <span>管理后台</span>
+                  <span className="desktop-settings-icon" aria-hidden>
+                    <svg viewBox="0 0 24 24" focusable="false">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9S14.4 18.5 12 21M12 3C9.6 5.5 8.4 8.5 8.4 12s1.2 6.5 3.6 9" />
+                    </svg>
+                  </span>
+                  <span>Web 管理后台</span>
                 </button>
               )}
               {desktopAccount}

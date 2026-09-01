@@ -92,6 +92,60 @@ header nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; -webk
 }
 .auth-modal { position: relative; }
 .auth-modal h2 { margin: 0 28px 4px 0; color: #8a5a2b; font-size: 22px; }
+.auth-close-confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  border-radius: inherit;
+  background: rgba(45, 39, 33, .48);
+  backdrop-filter: blur(2px);
+}
+.auth-close-confirm-card {
+  width: min(100%, 340px);
+  padding: 20px;
+  border-radius: 12px;
+  background: #fffdf9;
+  box-shadow: 0 14px 40px rgba(28, 22, 16, .24);
+  text-align: center;
+}
+.auth-close-confirm-card h3 { margin: 0 0 8px; color: #3f372f; font-size: 18px; }
+.auth-close-confirm-card p { margin: 0 0 18px; color: #756b60; font-size: 14px; }
+.auth-close-confirm-actions { display: flex; justify-content: center; gap: 12px; }
+.auth-close-confirm-actions button {
+  min-width: 118px;
+  min-height: 40px;
+  padding: 9px 18px;
+  border: 1px solid #d6cec4;
+  border-radius: 10px;
+  background: #f7f3ed;
+  color: #4c433a;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.auth-close-confirm-actions button:hover {
+  border-color: #bcae9e;
+  background: #eee7de;
+  transform: translateY(-1px);
+}
+.auth-close-confirm-actions button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(138, 90, 43, .2);
+}
+.auth-close-confirm-actions .danger {
+  border-color: #a94b42;
+  background: #a94b42;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(169, 75, 66, .2);
+}
+.auth-close-confirm-actions .danger:hover {
+  border-color: #943c35;
+  background: #943c35;
+}
 .auth-close { position: absolute; top: 12px; right: 12px; }
 .auth-intro { margin: 0 0 16px; color: #777; font-size: 13px; }
 .auth-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
@@ -1547,6 +1601,23 @@ body.desktop-runtime {
   text-align: left;
 }
 .desktop-settings-link:hover { color: #fff; background: rgba(255, 255, 255, .07); }
+.desktop-settings-icon {
+  width: 20px;
+  flex: 0 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.desktop-settings-icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .desktop-settings-link.active {
   color: #fff;
   background: rgba(255, 255, 255, .14);
@@ -2463,6 +2534,31 @@ body[data-app-theme="night"] {
   .today-grid { grid-template-columns: 1fr; }
   .section-tabs { overflow-x: auto; padding: 6px 12px; }
   .section-tabs button { white-space: nowrap; }
+}
+
+.admin-service-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #d9c7ad;
+  border-radius: 10px;
+  background: #fffaf2;
+  color: #51483e;
+}
+.admin-service-notice strong { display: block; margin-bottom: 3px; }
+.admin-service-notice p { margin: 0 0 6px; color: #756b60; font-size: 13px; }
+.admin-service-notice code { color: #81552d; overflow-wrap: anywhere; }
+.admin-service-badge {
+  flex: none;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #8a5a2b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
 }
 
 /* ── Web 端响应式外壳与统一视觉 ───────────────────────────

@@ -1,4 +1,14 @@
-const base = "/api";
+import { RUNTIME, runtime } from "./platform/runtime";
+
+function normalizeApiBase(value) {
+  const trimmed = value?.trim();
+  if (!trimmed) return runtime === RUNTIME.TAURI ? "http://localhost:8000/api" : "/api";
+  return trimmed.replace(/\/+$/, "");
+}
+
+// Web 版默认请求当前站点的 /api；PC 安装包没有 Web 反向代理，因此需要在
+// frontend/.env.tauri.local 中用 VITE_API_BASE_URL 指向实际部署的 Web 服务。
+export const API_BASE_URL = normalizeApiBase(import.meta.env?.VITE_API_BASE_URL);
 
 const TOKEN_KEY = "xq_token";
 const GUEST_KEY = "xq_guest_id";
@@ -44,7 +54,7 @@ async function req(path, { method = "GET", body, signal } = {}) {
     opts.headers = authHeaders({ "Content-Type": "application/json" });
     opts.body = JSON.stringify(body);
   }
-  const r = await fetch(`${base}${path}`, opts);
+  const r = await fetch(`${API_BASE_URL}${path}`, opts);
   if (!r.ok) {
     let detail = "请求失败";
     try {
@@ -161,7 +171,7 @@ function normalizeEngineResult(result) {
 }
 
 async function streamEngine(path, fen, options = {}) {
-  const response = await fetch(`${base}${path}`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(enginePayload(fen, options)),

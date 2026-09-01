@@ -8,6 +8,7 @@ export default function Auth({ initialMode = "login", onClose, onAuth }) {
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = React.useState(false);
 
   async function submit(e) {
     e.preventDefault();
@@ -29,8 +30,18 @@ export default function Auth({ initialMode = "login", onClose, onAuth }) {
     setError("");
   }
 
+  function requestClose() {
+    if (busy) return;
+    setCloseConfirmOpen(true);
+  }
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div
+      className="modal-overlay"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) requestClose();
+      }}
+    >
       <div
         className="modal auth-modal"
         role="dialog"
@@ -38,7 +49,7 @@ export default function Auth({ initialMode = "login", onClose, onAuth }) {
         aria-label={mode === "login" ? "登录" : "注册账号"}
         onClick={(e) => e.stopPropagation()}
       >
-        <button className="modal-close auth-close" type="button" aria-label="关闭" onClick={onClose}>×</button>
+        <button className="modal-close auth-close" type="button" aria-label="关闭" onClick={requestClose}>×</button>
         <h2>{mode === "login" ? "欢迎回来" : "创建账号"}</h2>
         <p className="auth-intro">
           {mode === "login" ? "登录后同步你的训练进度和棋局。" : "注册后即可保存个人训练进度和棋局。"}
@@ -92,6 +103,18 @@ export default function Auth({ initialMode = "login", onClose, onAuth }) {
             </p>
           )}
         </form>
+        {closeConfirmOpen && (
+          <div className="auth-close-confirm" role="alertdialog" aria-modal="true" aria-labelledby="auth-close-title">
+            <div className="auth-close-confirm-card">
+              <h3 id="auth-close-title">确定关闭{mode === "login" ? "登录" : "注册"}窗口？</h3>
+              <p>{username || password ? "已填写的内容将不会保留。" : "关闭后可随时重新打开。"}</p>
+              <div className="auth-close-confirm-actions">
+                <button type="button" onClick={() => setCloseConfirmOpen(false)}>继续{mode === "login" ? "登录" : "注册"}</button>
+                <button type="button" className="danger" onClick={onClose}>确认关闭</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

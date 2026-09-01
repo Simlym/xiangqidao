@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:tauri": "vite build --outDir dist-tauri",
+    "build:tauri": "vite build --mode tauri --outDir dist-tauri",
     "test:core": "node --test src/core/**/*.test.js",
     "preview": "vite preview",
     "tauri": "cd .. && node frontend/node_modules/@tauri-apps/cli/tauri.js"

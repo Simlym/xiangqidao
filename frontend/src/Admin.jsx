@@ -28,7 +28,7 @@ const TABS = [
   { key: "logs", label: "日志" },
 ];
 
-export default function Admin() {
+export default function Admin({ desktop = false, serviceUrl = "" }) {
   const [tab, setTab] = React.useState("overview");
   const [ov, setOv] = React.useState(null);
   const [users, setUsers] = React.useState([]);
@@ -63,6 +63,16 @@ export default function Admin() {
 
   return (
     <div className="admin">
+      {desktop && (
+        <div className="admin-service-notice">
+          <span className="admin-service-badge">WEB 服务</span>
+          <div>
+            <strong>这里管理的是当前连接的 Web 服务</strong>
+            <p>用户、题库、权益和云端功能配置会影响所有连接到该服务的客户端，不属于本机偏好。</p>
+            {serviceUrl && <code>{serviceUrl}</code>}
+          </div>
+        </div>
+      )}
       <div className="admin-tabs">
         {TABS.map((t) => (
           <button
@@ -70,7 +80,7 @@ export default function Admin() {
             className={tab === t.key ? "active" : ""}
             onClick={() => setTab(t.key)}
           >
-            {t.label}
+            {desktop && t.key === "settings" ? "服务配置" : t.label}
           </button>
         ))}
       </div>

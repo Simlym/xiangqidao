@@ -275,6 +275,22 @@ uv run alembic check
 | `XQ_JIEQI_ENGINE` | 揭棋 Pikafish 可执行文件路径；也可在「管理后台 → 系统设置 → 揭棋引擎」填写，后台配置优先 | `./data/engine/jieqi/pikafish[.exe]` |
 | `DEEPSEEK_API_KEY` | AI 教练（可选）：个性化训练计划叙述 + 复盘逐步失误讲解 + 整局综合复盘报告 + 训练题「AI 讲解」+ 对弈提示「AI 详解」；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
 
+### PC 客户端连接 Web 服务
+
+Web 版默认使用同域名下的 `/api`。PC 安装包需要在**打包时**指定要连接的 Web 后端：
+
+```powershell
+Copy-Item frontend/.env.tauri.example frontend/.env.tauri.local
+# 编辑 .env.tauri.local，例如：
+# VITE_API_BASE_URL=https://xq.example.com/api
+cd frontend
+npm run tauri build
+```
+
+未配置时 PC 客户端回退到 `http://localhost:8000/api`，仅适合本地开发。该地址会写入安装包；以后更换域名需修改
+`frontend/.env.tauri.local` 并重新打包。生产环境同时要把 Tauri 客户端来源（Windows 通常为
+`http://tauri.localhost`）加入后端 `XQ_ORIGINS`，并使用 HTTPS。
+
 ## 公网部署安全清单
 
 上线前请逐项确认：
