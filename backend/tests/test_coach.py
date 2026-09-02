@@ -115,7 +115,7 @@ def test_plan_endpoints(monkeypatch):
 
     POST 生成计划需登录（防匿名刷大模型）；统一以同一登录用户读写，确保归属一致。
     """
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
     TestSession = _session_factory()
     with TestSession() as db:
         db.add(User(username="tester", password_hash=hash_password("password1")))

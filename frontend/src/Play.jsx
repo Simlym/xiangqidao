@@ -550,7 +550,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   keysRef.current.undo = undo;
   keysRef.current.hint = requestHint;
 
-  // 音效切换：木质 → 清脆 → 电子 → 静音 循环，切到新音色立即试听一声
+  // 音效切换：按可用音色顺序循环，最后进入静音；切换后立即试听一声。
   function cycleSound() {
     const order = [...SOUND_THEMES.map((t) => t.key), "muted"];
     const cur = muted ? "muted" : soundKey;
@@ -714,7 +714,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           <button
             className="btn-newgame"
             onClick={cycleSound}
-            title="点击切换音效：木质 → 清脆 → 电子 → 静音"
+            title="点击切换音效，全部音色轮换后进入静音"
           >
             {muted
               ? "🔇 静音"

@@ -15,6 +15,58 @@ const SECTIONS = [
   { key: "jieqi", label: "揭棋引擎" },
 ];
 const TYPE_META = { app: "软件主题色", board: "棋盘", piece: "棋子", sound: "音效" };
+const STYLE_PRESETS = [
+  {
+    key: "clear", name: "清朗大字", audience: "长辈 · 初学者",
+    description: "更高对比、更粗线条和清楚的双音提示，远看也不费力。",
+    themes: { app: "clear", board: "clear", piece: "bold", sound: "clear" },
+  },
+  {
+    key: "neon", name: "霓虹棋域", audience: "年轻玩家 · 夜间对弈",
+    description: "深空界面、发光棋盘与街机音色，操作反馈更有冲劲。",
+    themes: { app: "neon", board: "neon", piece: "neon", sound: "arcade" },
+  },
+  {
+    key: "candy", name: "糖果课堂", audience: "儿童 · 亲子学习",
+    description: "柔和明亮的积木配色与泡泡音符，让启蒙练习更亲切。",
+    themes: { app: "candy", board: "candy", piece: "candy", sound: "bubble" },
+  },
+  {
+    key: "focus", name: "极简专注", audience: "进阶棋手 · 高频训练",
+    description: "低饱和灰蓝、平面棋子和轻触音，减少无关视觉刺激。",
+    themes: { app: "focus", board: "focus", piece: "focus", sound: "soft" },
+  },
+  {
+    key: "scholar", name: "丹青文房", audience: "传统文化 · 书法爱好者",
+    description: "宣纸、淡墨和篆印棋子，保留最有文人气的落木声。",
+    themes: { app: "ink", board: "paper", piece: "seal", sound: "wood" },
+  },
+  {
+    key: "palace", name: "宫廷朱漆", audience: "古典华丽 · 收藏玩家",
+    description: "宫墙朱红、经典木枰与漆金棋子，仪式感更强。",
+    themes: { app: "palace", board: "classic", piece: "lacquer", sound: "crisp" },
+  },
+  {
+    key: "coast", name: "海岛假日", audience: "休闲对弈 · 轻松氛围",
+    description: "海盐蓝、细沙棋盘和贝壳棋子，搭配圆润泡泡音。",
+    themes: { app: "coast", board: "coast", piece: "shell", sound: "bubble" },
+  },
+  {
+    key: "forest", name: "松林棋社", audience: "自然爱好者 · 长时对弈",
+    description: "苔庭棋盘与溪石棋子，低刺激色彩适合慢慢下。",
+    themes: { app: "forest", board: "forest", piece: "stone", sound: "wood" },
+  },
+  {
+    key: "mono", name: "黑白研究室", audience: "局面分析 · 录屏直播",
+    description: "纯灰阶、高辨识棋子与轻触音，画面干净便于讲解。",
+    themes: { app: "mono", board: "mono", piece: "mono", sound: "soft" },
+  },
+  {
+    key: "pixel", name: "像素残局", audience: "复古玩家 · 掌机爱好者",
+    description: "液晶绿网格、像素棋子与街机脉冲，回到掌机年代。",
+    themes: { app: "pixel", board: "pixel", piece: "pixel", sound: "arcade" },
+  },
+];
 
 export default function Settings({ user, credits, onCreditsChanged, onRequireLogin }) {
   const [section, setSection] = React.useState("general");
@@ -58,6 +110,31 @@ export default function Settings({ user, credits, onCreditsChanged, onRequireLog
       setAppearance({ ...cosmeticPreferences(), [item.type]: item.theme });
     }
     setStoreNotice({ type: "success", text: `已使用「${item.name}」` });
+  }
+
+  function usePreset(preset) {
+    // 当前推荐套装全部由内置免费外观组成，不应依赖服务端目录的加载时序。
+    // 未来若加入付费套装，显式标记 requiresOwnership 后再逐项校验权益。
+    if (preset.requiresOwnership) {
+      const lockedItems = Object.entries(preset.themes).filter(([type, themeKey]) => {
+        const item = catalog.find((candidate) => candidate.type === type && candidate.theme === themeKey);
+        return !item?.owned;
+      });
+      if (lockedItems.length > 0) {
+        setStoreNotice({ type: "error", text: `套装中还有 ${lockedItems.length} 项未解锁，请先单独解锁。` });
+        return;
+      }
+    }
+    for (const type of ["app", "board", "piece"]) {
+      setCosmeticPreference(type, preset.themes[type]);
+    }
+    setAppearance({
+      app: preset.themes.app,
+      board: preset.themes.board,
+      piece: preset.themes.piece,
+    });
+    changeTheme(preset.themes.sound);
+    setStoreNotice({ type: "success", text: `已应用「${preset.name}」整套搭配` });
   }
 
   function changeJieqiAnalysis(patch) {
@@ -122,6 +199,29 @@ export default function Settings({ user, credits, onCreditsChanged, onRequireLog
                 <span className="cosmetic-message error" role="alert">{storeNotice.text}</span>
               )}
             </div>
+            <section className="cosmetic-presets" aria-labelledby="cosmetic-presets-title">
+              <div className="cosmetic-presets-heading">
+                <div><h3 id="cosmetic-presets-title">推荐套装</h3><p>一键应用整套，也可以继续在下方自由混搭。</p></div>
+              </div>
+              <div className="cosmetic-preset-grid">
+                {STYLE_PRESETS.map((preset) => {
+                  const selected = Object.entries(preset.themes).every(([type, value]) => selectedTheme(type) === value);
+                  return (
+                    <article className={`cosmetic-preset preset-${preset.key} ${selected ? "selected" : ""}`} key={preset.key}>
+                      <div className="preset-visual" aria-hidden="true">
+                        <span className="preset-board-mark">楚河</span><span className="preset-piece-mark">帥</span>
+                      </div>
+                      <div className="preset-copy">
+                        <span className="preset-audience">{preset.audience}</span>
+                        <strong>{preset.name}</strong>
+                        <p>{preset.description}</p>
+                      </div>
+                      <button disabled={selected} onClick={() => usePreset(preset)}>{selected ? "整套使用中" : "一键应用"}</button>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
             {Object.entries(TYPE_META).map(([type, title]) => (
               <section className="cosmetic-category" key={type}>
                 <h3>{title}</h3>

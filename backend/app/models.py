@@ -163,7 +163,7 @@ class GameAnalysis(Base):
     eval_drop: Mapped[int] = mapped_column(Integer, default=0)  # 失分（正=失误）
     is_blunder: Mapped[bool] = mapped_column(Boolean, default=False)  # eval_drop > 200
     is_mistake: Mapped[bool] = mapped_column(Boolean, default=False)  # eval_drop > 80
-    explanation: Mapped[str] = mapped_column(Text, default="")        # DeepSeek 解释
+    explanation: Mapped[str] = mapped_column(Text, default="")        # LLM 解释
     puzzle_id: Mapped[int | None] = mapped_column(ForeignKey("puzzles.id"), nullable=True)
 
 
@@ -292,7 +292,7 @@ class CosmeticPurchase(Base):
 class AppSetting(Base):
     """运行时全局配置（键值对），供管理员在后台修改而无需重启或改环境变量。
 
-    目前用于 AI 复盘（DeepSeek）的开关与密钥；DB 中的值优先于环境变量。
+    用于 AI 复盘的协议、服务地址、模型、开关与密钥；DB 中的值优先于环境变量。
     """
 
     __tablename__ = "app_settings"
@@ -315,7 +315,7 @@ class LLMCallLog(Base):
     feature: Mapped[str] = mapped_column(String(40), index=True)   # explain_mistake / coach_move / ...
     user_id: Mapped[str] = mapped_column(String(40), default="", index=True)  # 触发者，空串=系统/未知
     model: Mapped[str] = mapped_column(String(40), default="")
-    # token 用量：prompt 再细分缓存命中/未命中（DeepSeek 单价不同，决定费用）
+    # token 用量：prompt 再细分缓存命中/未命中（部分服务对缓存 token 单独计价）
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cached_tokens: Mapped[int] = mapped_column(Integer, default=0)   # prompt 中命中缓存的部分
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)

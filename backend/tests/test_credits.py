@@ -1,6 +1,6 @@
 """积分系统测试：账户/赚取/消耗的服务逻辑，以及接口的登录要求与扣费门槛。
 
-不实际调用 DeepSeek：以 monkeypatch 替换大模型函数，只验证「门槛 + 扣费 + 退款」。
+不实际调用 LLM：以 monkeypatch 替换大模型函数，只验证「门槛 + 扣费 + 退款」。
 """
 import os
 import sys
@@ -19,7 +19,7 @@ from app.main import app
 from app.auth import hash_password, make_token
 from app.deps import get_db
 from app.models import Base, CreditAccount, CreditLog, Puzzle, User
-from app.settings import KEY_DEEPSEEK_API_KEY, KEY_DEEPSEEK_ENABLED, set_setting
+from app.settings import KEY_LLM_API_KEY, KEY_LLM_ENABLED, set_setting
 
 MATE_FEN = "9/5k1R1/9/9/9/9/9/9/9/4K4 w"
 
@@ -167,12 +167,12 @@ def test_checkin_endpoint_awards():
 
 def test_coach_plan_falls_back_when_no_credits(monkeypatch):
     """大模型已启用但积分为 0 时，仍返回基于训练数据的免费计划。"""
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
     TestSession = _session_factory()
     _add_user(TestSession)
     with TestSession() as db:
-        set_setting(db, KEY_DEEPSEEK_ENABLED, "1")
-        set_setting(db, KEY_DEEPSEEK_API_KEY, "sk-test")
+        set_setting(db, KEY_LLM_ENABLED, "1")
+        set_setting(db, KEY_LLM_API_KEY, "sk-test")
         db.commit()
     client = _client(TestSession)
     r = client.post("/api/coach/plan", headers=_auth())
@@ -182,14 +182,14 @@ def test_coach_plan_falls_back_when_no_credits(monkeypatch):
 
 def test_explain_charges_credits(monkeypatch):
     """已登录、有积分、大模型启用：题目讲解扣费并返回讲解；大模型函数被替身拦截。"""
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.setattr("app.routes.training.explain_puzzle", lambda *a, **k: "测试讲解")
     TestSession = _session_factory()
     with TestSession() as db:
         db.add(User(username="tester", password_hash=hash_password("password1")))
         credits.grant_signup(db, "tester")
-        set_setting(db, KEY_DEEPSEEK_ENABLED, "1")
-        set_setting(db, KEY_DEEPSEEK_API_KEY, "sk-test")
+        set_setting(db, KEY_LLM_ENABLED, "1")
+        set_setting(db, KEY_LLM_API_KEY, "sk-test")
         p = Puzzle(fen=MATE_FEN, solution="h8f8", side_to_move="w",
                    category="双车错", difficulty=2, source="test")
         db.add(p)

@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  adminAdjustCredits,
   adminCreatePuzzle,
   adminDeletePuzzle,
   adminDeleteUser,
@@ -32,6 +33,11 @@ export default function Admin({ desktop = false, serviceUrl = "" }) {
   const [tab, setTab] = React.useState("overview");
   const [ov, setOv] = React.useState(null);
   const [users, setUsers] = React.useState([]);
+  const [creditUser, setCreditUser] = React.useState(null);
+  const [creditDelta, setCreditDelta] = React.useState("");
+  const [creditReason, setCreditReason] = React.useState("");
+  const [creditBusy, setCreditBusy] = React.useState(false);
+  const [creditError, setCreditError] = React.useState("");
 
   const reload = React.useCallback(() => {
     adminOverview().then(setOv).catch(() => {});
@@ -58,6 +64,37 @@ export default function Admin({ desktop = false, serviceUrl = "" }) {
       reload();
     } catch (e) {
       alert(e.message);
+    }
+  }
+
+  function openCreditAdjust(user) {
+    setCreditUser(user);
+    setCreditDelta("");
+    setCreditReason("");
+    setCreditError("");
+  }
+
+  function closeCreditAdjust() {
+    if (!creditBusy) setCreditUser(null);
+  }
+
+  async function adjustCredits(e) {
+    e.preventDefault();
+    const delta = Number(creditDelta);
+    if (!Number.isInteger(delta) || delta === 0) {
+      setCreditError("请输入非 0 的整数；增加填正数，扣减填负数");
+      return;
+    }
+    setCreditBusy(true);
+    setCreditError("");
+    try {
+      await adminAdjustCredits(creditUser.username, delta, creditReason.trim());
+      setCreditUser(null);
+      reload();
+    } catch (e2) {
+      setCreditError(e2.message);
+    } finally {
+      setCreditBusy(false);
     }
   }
 
@@ -117,7 +154,7 @@ export default function Admin({ desktop = false, serviceUrl = "" }) {
         <h3>用户管理</h3>
         <div className="admin-table-wrap"><table className="admin-table">
           <thead>
-            <tr><th>ID</th><th>用户名</th><th>角色</th><th>会员</th><th>作答</th><th>已学</th><th></th></tr>
+            <tr><th>ID</th><th>用户名</th><th>角色</th><th>会员</th><th>积分</th><th>作答</th><th>已学</th><th></th></tr>
           </thead>
           <tbody>
             {users.map((u) => (
@@ -132,6 +169,10 @@ export default function Admin({ desktop = false, serviceUrl = "" }) {
                     <button className="btn-link" onClick={() => setMembership(u, 30)}>开通30天</button>
                   )}
                 </td>
+                <td className="admin-credit-cell">
+                  <span>{u.credits ?? 0}</span>
+                  <button className="btn-link" onClick={() => openCreditAdjust(u)}>调整</button>
+                </td>
                 <td>{u.attempts}</td>
                 <td>{u.learned}</td>
                 <td>
@@ -141,6 +182,51 @@ export default function Admin({ desktop = false, serviceUrl = "" }) {
             ))}
           </tbody>
         </table></div>
+        {creditUser && (
+          <div className="modal-overlay" onClick={closeCreditAdjust}>
+            <div className="modal admin-credit-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="panel-head">
+                <h3>调整积分</h3>
+                <button className="modal-close" onClick={closeCreditAdjust} disabled={creditBusy}>×</button>
+              </div>
+              <p className="muted">
+                用户：{creditUser.username}　当前余额：{creditUser.credits ?? 0}
+              </p>
+              <form className="admin-form" onSubmit={adjustCredits}>
+                <label className="admin-credit-field">
+                  <span>变动积分</span>
+                  <input
+                    className="import-input"
+                    type="number"
+                    step="1"
+                    min="-100000"
+                    max="100000"
+                    placeholder="增加填正数，扣减填负数"
+                    value={creditDelta}
+                    onChange={(e) => setCreditDelta(e.target.value)}
+                    autoFocus
+                    disabled={creditBusy}
+                  />
+                </label>
+                <label className="admin-credit-field">
+                  <span>原因（选填）</span>
+                  <input
+                    className="import-input"
+                    maxLength="80"
+                    placeholder="例如：活动奖励、问题补偿"
+                    value={creditReason}
+                    onChange={(e) => setCreditReason(e.target.value)}
+                    disabled={creditBusy}
+                  />
+                </label>
+                {creditError && <div className="import-error">{creditError}</div>}
+                <button className="btn-import-submit" type="submit" disabled={creditBusy}>
+                  {creditBusy ? "提交中…" : "确认调整"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
       )}
 
@@ -565,6 +651,32 @@ function JieqiEnginePanel() {
   );
 }
 
+const DEFAULT_LLM_SETTINGS = {
+  enabled: false,
+  protocol: "openai_chat",
+  base_url: "https://api.openai.com/v1",
+  model: "gpt-4.1-mini",
+  thinking_enabled: true,
+  reasoning_effort: "high",
+  has_key: false,
+  key_hint: "",
+  active: false,
+};
+
+function normalizeLlmSettings(value) {
+  const data = value && typeof value === "object" ? value : {};
+  return {
+    ...DEFAULT_LLM_SETTINGS,
+    ...data,
+    protocol: data.protocol || DEFAULT_LLM_SETTINGS.protocol,
+    base_url: data.base_url || DEFAULT_LLM_SETTINGS.base_url,
+    model: data.model || DEFAULT_LLM_SETTINGS.model,
+    thinking_enabled: data.thinking_enabled ?? DEFAULT_LLM_SETTINGS.thinking_enabled,
+    reasoning_effort: data.reasoning_effort || DEFAULT_LLM_SETTINGS.reasoning_effort,
+    key_hint: data.key_hint || "",
+  };
+}
+
 function LlmSettingsPanel() {
   const [cfg, setCfg] = React.useState(null);
   const [keyInput, setKeyInput] = React.useState(""); // 仅在用户输入新密钥时使用
@@ -573,18 +685,35 @@ function LlmSettingsPanel() {
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
-    adminGetLlmSettings().then(setCfg).catch(() => {});
+    adminGetLlmSettings()
+      .then((value) => setCfg(normalizeLlmSettings(value)))
+      .catch((e) => setErr(`AI 配置加载失败：${e.message}`));
   }, []);
 
-  if (!cfg) return null;
+  if (!cfg) {
+    return err ? (
+      <div className="panel">
+        <h3>AI 复盘设置（通用 LLM）</h3>
+        <div className="import-error">{err}</div>
+      </div>
+    ) : null;
+  }
 
   async function save(patch) {
     setErr("");
     setMsg("");
     setBusy(true);
     try {
-      const next = await adminUpdateLlmSettings(patch);
-      setCfg(next);
+      const next = normalizeLlmSettings(await adminUpdateLlmSettings(patch));
+      // 保存开关/密钥时保留尚未提交的接口表单，避免用户输入被响应覆盖。
+      setCfg((current) => ({
+        ...next,
+        protocol: patch.protocol ?? current.protocol,
+        base_url: patch.base_url ?? current.base_url,
+        model: patch.model ?? current.model,
+        thinking_enabled: patch.thinking_enabled ?? current.thinking_enabled,
+        reasoning_effort: patch.reasoning_effort ?? current.reasoning_effort,
+      }));
       setKeyInput("");
       setMsg("已保存");
     } catch (e) {
@@ -599,6 +728,17 @@ function LlmSettingsPanel() {
     setMsg("");
     setBusy(true);
     try {
+      const patch = {
+        protocol: cfg.protocol,
+        base_url: cfg.base_url.trim(),
+        model: cfg.model.trim(),
+        thinking_enabled: cfg.thinking_enabled,
+        reasoning_effort: cfg.reasoning_effort,
+      };
+      if (keyInput.trim()) patch.api_key = keyInput.trim();
+      const next = normalizeLlmSettings(await adminUpdateLlmSettings(patch));
+      setCfg(next);
+      setKeyInput("");
       const r = await adminTestLlmSettings();
       setMsg(`连接正常，模型回复：${r.reply}`);
     } catch (e) {
@@ -609,72 +749,168 @@ function LlmSettingsPanel() {
   }
 
   return (
-    <div className="panel">
-      <h3>AI 复盘设置（DeepSeek）</h3>
-      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        开启后，复盘时会调用大模型生成失误讲解与整局总评。
-        密钥也可用环境变量 <code>DEEPSEEK_API_KEY</code> 配置，此处填写优先生效。
-      </p>
-
-      <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={cfg.enabled}
-            disabled={busy}
-            onChange={(e) => save({ enabled: e.target.checked })}
-          />
-          启用 AI 复盘
-        </label>
-        <span className={"tag" + (cfg.active ? "" : " muted")}>
-          {cfg.active ? "● 已生效" : cfg.has_key ? "○ 已配置但未启用" : "○ 未配置密钥"}
-        </span>
+    <div className="panel llm-settings-panel">
+      <div className="llm-settings-header">
+        <div>
+          <div className="llm-eyebrow">AI SERVICE</div>
+          <h3>AI 复盘</h3>
+          <p>配置一个兼容的模型服务，用于失误讲解、整局总结与教练建议。</p>
+        </div>
+        <div className="llm-header-control">
+          <span className={"llm-status " + (cfg.active ? "is-active" : "")}>
+            <i />{cfg.active ? "运行中" : cfg.has_key ? "已停用" : "待配置"}
+          </span>
+          <label className="llm-switch">
+            <input
+              type="checkbox"
+              checked={cfg.enabled}
+              disabled={busy}
+              onChange={(e) => save({ enabled: e.target.checked })}
+            />
+            <span aria-hidden="true" />
+            <b>{cfg.enabled ? "已启用" : "已关闭"}</b>
+          </label>
+        </div>
       </div>
 
-      <div className="import-row">
-        <input
-          className="import-input"
-          type="password"
-          placeholder={cfg.has_key ? `已配置（${cfg.key_hint}），留空则不变` : "填入 DeepSeek API Key"}
-          value={keyInput}
-          onChange={(e) => setKeyInput(e.target.value)}
-        />
-        <select
-          className="import-input"
-          value={cfg.model}
-          disabled={busy}
-          onChange={(e) => save({ model: e.target.value })}
-        >
-          <option value="deepseek-chat">deepseek-chat</option>
-          <option value="deepseek-reasoner">deepseek-reasoner</option>
-        </select>
-      </div>
+      <section className="llm-config-section">
+        <div className="llm-section-heading">
+          <div><span>01</span><strong>接口连接</strong></div>
+          <p>支持 OpenAI Chat、Responses 与 Anthropic Messages 格式</p>
+        </div>
+        <div className="llm-endpoint-grid">
+          <label className="llm-field">
+            <span>接口格式</span>
+            <select
+              className="import-input"
+              value={cfg.protocol}
+              disabled={busy}
+              onChange={(e) => setCfg({ ...cfg, protocol: e.target.value })}
+            >
+              <option value="openai_chat">OpenAI · Chat Completions</option>
+              <option value="openai_responses">OpenAI · Responses</option>
+              <option value="anthropic">Anthropic · Messages</option>
+            </select>
+          </label>
+          <label className="llm-field llm-field-url">
+            <span>Base URL</span>
+            <input
+              className="import-input"
+              type="url"
+              placeholder={cfg.protocol === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"}
+              value={cfg.base_url}
+              onChange={(e) => setCfg({ ...cfg, base_url: e.target.value })}
+            />
+            <small>可填写版本根地址，系统会自动补全接口路径</small>
+          </label>
+          <label className="llm-field">
+            <span>模型名称</span>
+            <input
+              className="import-input"
+              placeholder={cfg.protocol === "anthropic" ? "claude-sonnet-4-5" : "gpt-4.1-mini"}
+              value={cfg.model}
+              disabled={busy}
+              onChange={(e) => setCfg({ ...cfg, model: e.target.value })}
+            />
+          </label>
+        </div>
+      </section>
 
-      <div className="import-row" style={{ marginTop: 8 }}>
-        <button
-          className="btn-import-submit"
-          disabled={busy || !keyInput.trim()}
-          onClick={() => save({ api_key: keyInput.trim() })}
-        >
-          保存密钥
-        </button>
-        {cfg.has_key && (
+      <section className="llm-config-section llm-reasoning-section">
+        <div className="llm-section-heading">
+          <div><span>02</span><strong>推理设置</strong></div>
+          <p>为推理模型预留思考预算；普通模型可关闭</p>
+        </div>
+        <div className="llm-reasoning-grid">
+          <label className="llm-option-card">
+            <span className="llm-option-copy">
+              <strong>思考模式</strong>
+              <small>{cfg.thinking_enabled ? "模型会先推理再生成复盘" : "直接生成回答，响应更快"}</small>
+            </span>
+            <span className="llm-switch llm-switch-only">
+              <input
+                type="checkbox"
+                checked={cfg.thinking_enabled}
+                disabled={busy}
+                onChange={(e) => setCfg({ ...cfg, thinking_enabled: e.target.checked })}
+              />
+              <span aria-hidden="true" />
+            </span>
+          </label>
+          <label className="llm-field llm-effort-field">
+            <span>思考强度</span>
+            <select
+              className="import-input"
+              value={cfg.reasoning_effort}
+              disabled={busy || !cfg.thinking_enabled}
+              onChange={(e) => setCfg({ ...cfg, reasoning_effort: e.target.value })}
+            >
+              <option value="low">Low · 更快</option>
+              <option value="medium">Medium · 映射为 High</option>
+              <option value="high">High · 推荐</option>
+              <option value="xhigh">XHigh · 映射为 High</option>
+              <option value="max">Max · 最深思考</option>
+            </select>
+            <small>{cfg.protocol === "openai_responses"
+              ? "Responses 格式仅用于调整预算与超时"
+              : "默认 High；Medium 与 XHigh 会映射为 High"}</small>
+          </label>
+        </div>
+      </section>
+
+      <section className="llm-config-section llm-key-section">
+        <div className="llm-section-heading">
+          <div><span>03</span><strong>访问密钥</strong></div>
+          <p>{cfg.has_key ? `已安全保存 ${cfg.key_hint}` : "密钥仅保存在服务端"}</p>
+        </div>
+        <div className="llm-key-row">
+          <div className="llm-key-input-wrap">
+            <span aria-hidden="true">•••</span>
+            <input
+              className="import-input"
+              type="password"
+              placeholder={cfg.has_key ? "输入新密钥以替换当前配置" : "粘贴 API Key"}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+            />
+          </div>
           <button
-            className="game-delete-btn"
-            style={{ width: "auto", padding: "0 12px" }}
-            disabled={busy}
-            onClick={() => save({ api_key: "" })}
+            className="llm-btn llm-btn-subtle"
+            disabled={busy || !keyInput.trim()}
+            onClick={() => save({ api_key: keyInput.trim() })}
           >
-            清除密钥
+            {cfg.has_key ? "更新密钥" : "保存密钥"}
           </button>
-        )}
-        <button className="btn-import-submit" disabled={busy} onClick={test}>
-          测试连接
+          {cfg.has_key && (
+            <button className="llm-btn llm-btn-danger" disabled={busy} onClick={() => save({ api_key: "" })}>
+              清除
+            </button>
+          )}
+        </div>
+      </section>
+
+      <div className="llm-settings-footer">
+        <div className="llm-feedback">
+          {err && <div className="import-error">{err}</div>}
+          {msg && <div className="llm-success">{msg}</div>}
+        </div>
+        <button className="llm-btn llm-btn-secondary" disabled={busy || !cfg.base_url.trim() || !cfg.model.trim()} onClick={test}>
+          {busy ? "连接中…" : "测试并保存"}
+        </button>
+        <button
+          className="llm-btn llm-btn-primary"
+          disabled={busy || !cfg.base_url.trim() || !cfg.model.trim()}
+          onClick={() => save({
+            protocol: cfg.protocol,
+            base_url: cfg.base_url.trim(),
+            model: cfg.model.trim(),
+            thinking_enabled: cfg.thinking_enabled,
+            reasoning_effort: cfg.reasoning_effort,
+          })}
+        >
+          保存设置
         </button>
       </div>
-
-      {err && <div className="import-error">{err}</div>}
-      {msg && <div style={{ color: "#27ae60", fontSize: 13 }}>{msg}</div>}
     </div>
   );
 }

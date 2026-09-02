@@ -6,9 +6,9 @@ const EVENT_NAME = "xq-cosmetics-changed";
 
 const DEFAULTS = { app: "classic", board: "classic", piece: "classic" };
 const ALLOWED = {
-  app: new Set(["classic", "ink", "jade", "night"]),
-  board: new Set(["classic", "paper", "jade"]),
-  piece: new Set(["classic", "ink", "jade"]),
+  app: new Set(["classic", "ink", "jade", "night", "clear", "neon", "candy", "focus", "palace", "coast", "forest", "mono", "pixel"]),
+  board: new Set(["classic", "paper", "jade", "clear", "neon", "candy", "focus", "coast", "forest", "mono", "pixel"]),
+  piece: new Set(["classic", "ink", "jade", "bold", "neon", "candy", "focus", "seal", "lacquer", "shell", "stone", "mono", "pixel"]),
 };
 
 export function cosmeticPreferences() {

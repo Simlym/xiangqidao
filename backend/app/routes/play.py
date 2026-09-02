@@ -23,7 +23,7 @@ from ..play_engine import (
     side_to_move,
 )
 from ..ratelimit import limiter
-from ..settings import get_deepseek_config
+from ..settings import get_llm_config
 from ..xiangqi_utils import apply_move
 
 router = APIRouter(prefix="/api/play", tags=["play"])
@@ -310,7 +310,7 @@ def coach(
     """
     if req.move not in legal_moves_uci(req.fen):
         raise HTTPException(400, "不合规则的着法")
-    if not get_deepseek_config(db).active:
+    if not get_llm_config(db).active:
         return CoachResponse(enabled=False, text="")
     if not credits.charge(db, user.username, "play_coach", "play"):
         raise HTTPException(

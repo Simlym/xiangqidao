@@ -16,7 +16,7 @@ from ..puzzle_sessions import create_session, require_session
 from ..puzzle_content import primary_line, rule_explanation, solution_lines
 from ..play_engine import game_status, legal_moves_uci
 from ..ratelimit import limiter
-from ..settings import get_deepseek_config
+from ..settings import get_llm_config
 from ..srs import SrsState, review as srs_review
 from ..xiangqi_utils import apply_move
 
@@ -333,7 +333,7 @@ def explain(
     if puzzle.ai_explanation:
         return ExplainResponse(enabled=True, explanation=puzzle.ai_explanation, cached=True, mode="ai")
 
-    if not get_deepseek_config(db).active:
+    if not get_llm_config(db).active:
         return ExplainResponse(enabled=True, explanation=rule_explanation(puzzle), mode="rules")
 
     if not credits.charge(db, user_id, "puzzle_explain", f"puzzle:{puzzle.id}"):

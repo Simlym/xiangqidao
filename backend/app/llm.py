@@ -1,24 +1,33 @@
-"""DeepSeek Chat API 调用。"""
+"""通用 LLM 调用：OpenAI Chat、OpenAI Responses 与 Anthropic Messages。"""
 import logging
 import time
 
 import httpx
 
-from .settings import get_deepseek_config
+from .settings import (
+    PROTOCOL_ANTHROPIC,
+    PROTOCOL_OPENAI_CHAT,
+    PROTOCOL_OPENAI_RESPONSES,
+    get_llm_config,
+)
 from .xiangqi_utils import apply_move, render_board, uci_to_chinese
 
 # 记录提示词 / 模型思考 / 输出，均为 DEBUG 级。是否可见由全局日志等级统一控制
 # （后台「系统日志」页可调到 DEBUG 查看；见 app/log_buffer.py）。
 logger = logging.getLogger("xiangqidao.llm")
 
-# DeepSeek 价格表（USD / 百万 token）。来源：官方 pricing 文档（2026-06）。
-# prompt 分缓存命中/未命中两档单价；output 含 thinking 的 reasoning token。
-# 价格变动时只改此表即可。未知模型回退用 flash 价，避免漏算。
+# 用户强度到服务实际强度的统一映射。
+_EFFORT_MAP = {"low": "low", "medium": "high", "high": "high", "xhigh": "high", "max": "max"}
+# max_tokens / max_output_tokens 通常同时包含思考和最终正文；开启思考时额外预留预算。
+_REASONING_BUDGET = {"low": 1500, "high": 5000, "max": 8000}
+_REASONING_TIMEOUT = {"low": 60, "high": 75, "max": 120}
+
+# 仅对已维护单价的模型估算费用；未知服务/模型记为 0，避免产生虚假账单。
 _PRICING = {
     "deepseek-v4-flash": {"cache_hit": 0.0028, "cache_miss": 0.14, "output": 0.28},
     "deepseek-v4-pro": {"cache_hit": 0.003625, "cache_miss": 0.435, "output": 0.87},
 }
-_DEFAULT_PRICING = _PRICING["deepseek-v4-flash"]
+_DEFAULT_PRICING = {"cache_hit": 0.0, "cache_miss": 0.0, "output": 0.0}
 
 
 def _compute_cost(model: str, prompt_tokens: int, cached_tokens: int,
@@ -52,15 +61,106 @@ def _describe_moves(fen: str, ucis: list[str]) -> str:
             break
     return " → ".join(out)
 
-DEEPSEEK_BASE = "https://api.deepseek.com/v1"
+def _endpoint(base_url: str, suffix: str) -> str:
+    """允许填写服务根地址，也允许直接填写完整接口地址。"""
+    base = base_url.rstrip("/")
+    return base if base.endswith(suffix) else f"{base}/{suffix.lstrip('/')}"
 
-# thinking 开启时为「思考」预留的额外 token 预算（按强度分档），叠加在正文 max_tokens 之上。
-# 否则模型会把正文预算也用在思考上、正文被截断为空——这正是“乱分析/空响应”的根因。
-_REASONING_BUDGET = {"high": 5000, "max": 8000}
 
-# thinking 开启时「思考」很慢，单纯 30s 超时会把高强度推理掐断（表现为空响应/乱分析）。
-# 按强度给出最低超时下限，调用方传入的 timeout 只作为下限被抬高，不会被压低。
-_REASONING_TIMEOUT = {"high": 75, "max": 120}
+def _request_parts(cfg, prompt: str, max_tokens: int) -> tuple[str, dict, dict]:
+    """按协议生成 URL、请求头和请求体。"""
+    effort = _EFFORT_MAP.get(cfg.reasoning_effort, "high")
+    if cfg.protocol == PROTOCOL_OPENAI_CHAT:
+        body = {
+            "model": cfg.model, "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "thinking": {"type": "enabled" if cfg.thinking_enabled else "disabled"},
+        }
+        if cfg.thinking_enabled:
+            body["reasoning_effort"] = effort
+        return (
+            _endpoint(cfg.base_url, "/chat/completions"),
+            {"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json"},
+            body,
+        )
+    if cfg.protocol == PROTOCOL_OPENAI_RESPONSES:
+        return (
+            _endpoint(cfg.base_url, "/responses"),
+            {"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json"},
+            {"model": cfg.model, "input": prompt, "max_output_tokens": max_tokens},
+        )
+    if cfg.protocol == PROTOCOL_ANTHROPIC:
+        body = {
+            "model": cfg.model, "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "reasoning": {"effort": effort if cfg.thinking_enabled else "none"},
+        }
+        if cfg.thinking_enabled:
+            body["output_config"] = {"effort": effort}
+        return (
+            _endpoint(cfg.base_url, "/messages"),
+            {"x-api-key": cfg.api_key, "anthropic-version": "2023-06-01",
+             "Content-Type": "application/json"},
+            body,
+        )
+    raise ValueError(f"不支持的 LLM 协议：{cfg.protocol}")
+
+
+def _normalize_usage(protocol: str, usage: dict | None) -> dict:
+    """把三种协议的用量字段归一为 OpenAI Chat 风格，供既有记账逻辑使用。"""
+    usage = usage or {}
+    if protocol == PROTOCOL_OPENAI_CHAT:
+        return usage
+    prompt = int(usage.get("input_tokens", 0) or 0)
+    completion = int(usage.get("output_tokens", 0) or 0)
+    cached = int(usage.get("cache_read_input_tokens", 0) or 0)
+    input_details = usage.get("input_tokens_details") or {}
+    cached = int(input_details.get("cached_tokens", cached) or 0)
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": prompt + completion,
+        "prompt_tokens_details": {"cached_tokens": cached},
+    }
+
+
+def _content_text(content) -> str:
+    """兼容纯字符串以及常见的结构化文本块。"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return content.get("text", "") if content.get("type") in {"text", "output_text"} else ""
+    if isinstance(content, list):
+        return "".join(
+            item.get("text", "") for item in content
+            if isinstance(item, dict) and item.get("type") in {"text", "output_text"}
+        )
+    return ""
+
+
+def _response_text(protocol: str, data: dict) -> tuple[str, str, str]:
+    """返回（正文、推理文本、结束原因）。"""
+    if protocol == PROTOCOL_OPENAI_CHAT:
+        choice = data["choices"][0]
+        message = choice["message"]
+        return (
+            _content_text(message.get("content")).strip(),
+            message.get("reasoning_content") or "",
+            choice.get("finish_reason") or "",
+        )
+    if protocol == PROTOCOL_OPENAI_RESPONSES:
+        text = data.get("output_text") or ""
+        if not text:
+            parts = []
+            for item in data.get("output") or []:
+                for content in item.get("content") or []:
+                    if content.get("type") in {"output_text", "text"}:
+                        parts.append(_content_text(content))
+            text = "".join(parts)
+        return text.strip(), "", data.get("status") or ""
+    parts = [_content_text(item) for item in data.get("content") or []
+             if item.get("type") == "text"]
+    return "".join(parts).strip(), "", data.get("stop_reason") or ""
 
 
 def _record_call(feature: str, user_id: str, model: str, usage: dict | None,
@@ -70,7 +170,7 @@ def _record_call(feature: str, user_id: str, model: str, usage: dict | None,
     prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
     completion_tokens = int(usage.get("completion_tokens", 0) or 0)
     total_tokens = int(usage.get("total_tokens", 0) or 0) or (prompt_tokens + completion_tokens)
-    # 缓存命中数：DeepSeek 放在 prompt_tokens_details.cached_tokens（或顶层 prompt_cache_hit_tokens）
+    # 各协议已尽量归一到 prompt_tokens_details.cached_tokens。
     details = usage.get("prompt_tokens_details") or {}
     cached_tokens = int(details.get("cached_tokens", usage.get("prompt_cache_hit_tokens", 0)) or 0)
     # thinking 的 reasoning token 计入 completion，单独记录便于分析
@@ -105,43 +205,35 @@ def _record_call(feature: str, user_id: str, model: str, usage: dict | None,
 
 def _chat(prompt: str, max_tokens: int = 200, timeout: int = 15,
           feature: str = "unknown", user_id: str = "", ref: str = "") -> str:
-    """调用 DeepSeek Chat，未启用/未配置 key 或失败时返回空字符串。"""
+    """调用当前配置的 LLM，未启用、未配置或失败时返回空字符串。"""
     text, _ = _chat_raw(prompt, max_tokens=max_tokens, timeout=timeout,
                         feature=feature, user_id=user_id, ref=ref)
     return text
 
 
 def _chat_raw(prompt: str, max_tokens: int = 200, timeout: int = 15,
-              feature: str = "unknown", user_id: str = "", ref: str = "") -> tuple[str, str]:
-    """调用 DeepSeek Chat，返回 (正文, 错误信息)。
+              feature: str = "unknown", user_id: str = "", ref: str = "",
+              config=None) -> tuple[str, str]:
+    """调用当前配置的 LLM，返回 (正文, 错误信息)。
 
     成功时错误信息为空串；失败时正文为空串、错误信息为可读的原因（供后台测试透传定位）。
     每次调用（无论成败、只要真正发出了请求）都把 token 用量与费用落库供审计。
     feature/user_id/ref 标识本次调用的事项、触发者与关联对象。
     """
-    cfg = get_deepseek_config()
+    cfg = config or get_llm_config()
     if not cfg.active:
         return "", "未启用或未配置密钥"
-    token_budget = max_tokens
-    body = {
-        "model": cfg.model,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    # V4 默认 thinking 开启；显式传 disabled 可关闭并节省 token
+    effort = _EFFORT_MAP.get(cfg.reasoning_effort, "high")
+    output_budget = max_tokens
     if cfg.thinking_enabled:
-        effort = cfg.reasoning_effort
-        body["thinking"] = {"type": "enabled"}
-        body["reasoning_effort"] = effort
-        # 开启 thinking 时为思考额外追加预算、抬高超时下限（high/max 强度 30s 往往不够）
-        token_budget += _REASONING_BUDGET.get(effort, 5000)
-        timeout = max(timeout, _REASONING_TIMEOUT.get(effort, 75))
-    else:
-        body["thinking"] = {"type": "disabled"}
-    body["max_tokens"] = token_budget
+        output_budget += _REASONING_BUDGET[effort]
+        timeout = max(timeout, _REASONING_TIMEOUT[effort])
+    url, headers, body = _request_parts(cfg, prompt, output_budget)
 
-    logger.debug("===== LLM 请求 feature=%s model=%s thinking=%s effort=%s timeout=%ss =====\n%s",
-                 feature, cfg.model, cfg.thinking_enabled,
-                 body.get("reasoning_effort", "-"), timeout, prompt)
+    logger.debug(
+        "===== LLM 请求 feature=%s protocol=%s model=%s output_budget=%d timeout=%ss =====\n%s",
+        feature, cfg.protocol, cfg.model, output_budget, timeout, prompt,
+    )
     started = time.monotonic()
 
     def _elapsed_ms() -> int:
@@ -150,22 +242,14 @@ def _chat_raw(prompt: str, max_tokens: int = 200, timeout: int = 15,
     try:
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(
-                f"{DEEPSEEK_BASE}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {cfg.api_key}",
-                    "Content-Type": "application/json",
-                },
+                url,
+                headers=headers,
                 json=body,
             )
             resp.raise_for_status()
             data = resp.json()
-            usage = data.get("usage")
-            choice = data["choices"][0]
-            msg = choice["message"]
-            finish = choice.get("finish_reason")
-            # thinking 开启时，模型思考在 reasoning_content 字段返回
-            reasoning = msg.get("reasoning_content") or ""
-            content = (msg.get("content") or "").strip()
+            usage = _normalize_usage(cfg.protocol, data.get("usage"))
+            content, reasoning, finish = _response_text(cfg.protocol, data)
             if reasoning:
                 logger.debug("----- 模型思考 -----\n%s", reasoning)
             logger.debug("----- 模型输出 (finish_reason=%s) -----\n%s", finish, content)
@@ -373,7 +457,7 @@ def explain_mistake(
     user_id: str = "",
     ref: str = "",
 ) -> str:
-    """调用 DeepSeek 解释这步失误，返回中文字符串。未配置 key 时返回空字符串。"""
+    """调用当前配置的 LLM 解释这步失误；未配置时返回空字符串。"""
     board = _describe_position(fen)
     played_zh = uci_to_chinese(fen, move_played)
     best_zh = uci_to_chinese(fen, best_move)

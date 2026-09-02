@@ -14,7 +14,7 @@ from ..jieqi_engine import get_shared_jieqi_engine
 from ..llm import explain_mistake, summarize_game
 from ..models import Game, GameAnalysis, Puzzle, User
 from ..play_engine import builtin_evaluate, game_status
-from ..settings import get_deepseek_config
+from ..settings import get_llm_config
 from ..xiangqi_utils import apply_move
 
 router = APIRouter(prefix="/api/games", tags=["analysis"])
@@ -134,7 +134,7 @@ def _run_analysis(game_id: int, owner: str = "default") -> None:
         db.query(GameAnalysis).filter(GameAnalysis.game_id == game_id).delete()
         db.commit()
 
-        llm_active = get_deepseek_config(db).active  # 整局一次性判定，避免逐手查配置
+        llm_active = get_llm_config(db).active  # 整局一次性判定，避免逐手查配置
 
         for i, move in enumerate(move_list):
             fen_before = fens[i]
@@ -263,7 +263,7 @@ def _generate_report(db, game_id: int, owner: str = "default") -> None:
 
     报告由大模型生成，消耗积分；未启用大模型或积分不足时跳过（不影响逐步分析结果）。
     """
-    if not get_deepseek_config(db).active:
+    if not get_llm_config(db).active:
         return
     game = db.get(Game, game_id)
     if not game:
@@ -388,5 +388,5 @@ def get_analysis(
         # 报告在逐步分析全部完成后才生成，故仅 done 时返回
         "report": (game.report or "") if done else "",
         # 供前端区分「无报告」是因 AI 未启用，还是本局无可点评内容
-        "llm_enabled": get_deepseek_config(db).active,
+        "llm_enabled": get_llm_config(db).active,
     }

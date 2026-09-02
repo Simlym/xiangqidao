@@ -1,6 +1,6 @@
 """LLM 扩展功能测试：训练题 AI 讲解（含缓存）与对弈 AI 点评。
 
-不实际调用 DeepSeek：未配置 key 时应优雅返回 enabled=False；
+不实际调用 LLM：未配置 key 时应优雅返回 enabled=False；
 已缓存讲解时应直接命中缓存而不触发外部请求。
 这些功能现在要求登录（防止未登录用户刷大模型），测试统一携带 token。
 """
@@ -55,7 +55,7 @@ def _make_client(ai_explanation=""):
 
 
 def _without_env_key(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
 
 
 def test_explain_rules_are_free_for_guest(monkeypatch):

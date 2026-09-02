@@ -1,62 +1,85 @@
 # 象棋道 Xiangqidao
 
-一套覆盖 Web、Windows PC 与 Android 的象棋/揭棋训练系统。第一版聚焦**战术题训练 + 间隔重复（SM-2）**——
-针对业余棋手最大的失分点「漏算」，用可量化的方式回答「我到底有没有进步」。
+**把每盘棋里反复出现的漏算，变成下一次训练的重点。**
 
-## 为什么这样设计
+象棋道是一套面向象棋爱好者的训练与复盘工具。它把战术题、间隔复习、人机对弈、棋局分析和成长统计串成一条学习路径，让你每次打开应用都知道今天该练什么，而不是在题库里漫无目的地刷题。
 
-业余低段位棋手 90% 的失分来自漏算（没看到吃子、看不到一步杀），而非不懂开局理论。
-所以第一版**只做战术题**，刻意推后了收益低的开局变例背诵。核心是一个闭环：
+目前可通过 Web 浏览器和 Windows PC 客户端使用；标准象棋功能最完整，同时提供揭棋对弈。项目也为后续 Android 客户端保留了共用前端与 Tauri 基础。
 
+![象棋道人机对弈界面](docs/pc-play-optimized.png)
+
+## 你可以用它做什么
+
+- **完成今日训练**：优先复习即将遗忘的题，再学习适量新题。
+- **针对弱点专项练习**：按杀法、开局、中局、残局或具体类目选题。
+- **循序渐进闯关**：用关卡和星级建立清晰的学习进度。
+- **与电脑下完整一局**：选择先后手和难度，支持提示、评估、悔棋与棋谱保存。
+- **复盘自己的失误**：逐步查看局面评价，把实战漏着转成个人练习题。
+- **查看长期变化**：跟踪首答正确率、ELO、段位、连续训练、薄弱杀法和复习日程。
+- **获得教练建议**：即使不配置大模型，也能根据训练与对局数据生成学习计划；配置兼容的 LLM 服务后可获得更自然的棋理讲解和整局报告。
+- **体验揭棋**：标准象棋与揭棋使用相互独立的规则和引擎配置。
+
+## 它如何帮助你进步
+
+象棋道关注的不是“今天做了多少题”，而是“同类错误是否越来越少”。一次完整的使用闭环是：
+
+```text
+今日任务 → 战术训练 → 间隔复习 → 人机实战 → 棋局复盘 → 弱点专项
 ```
-练（到期题）→ 答（对/错） → SM-2 调度下次复习 → 统计弱点 → 针对性再练
-```
 
-「是否提升」由这些指标量化：各杀法正确率（弱点雷达）、每周正确率趋势、连续打卡、首答正确率。
+训练题会根据你的作答表现安排下次复习时间；新题难度会参考近期首答正确率；实战中的关键漏着还可以进入个人题库。最终你看到的不只是一串完成数量，而是哪些能力在变好、哪些问题仍值得练。
 
-## 架构
+## 第一次使用
 
-| 层 | 技术 | 说明 |
-|----|------|------|
-| 前端 | React + Vite (PWA) | 交叉点棋盘（含楚河汉界/九宫）；训练 / 闯关 / 统计 / 复盘 / 对弈 / 后台；可安装到桌面/主屏 |
-| 多端壳 | Tauri 2 | PC 与 Android 复用同一套 React 代码；PC 可在独立子进程加载原生 Pikafish |
-| 棋类核心 | Variant + Engine Adapter | 标准象棋/揭棋规则隔离；分别配置原生、WASM、云端引擎并自动降级 |
-| 后端 | FastAPI | 训练调度 / 闯关 / ELO 评分 / 作答 / 统计 / 对弈 / 鉴权 / 后台管理 API |
-| 数据 | SQLite（可配置） | `users` `puzzles`(含 ELO `rating`) `reviews`(SM-2) `attempts` `games`(含归属/复盘报告) `game_analysis` `user_stats`(ELO 评分档案)；连接串经 `XQ_DB_URL` 配置 |
-| 数据访问 | SQLAlchemy + Alembic | `app/database.py` 管引擎/会话，`migrations/` 管结构升级，`app/repository.py` 封装查询，业务路由与 ORM 解耦 |
-| 复习 | SM-2 | `backend/app/srs.py` |
-| 鉴权 | 标准库自实现 | PBKDF2 密码哈希 + HMAC 签名 token，无第三方依赖（`app/auth.py`）|
-| 会员 | 服务端权益校验 | 客户端统一打包 AI 界面代码；登录后按 `/api/account/entitlements` 显示，服务端再次校验，积分作为调用额度 |
-| 杀法校验 | 内置规则引擎 | `app/importer/verify_mate.py` 判定将军/将死，校验一步杀题，无需 Pikafish |
-| 对弈引擎 | 云库 + 内置 negamax / Pikafish | 开局优先查云库（秒回、省 CPU），其后 Pikafish，未装则回退内置 alpha-beta 搜索（`app/play_engine.py` `app/cloudbook.py`）|
-| 分析引擎 | Pikafish (可选) | 复盘逐步分析；导入题库时校验正解 |
-| 浏览器引擎 | Pikafish WASM (可选) | 评估条/提示在用户浏览器内计算，服务器零开销；未放置产物时自动降级到服务器（`frontend/src/localEngine.js`）|
-| 云库 | 在线棋谱库代理 | 后端代理 + TTL 缓存 + 失败熔断；前端「云库」面板展示着法/评分/胜率（`app/cloudbook.py`）|
+启动后可以直接以游客身份体验。推荐按下面的顺序开始：
 
-着法采用 UCI 坐标制（如 `h2e2`），与 Pikafish 一致，便于后续接入复盘。
+1. 打开“今日”，查看当天的新题和到期复习。
+2. 在“训练”完成一组题；答错时可逐级获取提示。
+3. 到“成长报告”查看正确率、评分和薄弱类目。
+4. 在“对弈”下一盘棋，结束后进入“我的棋局”复盘。
+5. 注册账号，保存独立的训练进度、棋谱、积分和教练计划。
 
-## 运行
+登录不是体验基础训练的前提。AI 能力、用户专属数据和部分权益需要登录；是否可用由服务端配置决定。
 
-### 后端
+## 本地运行
+
+### 需要准备
+
+- Python 3.10 或更高版本
+- [uv](https://docs.astral.sh/uv/)（后端依赖与运行）
+- Node.js 18 或更高版本及 npm
+
+Pikafish 和 LLM 服务都是可选项。没有它们也能启动、训练和对弈。
+
+### 1. 启动后端
+
 ```bash
 cd backend
 uv sync
-uv run alembic upgrade head                                      # 手动执行数据库迁移（应用启动时也会自动执行）
-uv run python -m app.importer.load app/importer/seed_puzzles.json   # 导入种子题库
+uv run alembic upgrade head
+uv run python -m app.importer.load app/importer/seed_puzzles.json
 uv run python -m app
 ```
 
-### 前端
+后端默认运行在 `http://127.0.0.1:8000`。开发环境可访问 `http://127.0.0.1:8000/docs` 查看 API。
+
+> 数据库迁移也会在应用启动时自动执行。导入命令可以重复运行，题库会按现有导入逻辑处理。
+
+### 2. 启动 Web 前端
+
+另开一个终端：
+
 ```bash
 cd frontend
 npm install
-npm run dev      # 打开 http://localhost:5173（已代理 /api 到 8000）
+npm run dev
 ```
 
-### PC 桌面端（开发中）
+浏览器打开 `http://localhost:5173`。开发服务器已将 `/api` 代理到本地后端。
 
-桌面端使用 Tauri 2 包装同一套 React 前端，仍通过 FastAPI 使用账号、训练和 AI 服务；
-局面评分会按“PC 原生 Pikafish → 浏览器 WASM → FastAPI”顺序自动降级。
+### 3. 启动 Windows PC 客户端（可选）
+
+安装 [Tauri 2 所需环境](https://v2.tauri.app/start/prerequisites/) 后运行：
 
 ```bash
 cd frontend
@@ -64,302 +87,163 @@ npm install
 npm run tauri dev
 ```
 
-首次进入桌面端“人机对弈”页面，可填写标准象棋 Pikafish 可执行文件的绝对路径并检测。
-揭棋页面使用独立的揭棋 Pikafish 路径，两个引擎配置互不覆盖。默认只给引擎使用不超过
-4 个线程与 256MB 哈希，也可在界面调整；搜索在独立子进程执行，前端只异步收取 UCI 输出。
-请将对应的 NNUE 文件放在引擎同一目录。原生引擎可负责人机应着、评分与提示；FastAPI
-提供权威棋规校验，且在本地引擎异常时自动接管整步计算。
+生成安装包：
 
 ```bash
-cd frontend
-npm run tauri build   # 产物位于 src-tauri/target/release/bundle
-```
-
-更完整的边界、降级链与性能保障见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
-
-### 安装 Pikafish（可选，强力引擎）
-
-不装也能用：对弈与评分会自动回退到内置 negamax 搜索。装上 [Pikafish](https://github.com/official-pikafish/Pikafish)（顶尖开源象棋引擎）后，**人机对弈棋力、局面评分、复盘分析都会显著变强更准**。
-
-后端按「**受管目录 `data/engine/` 优先，其次 `PATH`**」顺序自动探测引擎（`app/engine.py:find_engine`）。
-
-#### 方式一：管理后台一键安装（推荐）
-
-登录**管理员**账号 → 「管理后台 → 对弈引擎（Pikafish）」→ 点「下载并安装」。系统会：
-
-1. 识别当前操作系统（Windows / macOS / Linux）；
-2. 从官方 Release 下载发布包，自动挑选**最兼容**的可执行文件（避免 CPU 指令集不支持而崩溃）；
-3. 连同 `pikafish.nnue` 权重装入 `data/engine/`，启动自检通过后**即时生效**（无需改 PATH、无需重启）。
-
-若自检提示与 CPU 不兼容，可在下拉里改选更兼容的变体（如含 `sse41` / `ssse3`）重试。装毕「人机对弈」页引擎标签会变为 `♟ Pikafish`。可用 `XQ_ENGINE_DIR` 自定义受管目录。
-
-> 该功能仅管理员可见、只从官方仓库 `official-pikafish/Pikafish` 拉取。
-
-#### 方式二：手动安装（自行放入 PATH）
-
-**1. 获取可执行文件**（任选其一）
-
-- **下载预编译版**：到 [Releases](https://github.com/official-pikafish/Pikafish/releases) 下载对应平台的压缩包，里面含可执行文件与权重文件 `pikafish.nnue`。
-- **从源码编译**：
-  ```bash
-  git clone https://github.com/official-pikafish/Pikafish.git
-  cd Pikafish/src && make -j build ARCH=x86-64-modern   # 按机器架构调整 ARCH
-  # 编译产物为 src/pikafish，并需配套 pikafish.nnue 权重文件
-  ```
-
-**2. 放到 PATH，并让它找得到权重文件 `pikafish.nnue`**
-
-Pikafish 启动时默认在**可执行文件同目录**加载 `pikafish.nnue`，请把两者放在一起。
-
-- **Linux / macOS**：
-  ```bash
-  sudo cp pikafish pikafish.nnue /usr/local/bin/   # 同目录放置二进制与权重
-  sudo chmod +x /usr/local/bin/pikafish
-  which pikafish                                    # 验证可被发现
-  ```
-- **Windows**（PowerShell）：把 `pikafish.exe` 与 `pikafish.nnue` 放进同一目录（如 `C:\tools\pikafish\`），再将该目录加入 PATH：
-  ```powershell
-  $env:Path += ";C:\tools\pikafish"          # 当前会话临时生效
-  # 永久生效：系统设置 → 环境变量 → 在 Path 中新增该目录
-  (Get-Command pikafish).Source              # 验证可被发现
-  ```
-
-**3. 验证**
-
-```bash
-echo "uci" | pikafish        # 应输出 id / option 列表并以 uciok 结尾
-```
-
-重启后端后，「人机对弈」页右上角的引擎标签会从 `♟ 内置引擎` 变为 `♟ Pikafish`，设置页也会提示「评分较准」。
-
-> 找不到引擎时多为：未加入 PATH、缺少 `pikafish.nnue`、或可执行权限不足。后端探测一次后会记住结果，改动后请**重启后端进程**再试。
-
-### 浏览器本地引擎（可选，评估/提示零服务器开销）
-
-把 Pikafish 的 **WebAssembly 构建**放进 `frontend/public/engine/`（三个文件：
-`pikafish.js` / `pikafish.wasm` / `pikafish.nnue`，详见该目录 README），前端会自动探测并启用：
-
-- 对弈页的**评估条**与**提示**改在用户浏览器内计算，不再请求服务器；
-- 引擎标签出现 `⚡ 本地分析`；加载失败/文件缺失时自动降级到服务器接口，功能不受影响；
-- 多线程构建需要服务器响应头 `Cross-Origin-Opener-Policy: same-origin` 与
-  `Cross-Origin-Embedder-Policy: require-corp`（Vite 开发服务器已配置，生产环境在 Nginx 等处添加）；单线程构建无此要求。
-
-### 云库（在线开局库）
-
-默认开启，无需配置。对弈引擎在**开局阶段**（默认前 12 回合）优先采用云库着法——
-秒回且质量高，同时省下一次引擎搜索；前端对弈页新增「云库」面板，可查看当前局面的
-库着法（评分/胜率，点击直接走子）与「提示」按钮（本地引擎 → 云库 → 服务器引擎逐级降级）。
-
-后端做了统一代理：进程内 TTL 缓存（开局局面高度重复）、连续失败自动熔断，
-网络不可用时静默降级，不影响对弈。环境变量：
-
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `XQ_CLOUDBOOK` | `1` | 设为 `0` 完全关闭云库 |
-| `XQ_CLOUDBOOK_URL` | chessdb 公共云库 | 查询接口地址 |
-| `XQ_CLOUDBOOK_TIMEOUT` | `1.5` | 单次查询超时（秒） |
-| `XQ_CLOUDBOOK_MAX_PLY` | `24` | 引擎参考云库的最大半着数 |
-
-### 导入更多题库 / 用 Pikafish 校验
-```bash
-# JSON 格式见 app/importer/seed_puzzles.json
-python -m app.importer.load app/importer/seed_puzzles.json       # 种子题（20 道精选）
-python -m app.importer.load app/importer/generated_puzzles.json  # 生成器产出（80 道，已校验一步杀）
-python -m app.importer.load path/to/puzzles.json --verify        # 装好 pikafish 后逐题校验正解
-```
-
-### 扩充题库（针对「题库太少」）
-
-**1. 内置生成器（离线、无需外部数据）** —— 随机布子后用内置规则引擎校验，只留成立的一步杀：
-```bash
-python -m app.importer.generate --count 100 --seed 1234 --out app/importer/more.json
-python -m app.importer.load app/importer/more.json
-```
-仓库已附带 `generated_puzzles.json`（80 道，全部经 `verify_mate` 校验）。
-
-**2. 可接入的开源题库 / 数据源**（转换成上面的 JSON 即可导入）：
-
-| 来源 | 内容 | 备注 |
-|------|------|------|
-| [lucaferranti/awesome-xiangqi](https://github.com/lucaferranti/awesome-xiangqi) | 象棋开源资源索引 | 找题库/棋谱的总入口 |
-| [maksimKorzh/wukong-xiangqi](https://github.com/maksimKorzh/wukong-xiangqi) | 教学引擎，含 **puzzle generator** / PGN 解析 / 开局库 | 可批量生成题目 |
-| 棋弈江湖 Xiangqi PWA（见 awesome 列表） | **7300+ 题库** + 棋盘识别 ONNX 模型（MIT） | 体量最大的开源题库 |
-| [walker8088/cchess](https://github.com/walker8088/cchess) | Python 象棋库（FEN/着法/PGN 解析） | 写导入适配器的利器 |
-| [official-pikafish/Pikafish](https://github.com/official-pikafish/Pikafish) | 顶尖开源引擎 | 解析名局自动挖掘战术题 + 校验正解 |
-
-> 接入方式：把外部数据的局面/正解转成 `{fen, solution, side_to_move, kind, category, difficulty, steps}` 列表，
-> 经 `--verify`（Pikafish）或 `--mate-check`（内置规则）校验后导入。各源的着法记法（WXF/ICCS/UCI）
-> 需先归一化到本项目的 UCI 坐标制。
-
-**3. 一键接入 wukong-xiangqi 实战杀局（已内置适配器）** —— 该开源库约 3386 道取自世界
-象棋锦标赛等实战的杀局，**仅含局面与「Mate in N」标注、无题解着法**。`import_wukong` 用内置
-规则引擎离线搜索强制连将杀、补出正解，并自动按杀法名目（卧槽马/双车错/重炮…）分类、按步数定
-难度：
-```bash
-# 下载题源 → 求解 → 分类 → 产出本系统可导入的 JSON（可加 --limit 先小批量试跑）
-python -m app.importer.import_wukong --out app/importer/wukong_puzzles.json
-python -m app.importer.load app/importer/wukong_puzzles.json
-```
-> 「先弃后杀 / 安静着造杀」等非连续将军的题无法被纯将军搜索求解，会被跳过——保证导入的每题
-> 都是经 `verify_mate` 验证成立的连将杀。仓库已附带产出的 `wukong_puzzles.json`。
-
-正式导入建议使用审计后的题库。以下命令会检查严格 FEN、逐手合法性、终局将死、
-重复局面与同深度多解，并重新校准难度：
-
-```bash
-python -m app.importer.audit_puzzles
-python -m app.importer.load app/importer/wukong_puzzles.audited.json
-```
-
-审计结果见 `app/importer/puzzle_audit_report.md`；原始题源始终保留，便于追溯。
-
-### 题库分类体系（两级 + 难度 + 步数）
-
-| 字段 | 含义 | 取值示例 |
-|------|------|----------|
-| `kind` | 大类 | 杀法 / 开局 / 中局 / 残局 |
-| `category` | 具体名目 | 卧槽马、马后炮、双车错、对面笑、重炮、炮杀、车杀、兵杀… |
-| `difficulty` | 难度 | 1–5（杀法题按步数映射） |
-| `steps` | 解题回合数 | mate-in-N 的 N |
-
-训练取题 `/api/training/next` 支持 `kind`（大类专项）或 `category`（名目专项）筛选；
-`/api/stats/catalog` 返回题库目录（各名目题数 / 已学数）供前端浏览与专项练习选择。
-
-## 测试
-```bash
-cd backend && python -m pytest tests/ -q
-```
-
-## 数据库迁移
-
-应用启动时会自动执行 `alembic upgrade head`。修改 SQLAlchemy 模型后，用以下流程创建并检查迁移：
-
-```bash
-cd backend
-uv run alembic revision --autogenerate -m "describe schema change"
-# 审核 migrations/versions/ 中新生成的脚本
-uv run alembic upgrade head
-uv run alembic check
-```
-
-首次接管没有 `alembic_version` 的既有数据库时，应用会保留原数据、补齐历史结构、标记基线，
-再执行后续增量迁移。生产环境迁移前仍应备份数据库。
-
-## 训练体验
-
-- **难度自适应**：新题按近期首答正确率挑选难度最贴近的题，冷启动偏易。
-- **每日新题上限**：到期复习不限，每天新题默认上限 20，防止贪多。
-- **分级提示**：同一步错得越多，提示越具体（起点格 → 棋子名 → 完整正解）。
-- **变着容错**：终结杀着只要达成将死，等效着法也判对。
-- **多步题**：对方应着由系统自动走出，玩家只输入己方着法。
-- **计时训练**：实时计时与用时统计，可一键开关。
-- **复习日程**：统计页以柱状图展示未来到期复习量（遗忘曲线）。
-- **弱点专项**：统计页各杀法旁「去练这类」一键进入该类目专项训练，直击薄弱点。
-- **ELO 评分**：每位用户与每道题都有动态评分；首次遇题按强弱差结算，做对强题涨分更多，
-  评分只在首次遇题结算（间隔复习不刷分）。统计页展示评分、段位称号、历史最高与排行榜。
-- **闯关模式**：公共题库按难度切成依次解锁的关卡，通关解锁下一关，一次做对全关拿三星 ★★★，
-  给训练一条清晰的线性进度（题库增长时关卡自动延伸）。
-- **复习提醒**：到期复习以顶部横幅 + 浏览器本地通知（需授权）提醒，避免断更打卡；
-  站点为 PWA，可「安装到主屏/桌面」离线打开。
-
-## 环境变量
-
-| 变量 | 说明 | 默认 |
-|------|------|------|
-| `XQ_SECRET` | token 签名密钥；`XQ_ENV=production` 下仍为默认值会拒绝启动 | 开发占位值（仅本地）|
-| `XQ_ENV` | 设为 `production` 启用生产校验，并关闭 `/docs`、`/openapi.json` | 空 |
-| `XQ_ADMIN` | 指定管理员用户名；**留空时只有首位注册者成为管理员**（推荐公网部署留空，避免 `admin` 用户名被抢注提权）| 空 |
-| `XQ_ORIGINS` | 允许的前端来源（CORS），逗号分隔，如 `https://xq.example.com`；留空则放开（仅限本地开发）| 空（`*`）|
-| `XQ_DB_URL` | 数据库连接串 | `sqlite:///./data/puzzles.db` |
-| `XQ_ENGINE_DIR` | 管理后台一键安装 Pikafish 的受管目录（发现引擎时优先于 PATH）| `./data/engine` |
-| `XQ_JIEQI_ENGINE` | 揭棋 Pikafish 可执行文件路径；也可在「管理后台 → 系统设置 → 揭棋引擎」填写，后台配置优先 | `./data/engine/jieqi/pikafish[.exe]` |
-| `DEEPSEEK_API_KEY` | AI 教练（可选）：个性化训练计划叙述 + 复盘逐步失误讲解 + 整局综合复盘报告 + 训练题「AI 讲解」+ 对弈提示「AI 详解」；也可在「管理后台 → AI 复盘设置」中配置，后台填写优先生效 | 空（不调用）|
-
-### PC 客户端连接 Web 服务
-
-Web 版默认使用同域名下的 `/api`。PC 安装包需要在**打包时**指定要连接的 Web 后端：
-
-```powershell
-Copy-Item frontend/.env.tauri.example frontend/.env.tauri.local
-# 编辑 .env.tauri.local，例如：
-# VITE_API_BASE_URL=https://xq.example.com/api
 cd frontend
 npm run tauri build
 ```
 
-未配置时 PC 客户端回退到 `http://localhost:8000/api`，仅适合本地开发。该地址会写入安装包；以后更换域名需修改
-`frontend/.env.tauri.local` 并重新打包。生产环境同时要把 Tauri 客户端来源（Windows 通常为
-`http://tauri.localhost`）加入后端 `XQ_ORIGINS`，并使用 HTTPS。
+产物位于 `src-tauri/target/release/bundle/`。PC 客户端仍需连接正在运行的后端服务；本地开发默认连接 `http://localhost:8000/api`。
 
-## 公网部署安全清单
+## 可选：启用更强的棋力与 AI 讲解
 
-上线前请逐项确认：
+### Pikafish
 
-- **必设环境变量**：`XQ_ENV=production`、`XQ_SECRET=$(openssl rand -hex 32)`、`XQ_ORIGINS=<你的前端域名>`；`XQ_ADMIN` 留空。
-- **HTTPS**：放在 nginx / Caddy 等反向代理后并强制 TLS（Bearer token 走明文会被截获），开启 HSTS。
-- **限流取真实 IP**：登录/注册、对弈与分析接口已内置基于 IP 的限流。部署在反代后须以
-  `uvicorn app.main:app --proxy-headers --forwarded-allow-ips="<反代IP>"` 启动，否则限流会把所有人算作同一 IP。
-- **安全响应头**：在反代层补 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、合适的 CSP。
-- **审计日志**：失败登录与管理员敏感操作会写入 `xiangqidao.security` logger（继承 uvicorn 处理器），
-  确保 uvicorn 日志落盘并配置轮转；日志**不含**密码 / token / API key。
-- **数据库**：sqlite 文件权限收紧（仅运行账户可读写），备份注意 `app_settings` 中的 DeepSeek 密钥脱敏。
+不安装 Pikafish 时，标准象棋对弈会使用内置搜索引擎。安装后，人机棋力、局面评估和复盘精度会明显提高。
 
-## 鉴权与多用户
+最省事的方式是使用管理员账号进入“管理后台 → 对弈引擎”，由系统从 [Pikafish 官方发布页](https://github.com/official-pikafish/Pikafish/releases)下载、选择兼容版本并安装到受管目录。也可以手动把可执行文件与 `pikafish.nnue` 放在同一目录，再将该目录加入 `PATH`。
 
-- 不登录也能用（数据归属访客 `default`），登录后训练/统计按用户隔离。
-- 首位注册用户自动成为**管理员**；也可用环境变量 `XQ_ADMIN=<用户名>` 指定（留空时仅首位注册者为管理员）。
-- 生产部署务必设置 `XQ_SECRET` 环境变量（token 签名密钥）。
-- 管理后台（管理员可见「管理后台」页）：用户管理、题库增删、概览统计、AI 复盘开关与密钥配置、
-  **Pikafish 引擎一键安装/更新**。新增单步杀法题会用内置规则自动校验是否真为「一步杀」。
+后端按以下顺序查找标准象棋引擎：
 
-## AI 教练
+1. `XQ_ENGINE_DIR` 指定的受管目录，默认 `backend/data/engine/`；
+2. 系统 `PATH`。
 
-「AI 教练」页把分散的数据串成提升闭环：**对局 → 复盘分析 → 用户画像 → 训练计划 → 针对性专项训练**。
+安装或修改路径后请重启后端。PC 客户端还可以在“本机设置”中单独指定原生标准象棋与揭棋引擎；局面分析会在原生引擎、浏览器 WASM 和服务端能力之间自动降级。
 
-- 画像与训练建议由规则引擎从既有数据（ELO 评分、首答正确率、弱点雷达、对局失误、实战漏算题）
-  **确定性**产出，未配置大模型也能用（纯数据版计划）；
-- 配置 DeepSeek 后，LLM 以教练口吻补充水平评估、短板棋理成因与阶段安排；
-- 每局人机对弈复盘分析完成后**自动更新计划**（`coach_plans` 表保留历史），也可手动刷新；
-- 计划中的建议是可执行的行动按钮：到期复习、实战漏算专项、弱点类目专项、去下一盘。
+### 浏览器本地引擎
 
-## 人机对弈
+将 Pikafish WebAssembly 构建放入 `frontend/public/engine/`，即可让评估和提示在浏览器本地运行。所需文件、线程版本和响应头要求见 [`frontend/public/engine/README.md`](frontend/public/engine/README.md)。文件缺失或加载失败时，界面会自动改用服务端。
 
-「人机对弈」页可选先后手与三档难度，与引擎下完整一局；走子受规则约束并提示合法落点，
-支持**悔棋**与走子动画。未安装 Pikafish 时使用内置 negamax 搜索，开箱即用
-（状态栏会显示当前引擎 `♟ Pikafish` / `♟ 内置引擎`，见[安装 Pikafish](#安装-pikafish可选强力引擎)）。
-可一键开启**优劣势评估条**：以红方视角实时显示局面分（如 `+1.2` / `+M3`）与优劣措辞，
-评分精度取决于当前引擎。
-对局结束**自动存入「复盘」并后台触发分析**，终局面板可**一键跳转复盘本局**；
-复盘页除逐步失误外，还给出 LLM **综合复盘报告**，并把实战漏着生成专属练习题（私有），
-配合统计页「弱点专项」形成完整闭环：对弈→分析→报告→针对薄弱点再练。
+### 通用 LLM AI 教练
 
-## P1 学习内容与多变着
+管理员可在“管理后台 → AI 复盘设置”中选择 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages 格式，并填写 Base URL、模型与密钥，即可启用个性化训练建议、逐步失误讲解、整局复盘报告和训练题讲解。DeepSeek 等兼容服务直接按其支持的通用格式接入。
 
-题目按 `kind`（杀法/开局/中局/残局）、`category` 和逗号分隔的 `tags` 形成三级内容体系。
-多条可接受主变使用 `|` 分隔，每条内部仍用逗号分隔着法；第一条应录入引擎给出的对手最强应手，例如：
+密钥只保存在后端，不会打包进 Web 或 PC 客户端。未配置时，基于统计规则的画像和学习建议仍然可用。
 
-```json
-{
-  "kind": "中局",
-  "category": "开放线争夺",
-  "tags": "候选着,开放线,先手",
-  "solution": "h2e2,h9g7,e2e7|c3c4,h9g7,c4c7"
-}
+## 题库
+
+仓库内包含三类可直接使用的数据：
+
+- `seed_puzzles.json`：小型种子题库，适合首次启动。
+- `generated_puzzles.json`：内置生成器产出的杀法题。
+- `wukong_puzzles.audited.json`：经过合法性、终局、多解与重复局面审计的较大题库。
+
+在 `backend/` 目录中导入：
+
+```bash
+uv run python -m app.importer.load app/importer/generated_puzzles.json
+uv run python -m app.importer.load app/importer/wukong_puzzles.audited.json
 ```
 
-规则型棋理解说不依赖大模型且对游客开放；AI 讲解作为登录用户的增强层。阶段测评和单局关键问题训练包复用可信解题会话，作答来源统一写入学习画像。
+也可以生成新的一步杀题：
 
-## 路线图
+```bash
+uv run python -m app.importer.generate --count 100 --seed 1234 --out app/importer/more.json
+uv run python -m app.importer.load app/importer/more.json
+```
 
-- [x] **第一版**：战术题库 + SM-2 复习 + 统计 + 题库导入/校验
-- [x] **第二版**：导入实战棋谱 → Pikafish 复盘 → 输出「本局漏算清单」
-- [x] **第三版**：从败局自动生成专属战术题，闭环
-- [x] 交叉点棋盘（楚河汉界/九宫/炮兵位）；多类杀法题库 + 内置将死校验
-- [x] 登录 + 多用户数据隔离 + 管理后台
-- [x] 人机对弈（内置引擎 / Pikafish），含悔棋 / 走子动画 / 对局存盘复盘
-- [x] 多步杀法支持对方应着；难度自适应、分级提示、计时训练、复习日程可视化
-- [x] 对弈终局自动分析 + 一键复盘；LLM 综合复盘报告；棋局按用户隔离；弱点→题库推荐闭环
-- [x] **第一步留存**：ELO 评分 + 段位/排行榜 + 闯关体系 + 复习提醒(PWA 本地通知)；题库生成器扩容
-- [ ] 微信小程序获客；服务端推送（Web Push / 微信模板消息）
-- [ ] 创作者平台 + 社交；开局/残局课程 + 国际化
-- [ ] 残局基础训练；真人对战（联机）
+自有题库需转换为项目 JSON 格式，着法统一使用与 Pikafish 兼容的 UCI 坐标制，例如 `h2e2`。可用 `--verify` 调用 Pikafish 校验，或先运行审计工具：
+
+```bash
+uv run python -m app.importer.load path/to/puzzles.json --verify
+uv run python -m app.importer.audit_puzzles
+```
+
+格式示例可参考 [`backend/app/importer/seed_puzzles.json`](backend/app/importer/seed_puzzles.json)，审计说明见 [`backend/app/importer/puzzle_audit_report.md`](backend/app/importer/puzzle_audit_report.md)。
+
+## 数据与账号
+
+- 游客可以直接训练，数据归入当前访客身份。
+- 注册后，训练记录、统计、棋谱和个人题目按用户隔离。
+- 未指定 `XQ_ADMIN` 时，第一个注册用户会成为管理员。
+- 管理员可以管理用户、题库、会员权益、AI 配置和服务端引擎。
+- 默认使用 SQLite，数据库连接可通过 `XQ_DB_URL` 替换。
+
+如果要公开部署，请务必先注册并确认管理员账号，再对外开放服务。
+
+## 常用配置
+
+| 环境变量 | 用途 | 默认值 |
+| --- | --- | --- |
+| `XQ_HOST` / `XQ_PORT` | 后端监听地址与端口 | `127.0.0.1` / `8000` |
+| `XQ_DB_URL` | SQLAlchemy 数据库连接串 | `sqlite:///./data/puzzles.db` |
+| `XQ_ENV` | 设为 `production` 时启用生产校验并关闭 API 文档 | 空 |
+| `XQ_SECRET` | 登录 token 签名密钥；生产环境必须更换 | 本地开发占位值 |
+| `XQ_ORIGINS` | 允许访问 API 的前端来源，逗号分隔 | 本地开发放开 |
+| `XQ_ADMIN` | 指定管理员用户名；留空则首位注册者为管理员 | 空 |
+| `XQ_ENGINE_DIR` | Pikafish 受管安装目录 | `./data/engine` |
+| `XQ_JIEQI_ENGINE` | 服务端揭棋引擎路径 | `./data/engine/jieqi/pikafish[.exe]` |
+| `LLM_API_KEY` | AI 教练与复盘讲解密钥 | 空 |
+| `LLM_PROTOCOL` | 接口格式：`openai_chat` / `openai_responses` / `anthropic` | `openai_chat` |
+| `LLM_BASE_URL` | LLM 服务地址 | `https://api.openai.com/v1` |
+| `LLM_MODEL` | LLM 模型名称 | `gpt-4.1-mini` |
+| `LLM_THINKING_ENABLED` | 是否开启思考模式：`1` / `0` | `1` |
+| `LLM_REASONING_EFFORT` | 思考强度：`low` / `medium` / `high` / `xhigh` / `max` | `high` |
+| `XQ_CLOUDBOOK` | 是否启用在线开局库，设为 `0` 关闭 | `1` |
+
+更多云库参数和多端引擎降级逻辑见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
+
+### PC 安装包连接线上服务
+
+PC 后端地址在打包时写入。复制示例文件并修改：
+
+```powershell
+Copy-Item frontend/.env.tauri.example frontend/.env.tauri.local
+# 将 VITE_API_BASE_URL 改为 https://你的域名/api
+cd frontend
+npm run tauri build
+```
+
+线上后端需要把 Tauri 来源加入 `XQ_ORIGINS`，Windows 通常为 `http://tauri.localhost`。更换后端域名后需要重新打包客户端。
+
+## 公网部署前检查
+
+- 设置 `XQ_ENV=production`、随机且足够长的 `XQ_SECRET`，并限制 `XQ_ORIGINS`。
+- 使用 nginx、Caddy 等反向代理提供 HTTPS，不要让登录 token 经明文网络传输。
+- 正确配置可信代理 IP，使登录、对弈和分析接口的限流能识别真实客户端。
+- 限制数据库文件权限，并备份数据库；备份中可能包含后台保存的 AI 密钥。
+- 为服务日志配置持久化和轮转；安全日志不会主动记录密码、token 或 API key。
+- 在反向代理层补充 HSTS、CSP、`X-Content-Type-Options` 和防嵌入策略。
+
+## 开发与验证
+
+```bash
+# 后端测试
+cd backend
+uv run pytest tests/ -q
+
+# 前端核心规则与引擎适配测试
+cd frontend
+npm run test:core
+
+# 前端生产构建
+npm run build
+```
+
+修改数据库模型后：
+
+```bash
+cd backend
+uv run alembic revision --autogenerate -m "describe schema change"
+uv run alembic upgrade head
+uv run alembic check
+```
+
+请在提交前审核 Alembic 自动生成的迁移脚本。项目的模块边界、引擎选择与性能约束见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
+
+## 技术栈
+
+| 部分 | 实现 |
+| --- | --- |
+| Web / PWA | React 18、Vite |
+| PC 客户端 | Tauri 2，共用 React 界面 |
+| 后端 API | FastAPI、SQLAlchemy、Alembic |
+| 数据库 | SQLite 默认，可通过连接串替换 |
+| 训练调度 | SM-2 间隔重复 + 题目/用户 ELO |
+| 棋类能力 | 标准象棋与揭棋规则层、Pikafish、WASM、云库与内置搜索降级 |
+| AI | 可选通用 LLM 服务端集成 |
+
+## 当前方向
+
+核心的“训练 → 对弈 → 复盘 → 再训练”闭环已经可用。接下来主要关注移动端交付、更多系统化开局与残局内容、真人联机以及创作者与社交能力。

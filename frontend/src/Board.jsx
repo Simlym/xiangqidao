@@ -234,8 +234,8 @@ export default function Board({
         </defs>
         <rect className="xq-board-rim" x="1" y="1" width={SW - 2} height={SH - 2} rx="8" />
         <rect className="xq-board-base" x="4" y="4" width={SW - 8} height={SH - 8} rx="6" />
-        <rect x="4" y="4" width={SW - 8} height={SH - 8} rx="6" fill="url(#xq-board-glow)" />
-        <rect x="4" y="4" width={SW - 8} height={SH - 8} rx="6" fill="url(#xq-board-grain)" />
+        <rect className="xq-board-glow" x="4" y="4" width={SW - 8} height={SH - 8} rx="6" fill="url(#xq-board-glow)" />
+        <rect className="xq-board-grain" x="4" y="4" width={SW - 8} height={SH - 8} rx="6" fill="url(#xq-board-grain)" />
         <rect className="xq-board-inner-frame" x="7" y="7" width={SW - 14} height={SH - 14} rx="4" />
         {/* 横线 */}
         {Array.from({ length: ROWS }, (_, r) => (
@@ -289,7 +289,7 @@ export default function Board({
             return (
               <div
                 key={`${row}-${col}`}
-                className="xq-point"
+                className={`xq-point${selected ? " selected" : ""}`}
                 style={{ left: px(dCol(col)), top: py(dRow(row)) }}
                 onClick={() => handleClick(row, col)}
               >

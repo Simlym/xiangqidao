@@ -18,7 +18,7 @@ from . import elo, repository as repo
 from . import credits
 from .llm import write_coach_plan
 from .models import CoachPlan, Game, GameAnalysis, Puzzle, Review
-from .settings import get_deepseek_config
+from .settings import get_llm_config
 
 # 弱点判定：作答数达到下限且正确率低于阈值的类目
 WEAK_MIN_ATTEMPTS = 3
@@ -198,7 +198,7 @@ def generate_plan(db: Session, user: str, trigger: str = "manual") -> CoachPlan:
     progress = build_progress(db, user, profile)
     text = ""
     # PRO 已包含 AI；免费账号按次使用积分，余额不足则降级为纯数据计划。
-    if get_deepseek_config(db).active and credits.charge(db, user, "coach_plan", "coach"):
+    if get_llm_config(db).active and credits.charge(db, user, "coach_plan", "coach"):
         text = write_coach_plan(profile, recs, progress)
         if not text:
             credits.refund(db, user, "coach_plan", "coach")  # 调用失败退回积分

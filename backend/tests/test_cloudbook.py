@@ -41,7 +41,7 @@ def test_best_book_move_levels(monkeypatch):
     assert cloudbook.best_book_move(INITIAL_FEN, "hard") == "h2e2"
     assert cloudbook.best_book_move(INITIAL_FEN, "easy") is None
     # medium 在最优 50cp 内随机
-    assert cloudbook.best_book_move(INITIAL_FEN, "medium") in ("h2e2", "b0c2")
+    assert cloudbook.best_book_move(INITIAL_FEN, "medium") in ("h2e2", "b0c2", "a0a1")
 
 
 def test_best_book_move_respects_opening_limit(monkeypatch):

@@ -12,7 +12,7 @@ from ..coach import generate_plan
 from ..deps import get_db
 from ..models import CoachPlan, User
 from ..ratelimit import limiter
-from ..settings import get_deepseek_config
+from ..settings import get_llm_config
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 
@@ -65,7 +65,7 @@ def latest_plan(db: Session = Depends(get_db), user: str = Depends(current_user_
     )
     return PlanResponse(
         plan=_to_out(plan) if plan else None,
-        llm_enabled=get_deepseek_config(db).active,
+        llm_enabled=get_llm_config(db).active,
     )
 
 
@@ -82,4 +82,4 @@ def refresh_plan(
     """
     # 积分不足时 generate_plan 自动降级为纯数据计划，基础教练能力始终可用。
     plan = generate_plan(db, user.username, trigger="manual")
-    return PlanResponse(plan=_to_out(plan), llm_enabled=get_deepseek_config(db).active)
+    return PlanResponse(plan=_to_out(plan), llm_enabled=get_llm_config(db).active)

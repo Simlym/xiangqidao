@@ -17,10 +17,16 @@ from ..models import (
 from ..puzzle_content import solution_lines
 from ..security_log import admin_action
 from ..settings import (
-    KEY_DEEPSEEK_API_KEY,
-    KEY_DEEPSEEK_ENABLED,
-    KEY_DEEPSEEK_MODEL,
-    get_deepseek_config,
+    KEY_LLM_API_KEY,
+    KEY_LLM_BASE_URL,
+    KEY_LLM_ENABLED,
+    KEY_LLM_MODEL,
+    KEY_LLM_PROTOCOL,
+    KEY_LLM_REASONING_EFFORT,
+    KEY_LLM_THINKING_ENABLED,
+    LLM_PROTOCOLS,
+    LLM_REASONING_EFFORTS,
+    get_llm_config,
     set_setting,
 )
 
@@ -312,7 +318,11 @@ def create_puzzle(body: NewPuzzle, db: Session = Depends(get_db)):
 
 class LlmSettings(BaseModel):
     enabled: bool
+    protocol: str
+    base_url: str
     model: str
+    thinking_enabled: bool
+    reasoning_effort: str
     has_key: bool          # 是否已配置密钥（DB 或环境变量）
     key_hint: str          # 密钥尾 4 位脱敏提示，如 "••••3f9a"
     active: bool           # 当前是否真正生效（开关开 + 有密钥）
@@ -320,15 +330,20 @@ class LlmSettings(BaseModel):
 
 class LlmSettingsUpdate(BaseModel):
     enabled: bool | None = None
+    protocol: str | None = None
+    base_url: str | None = None
     model: str | None = None
+    thinking_enabled: bool | None = None
+    reasoning_effort: str | None = None
     api_key: str | None = None   # 传入则覆盖；传空串清除（回退环境变量）；不传则保留
 
 
 def _llm_settings_view(db: Session) -> LlmSettings:
-    cfg = get_deepseek_config(db)
+    cfg = get_llm_config(db)
     hint = ("••••" + cfg.api_key[-4:]) if cfg.api_key else ""
     return LlmSettings(
-        enabled=cfg.enabled, model=cfg.model,
+        enabled=cfg.enabled, protocol=cfg.protocol, base_url=cfg.base_url, model=cfg.model,
+        thinking_enabled=cfg.thinking_enabled, reasoning_effort=cfg.reasoning_effort,
         has_key=bool(cfg.api_key), key_hint=hint, active=cfg.active,
     )
 
@@ -346,14 +361,38 @@ def update_llm_settings(body: LlmSettingsUpdate, request: Request,
     """更新 AI 复盘配置。api_key 传 None 保留原值、传 "" 清除、传非空覆盖。"""
     changed = []
     if body.enabled is not None:
-        set_setting(db, KEY_DEEPSEEK_ENABLED, "1" if body.enabled else "0")
+        set_setting(db, KEY_LLM_ENABLED, "1" if body.enabled else "0")
         changed.append(f"enabled={body.enabled}")
+    if body.protocol is not None:
+        protocol = body.protocol.strip()
+        if protocol not in LLM_PROTOCOLS:
+            raise HTTPException(400, "不支持的 LLM 接口格式")
+        set_setting(db, KEY_LLM_PROTOCOL, protocol)
+        changed.append("protocol")
+    if body.base_url is not None:
+        base_url = body.base_url.strip().rstrip("/")
+        if not base_url.startswith(("http://", "https://")):
+            raise HTTPException(400, "Base URL 必须以 http:// 或 https:// 开头")
+        set_setting(db, KEY_LLM_BASE_URL, base_url)
+        changed.append("base_url")
     if body.model is not None:
-        set_setting(db, KEY_DEEPSEEK_MODEL, body.model.strip())
+        model = body.model.strip()
+        if not model:
+            raise HTTPException(400, "模型名称不能为空")
+        set_setting(db, KEY_LLM_MODEL, model)
         changed.append("model")
+    if body.thinking_enabled is not None:
+        set_setting(db, KEY_LLM_THINKING_ENABLED, "1" if body.thinking_enabled else "0")
+        changed.append(f"thinking_enabled={body.thinking_enabled}")
+    if body.reasoning_effort is not None:
+        effort = body.reasoning_effort.strip()
+        if effort not in LLM_REASONING_EFFORTS:
+            raise HTTPException(400, "不支持的思考强度")
+        set_setting(db, KEY_LLM_REASONING_EFFORT, effort)
+        changed.append("reasoning_effort")
     if body.api_key is not None:
         # 只记录「改了密钥」这一事实，绝不记录密钥本身
-        set_setting(db, KEY_DEEPSEEK_API_KEY, body.api_key.strip())
+        set_setting(db, KEY_LLM_API_KEY, body.api_key.strip())
         changed.append("api_key")
     db.commit()
     admin_action(request, admin.username, "update_llm_settings", ",".join(changed), db=db)
@@ -363,14 +402,20 @@ def update_llm_settings(body: LlmSettingsUpdate, request: Request,
 @router.post("/settings/llm/test")
 def test_llm_settings(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     """用当前配置发一次最小请求，验证密钥是否可用。仅管理员可调用。"""
-    from ..llm import _chat
+    from ..llm import _chat_raw
 
-    cfg = get_deepseek_config(db)
+    cfg = get_llm_config(db)
     if not cfg.active:
         raise HTTPException(400, "未启用或未配置密钥")
-    reply = _chat("回复\"ok\"两个字即可。", max_tokens=10, timeout=15)
+    try:
+        reply, error = _chat_raw(
+            "回复\"ok\"两个字即可。", max_tokens=10, timeout=15,
+            feature="connection_test", user_id=admin.username, config=cfg,
+        )
+    except Exception as exc:  # 防止配置适配错误泄漏为无说明的 500
+        raise HTTPException(502, f"调用失败：{type(exc).__name__}: {exc}") from exc
     if not reply:
-        raise HTTPException(502, "调用失败：密钥无效或网络不可达")
+        raise HTTPException(502, f"调用失败：{error or '响应正文为空'}")
     return {"ok": True, "reply": reply.strip()[:50]}
 
 

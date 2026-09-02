@@ -20,9 +20,16 @@ export const SOUND_THEMES = [
   { key: "wood", label: "木质" },
   { key: "crisp", label: "清脆" },
   { key: "beep", label: "电子" },
+  { key: "clear", label: "清晰" },
+  { key: "arcade", label: "街机" },
+  { key: "bubble", label: "泡泡" },
+  { key: "soft", label: "轻触" },
 ];
 const ALL_SOUND_KEYS = [...SOUND_THEMES.map((item) => item.key), "temple"];
-const SOUND_LABELS = { wood: "木质", crisp: "清脆", beep: "电子", temple: "古寺梵音" };
+const SOUND_LABELS = {
+  wood: "木质", crisp: "清脆", beep: "电子", temple: "古寺梵音",
+  clear: "清晰提示", arcade: "街机脉冲", bubble: "泡泡音符", soft: "轻触音",
+};
 
 export function soundThemeLabel(key) {
   return SOUND_LABELS[key] || "木质";
@@ -212,6 +219,95 @@ const THEMES = {
     draw(c) {
       knock(c, { freq: 690, q: 9, dur: 0.16, gain: 0.34 });
       knock(c, { freq: 690, q: 9, dur: 0.16, gain: 0.34, time: 0.24 });
+    },
+  },
+  // 清晰：控制低频与音量，用间隔更长的双音让提示容易分辨。
+  clear: {
+    move(c) {
+      tone(c, { freq: 660, dur: 0.1, type: "triangle", gain: 0.16 });
+      tone(c, { freq: 880, dur: 0.12, time: 0.1, type: "triangle", gain: 0.13 });
+    },
+    capture(c) {
+      tone(c, { freq: 740, to: 370, dur: 0.18, type: "triangle", gain: 0.18 });
+      knock(c, { freq: 1800, q: 3, dur: 0.08, gain: 0.2, time: 0.08 });
+    },
+    check(c) {
+      [784, 988, 784].forEach((f, i) => tone(c, { freq: f, dur: 0.14, time: i * 0.15, gain: 0.15 }));
+    },
+    win(c) {
+      [523, 659, 784].forEach((f, i) => tone(c, { freq: f, dur: 0.24, time: i * 0.2, type: "triangle", gain: 0.13 }));
+    },
+    lose(c) {
+      [440, 349, 294].forEach((f, i) => tone(c, { freq: f, dur: 0.25, time: i * 0.21, type: "triangle", gain: 0.12 }));
+    },
+    draw(c) {
+      tone(c, { freq: 587, dur: 0.18, gain: 0.13 });
+      tone(c, { freq: 587, dur: 0.18, time: 0.24, gain: 0.13 });
+    },
+  },
+  // 街机：方波与快速琶音，强调操作反馈。
+  arcade: {
+    move(c) {
+      tone(c, { freq: 220, to: 880, dur: 0.08, type: "square", gain: 0.09 });
+    },
+    capture(c) {
+      tone(c, { freq: 980, to: 140, dur: 0.16, type: "sawtooth", gain: 0.1 });
+      tone(c, { freq: 1320, dur: 0.05, time: 0.12, type: "square", gain: 0.08 });
+    },
+    check(c) {
+      [880, 1175, 1568].forEach((f, i) => tone(c, { freq: f, dur: 0.08, time: i * 0.09, type: "square", gain: 0.08 }));
+    },
+    win(c) {
+      [523, 659, 784, 1047, 1318].forEach((f, i) => tone(c, { freq: f, dur: 0.12, time: i * 0.09, type: "square", gain: 0.07 }));
+    },
+    lose(c) {
+      [392, 294, 196, 147].forEach((f, i) => tone(c, { freq: f, dur: 0.16, time: i * 0.12, type: "sawtooth", gain: 0.07 }));
+    },
+    draw(c) {
+      [440, 440, 330].forEach((f, i) => tone(c, { freq: f, dur: 0.1, time: i * 0.13, type: "square", gain: 0.07 }));
+    },
+  },
+  // 泡泡：正弦滑音模拟圆润的弹跳感。
+  bubble: {
+    move(c) { tone(c, { freq: 360, to: 720, dur: 0.12, gain: 0.17 }); },
+    capture(c) {
+      tone(c, { freq: 720, to: 260, dur: 0.17, gain: 0.18 });
+      tone(c, { freq: 520, to: 880, dur: 0.12, time: 0.11, gain: 0.12 });
+    },
+    check(c) {
+      [660, 880, 1100].forEach((f, i) => tone(c, { freq: f, to: f * 1.18, dur: 0.12, time: i * 0.11, gain: 0.12 }));
+    },
+    win(c) {
+      [523, 659, 784, 988].forEach((f, i) => tone(c, { freq: f, to: f * 1.12, dur: 0.18, time: i * 0.13, gain: 0.12 }));
+    },
+    lose(c) {
+      [523, 440, 349].forEach((f, i) => tone(c, { freq: f, to: f * 0.82, dur: 0.2, time: i * 0.16, gain: 0.11 }));
+    },
+    draw(c) {
+      tone(c, { freq: 520, to: 650, dur: 0.16, gain: 0.12 });
+      tone(c, { freq: 520, to: 650, dur: 0.16, time: 0.2, gain: 0.12 });
+    },
+  },
+  // 轻触：短而克制，连续训练时尽量不打断思路。
+  soft: {
+    move(c) { knock(c, { freq: 2700, q: 1.4, dur: 0.025, gain: 0.12 }); },
+    capture(c) {
+      knock(c, { freq: 2100, q: 1.8, dur: 0.04, gain: 0.15 });
+      tone(c, { freq: 280, to: 190, dur: 0.08, gain: 0.06 });
+    },
+    check(c) {
+      tone(c, { freq: 740, dur: 0.07, gain: 0.08 });
+      tone(c, { freq: 880, dur: 0.09, time: 0.1, gain: 0.08 });
+    },
+    win(c) {
+      [523, 659, 784].forEach((f, i) => tone(c, { freq: f, dur: 0.13, time: i * 0.11, gain: 0.07 }));
+    },
+    lose(c) {
+      [392, 330, 262].forEach((f, i) => tone(c, { freq: f, dur: 0.15, time: i * 0.12, gain: 0.065 }));
+    },
+    draw(c) {
+      knock(c, { freq: 2400, q: 2, dur: 0.03, gain: 0.1 });
+      knock(c, { freq: 2400, q: 2, dur: 0.03, gain: 0.1, time: 0.14 });
     },
   },
 };

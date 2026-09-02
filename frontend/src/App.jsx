@@ -363,7 +363,7 @@ export default function App() {
   );
 
   return (
-    <div className={`app app-theme-${appearance.app} ${isDesktop ? "app-desktop" : "app-web"}`}>
+    <div className={`app app-theme-${appearance.app} ${appearance.app !== "classic" ? "app-theme-custom" : ""} ${isDesktop ? "app-desktop" : "app-web"}`}>
       {isDesktop ? (
         <>
           <aside className="desktop-sidebar">
