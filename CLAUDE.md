@@ -42,7 +42,7 @@ Two independent apps: `backend/app` (FastAPI) and `frontend/src` (React 18, no r
 
 `routes/*` (HTTP) → `repository.py` (query helpers) → `models.py` (ORM) → `database.py` (engine/session/table creation). Keep business routes decoupled from raw ORM where a repository helper exists.
 
-**No migration framework.** `database.py:_ensure_columns()` does lightweight "add missing column" migration for SQLite. When you add a column to an existing table in `models.py`, you must also add it to the `additions` dict there, or existing databases will break.
+**Migrations use Alembic.** `backend/migrations/` (config in `backend/alembic.ini`) is the migration framework; app startup calls `migrations.upgrade_database()` via `database.init_db()`. Schema changes go in a new revision under `migrations/versions/` — do NOT add them to `database.py:_ensure_columns()`. That function (plus `_migrate_reviews_unique`) is legacy-only: it runs once from `_bootstrap_legacy_database()` when Alembic takes over a pre-Alembic database (existing tables but no `alembic_version` table), which is then stamped to baseline `202608310001`. Empty databases are built by the baseline revision.
 
 ### Cross-cutting concepts
 
