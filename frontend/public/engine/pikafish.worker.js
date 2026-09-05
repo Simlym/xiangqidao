@@ -1,5 +1,6 @@
 // Classic Web Worker adapter for the modularized Emscripten build produced by
-// ousc/Pikafish-wasm. The UI communicates with this file using plain UCI lines.
+// the official Pikafish wasm branch (official-pikafish/Pikafish, pinned to
+// ef449fe, 2023-03-08). The UI communicates with this file using plain UCI lines.
 
 let engine = null;
 let bootError = null;

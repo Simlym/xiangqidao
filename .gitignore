@@ -24,6 +24,7 @@ frontend/public/engine/*
 !frontend/public/engine/README.md
 !frontend/public/engine/pikafish.worker.js
 .wasm-build-src/
+.wasm-official-*/
 
 # 本机 Android 工具链下载包和临时安装/构建脚本
 scripts/setup/
