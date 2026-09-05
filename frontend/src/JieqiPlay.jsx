@@ -14,7 +14,7 @@ import {
   parseJieqiFen,
 } from "./core/game/jieqi";
 import { evalJieqiPosition, importGame, streamJieqiPosition } from "./api";
-import { RUNTIME, runtime } from "./platform/runtime";
+import { runtime, usesDesktopLayout } from "./platform/runtime";
 import { jieqiPieceImage } from "./jieqiPieceImages";
 import EngineAnalysisView from "./components/EngineAnalysisView";
 import { analysisPreferences } from "./analysisPreferences";
@@ -134,7 +134,7 @@ function JieqiWinChances({ wdl }) {
 }
 
 export default function JieqiPlay({ onOpenSettings }) {
-  const isDesktop = runtime === RUNTIME.TAURI;
+  const isDesktop = usesDesktopLayout(runtime);
   const initialAnalysis = React.useMemo(() => analysisPreferences("jieqi"), []);
   const [fen, setFen] = React.useState(null);
   const [gameMode, setGameMode] = React.useState("human-ai");
@@ -178,9 +178,9 @@ export default function JieqiPlay({ onOpenSettings }) {
   }, []);
 
   React.useEffect(() => {
-    // 无限分析只适用于本地引擎；仅有云端引擎时，本局安全降级为深度分析，
-    // 但不改写系统中的默认值，之后配置好本地引擎仍可继续使用该默认。
-    if (runtimeKind === "remote" && analysisMode === "infinite") setAnalysisMode("depth");
+    // 单线程 WASM 在计算期间不能接收 stop；云端也不保留长连接无限搜索。
+    // 两者都安全降级为深度分析，只有桌面原生引擎开放无限分析。
+    if (runtimeKind !== "native" && analysisMode === "infinite") setAnalysisMode("depth");
   }, [runtimeKind, analysisMode]);
 
   const depth = LEVELS.find((item) => item.key === level)?.depth || 10;
@@ -783,7 +783,7 @@ export default function JieqiPlay({ onOpenSettings }) {
                       <select value={analysisMode} onChange={(event) => setAnalysisMode(event.target.value)} aria-label="分析模式">
                         <option value="movetime">限时分析</option>
                         <option value="depth">深度分析</option>
-                        {runtimeKind !== "remote" && <option value="infinite">无限分析</option>}
+                        {runtimeKind === "native" && <option value="infinite">无限分析</option>}
                       </select>
                       {analysisMode === "movetime" && <select value={analysisTime} onChange={(event) => setAnalysisTime(Number(event.target.value))} aria-label="分析时间">
                         <option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={3000}>3 秒</option><option value={5000}>5 秒</option>

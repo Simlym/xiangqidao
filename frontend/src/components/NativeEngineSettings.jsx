@@ -3,7 +3,7 @@ import {
   getNativeEngineProfile,
   saveNativeEngineProfile,
 } from "../core/engine/TauriEngineAdapter";
-import { RUNTIME, runtime } from "../platform/runtime";
+import { runtime, supportsNativeEngine } from "../platform/runtime";
 
 export default function NativeEngineSettings({
   manager,
@@ -18,7 +18,7 @@ export default function NativeEngineSettings({
   const [checking, setChecking] = React.useState(false);
   const [statuses, setStatuses] = React.useState(null);
 
-  if (runtime !== RUNTIME.TAURI) return null;
+  if (!supportsNativeEngine(runtime)) return null;
 
   async function inspectPath(selectedPath) {
     const { invoke } = await import("@tauri-apps/api/core");

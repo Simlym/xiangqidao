@@ -6,7 +6,7 @@ import {
   getPlayEngine, getBookMoves, getHint, coachHintMove, streamEvalPosition,
 } from "./api";
 import { createEngineManager } from "./core/engine/createEngineManager";
-import { RUNTIME, runtime } from "./platform/runtime";
+import { runtime, usesDesktopLayout } from "./platform/runtime";
 import {
   playSound, soundMuted, setSoundMuted,
   soundTheme, setSoundTheme, SOUND_THEMES,
@@ -140,7 +140,7 @@ function fmtDuration(ms) {
 }
 
 export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin, onOpenSettings }) {
-  const isDesktop = runtime === RUNTIME.TAURI;
+  const isDesktop = usesDesktopLayout(runtime);
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);
@@ -162,6 +162,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const [analysisMultiPv, setAnalysisMultiPv] = React.useState(1);
   const [analysisSearchMoves, setAnalysisSearchMoves] = React.useState([]);
   const [engineInfo, setEngineInfo] = React.useState(null); // {engine,label,available}
+  const [startError, setStartError] = React.useState("");   // 开局接口失败时展示给用户
+  const [moveError, setMoveError] = React.useState("");
   const [localReady, setLocalReady] = React.useState(false); // 浏览器本地引擎是否就绪
   const [localRuntime, setLocalRuntime] = React.useState(null); // native | wasm | null
   const [showBook, setShowBook] = React.useState(false);  // 云库参考面板开关
@@ -221,6 +223,11 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
       })
       .catch(() => {});
   }, []);
+
+  React.useEffect(() => {
+    // 单线程 WASM 在计算期间不能接收 stop，避免进入无法中止的无限搜索。
+    if (localRuntime === "wasm" && analysisMode === "infinite") setAnalysisMode("depth");
+  }, [localRuntime, analysisMode]);
 
   // 开启评分后，每当局面稳定（轮到你/对局结束、引擎不在思考）就拉取一次评估。
   // 优先用浏览器本地引擎（失败自动降级到服务器）。用序号防止旧请求覆盖新局面。
@@ -342,6 +349,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
 
   async function start(side, lvl) {
     setThinking(true);
+    setStartError("");
+    setMoveError("");
     setOver(null);
     setOverDismissed(false);
     setLastMove(null);
@@ -353,46 +362,52 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     moveTimes.current = [];
     history.current = [];
     const t0 = Date.now();
-    let d;
-    if (side === "b" && localRuntime) {
-      try {
-        const initialState = await getPositionState(INITIAL_FEN);
-        const analysis = await positionEngine.evaluate(
-          INITIAL_FEN,
-          { depth: PLAY_DEPTH[lvl] },
-          { onlyKinds: [localRuntime] },
-        );
-        if (!analysis.bestMove || !initialState.legal_moves.includes(analysis.bestMove)) {
-          throw new Error("本地引擎返回了不合法着法");
+    try {
+      let d;
+      if (side === "b" && localRuntime) {
+        try {
+          const initialState = await getPositionState(INITIAL_FEN);
+          const analysis = await positionEngine.evaluate(
+            INITIAL_FEN,
+            { depth: PLAY_DEPTH[lvl] },
+            { onlyKinds: [localRuntime] },
+          );
+          if (!analysis.bestMove || !initialState.legal_moves.includes(analysis.bestMove)) {
+            throw new Error("本地引擎返回了不合法着法");
+          }
+          const nextFen = applyMove(INITIAL_FEN, analysis.bestMove);
+          const nextState = await getPositionState(nextFen);
+          d = {
+            fen: nextFen,
+            engine_move: analysis.bestMove,
+            status: nextState.status,
+            legal_moves: nextState.legal_moves,
+          };
+        } catch {
+          d = await newPlayGame({ human_side: side, level: lvl });
         }
-        const nextFen = applyMove(INITIAL_FEN, analysis.bestMove);
-        const nextState = await getPositionState(nextFen);
-        d = {
-          fen: nextFen,
-          engine_move: analysis.bestMove,
-          status: nextState.status,
-          legal_moves: nextState.legal_moves,
-        };
-      } catch {
+      } else {
         d = await newPlayGame({ human_side: side, level: lvl });
       }
-    } else {
-      d = await newPlayGame({ human_side: side, level: lvl });
+      setFen(d.fen);
+      setLegalMoves(d.legal_moves || []);
+      setLastMove(d.engine_move || null);
+      if (d.engine_move) {
+        moves.current.push(d.engine_move);  // 人执黑时引擎先手
+        moveTimes.current.push(Date.now() - t0);
+        playSound("move");
+      }
+      setMoveLog([...moves.current]);
+      setTimesLog([...moveTimes.current]);
+      setStatus(d.status);
+      setYourTurn(true);
+      turnStart.current = Date.now();
+    } catch (error) {
+      setFen(null);
+      setStartError(`无法开始对弈：${error?.message || "请检查后端服务后重试"}`);
+    } finally {
+      setThinking(false);
     }
-    setFen(d.fen);
-    setLegalMoves(d.legal_moves || []);
-    setLastMove(d.engine_move || null);
-    if (d.engine_move) {
-      moves.current.push(d.engine_move);  // 人执黑时引擎先手
-      moveTimes.current.push(Date.now() - t0);
-      playSound("move");
-    }
-    setMoveLog([...moves.current]);
-    setTimesLog([...moveTimes.current]);
-    setStatus(d.status);
-    setYourTurn(true);
-    setThinking(false);
-    turnStart.current = Date.now();
   }
 
   // 对局结束：存入复盘棋谱并自动触发分析，形成「对弈→复盘→分析」闭环
@@ -428,6 +443,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
 
   async function onMove(move) {
     if (!yourTurn || thinking || over) return;
+    setMoveError("");
     const humanMs = Date.now() - turnStart.current; // 本步思考用时
     // 走子前快照当前“轮到你”的局面，供悔棋 / 出错还原（连人带机回退一个回合）
     const snap = {
@@ -482,6 +498,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           }
         } catch {
           // 本地进程、WASM 或规则校验任一失败，都用原始局面整步回退服务器。
+          setLocalReady(false);
+          setLocalRuntime(null);
           d = await playMove({ fen, move, level });
         }
       } else {
@@ -515,8 +533,9 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         turnStart.current = Date.now();
       }
       setCanUndo(true);
-    } catch {
+    } catch (error) {
       // 理论上前端已限制为合法着法，兜底回滚乐观更新
+      setMoveError(`走棋失败：${error?.message || "请检查网络后重试"}`);
       history.current.pop();
       setFen(snap.fen);
       setLegalMoves(snap.legalMoves);
@@ -615,7 +634,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             <strong>当前引擎</strong>
             <span>
               {localReady
-                ? localRuntime === "native" ? "PC 原生 Pikafish · 已就绪" : "浏览器本地引擎 · 已就绪"
+                ? localRuntime === "native" ? "PC 原生 Pikafish · 已就绪" : "Pikafish WASM · 已就绪"
                 : engineInfo?.label ? `${engineInfo.label} · 自动降级可用` : "正在检测可用引擎…"}
             </span>
           </div>
@@ -623,9 +642,10 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             <button className="btn-newgame" onClick={onOpenSettings}>引擎设置</button>
           )}
         </div>
-        <button className="btn-start" onClick={() => start(humanSide, level)}>
-          开始对弈
+        <button className="btn-start" onClick={() => start(humanSide, level)} disabled={thinking}>
+          {thinking ? "正在开局…" : "开始对弈"}
         </button>
+        {startError && <div className="result bad" role="alert">{startError}</div>}
       </div>
     );
   }
@@ -648,25 +668,26 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     ? "将军！轮到你"
     : "轮到你走";
   const engineDisplay = localReady
-    ? localRuntime === "native" ? "Pikafish · 本地" : "本地分析引擎"
+    ? localRuntime === "native" ? "Pikafish · 本地" : "Pikafish WASM · 本地"
     : engineInfo?.available ? engineInfo.label : "内置引擎";
   const evalInfo = describeEval(evalData || {}, humanSide);
 
   return (
     <div className="play">
+      {moveError && <div className="result bad" role="alert">{moveError}</div>}
       {/* 状态与操作分两行：状态文案变化（引擎思考中 ↔ 轮到你走）不再挤动按钮换行，棋盘不跳动 */}
       {!isDesktop && <div className="panel play-status-bar">
         <div className="play-status-line">
           <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
           <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
-          {engineInfo && (
+          {!localReady && engineInfo && (
             <span className="tag" title={engineInfo.available ? "Pikafish 强力引擎" : "未装 Pikafish，使用内置搜索"}>
               {engineInfo.available ? "♟ Pikafish" : "♟ 内置引擎"}
             </span>
           )}
           {localReady && (
             <span className="tag" title="评估/提示在本机计算，不占用服务器">
-              ⚡ {localRuntime === "native" ? "PC 原生分析" : "本地分析"}
+              ⚡ {localRuntime === "native" ? "PC 原生分析" : "WASM 本地引擎"}
             </span>
           )}
           <span className="play-turn">
@@ -951,7 +972,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
                       <p>{evalInfo.label}</p>
                       <div className="engine-analysis-controls">
                         <select value={analysisMode} onChange={(event) => setAnalysisMode(event.target.value)} aria-label="分析模式">
-                          <option value="movetime">限时分析</option><option value="depth">深度分析</option>{localReady && <option value="infinite">无限分析</option>}
+                          <option value="movetime">限时分析</option><option value="depth">深度分析</option>{localRuntime === "native" && <option value="infinite">无限分析</option>}
                         </select>
                         {analysisMode === "movetime" && <select value={analysisTime} onChange={(event) => setAnalysisTime(Number(event.target.value))} aria-label="分析时间">
                           <option value={500}>0.5 秒</option><option value={1000}>1 秒</option><option value={3000}>3 秒</option><option value={5000}>5 秒</option>

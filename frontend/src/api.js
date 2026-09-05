@@ -1,13 +1,13 @@
-import { RUNTIME, runtime } from "./platform/runtime";
+import { defaultApiBase, runtime } from "./platform/runtime";
 
 function normalizeApiBase(value) {
   const trimmed = value?.trim();
-  if (!trimmed) return runtime === RUNTIME.TAURI ? "http://localhost:8000/api" : "/api";
+  if (!trimmed) return defaultApiBase(runtime);
   return trimmed.replace(/\/+$/, "");
 }
 
-// Web 版默认请求当前站点的 /api；PC 安装包没有 Web 反向代理，因此需要在
-// frontend/.env.tauri.local 中用 VITE_API_BASE_URL 指向实际部署的 Web 服务。
+// Web 版默认请求当前站点的 /api；客户端安装包没有 Web 反向代理，
+// PC 和 Android 发布构建应通过各自的 .env.*.local 指向实际部署的 HTTPS 服务。
 export const API_BASE_URL = normalizeApiBase(import.meta.env?.VITE_API_BASE_URL);
 
 const TOKEN_KEY = "xq_token";
@@ -48,6 +48,27 @@ function authHeaders(extra = {}) {
   };
 }
 
+function readableErrorDetail(value) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const message = item?.msg || item?.message;
+        const location = Array.isArray(item?.loc)
+          ? item.loc.map((part) => part === "body" ? "请求体" : part).join(".")
+          : "";
+        if (message && location) return `${location}：${message}`;
+        return message || JSON.stringify(item);
+      })
+      .filter(Boolean)
+      .join("；");
+  }
+  if (value && typeof value === "object") {
+    return value.msg || value.message || JSON.stringify(value);
+  }
+  return "请求失败";
+}
+
 async function req(path, { method = "GET", body, signal } = {}) {
   const opts = { method, headers: authHeaders(), signal };
   if (body !== undefined) {
@@ -58,7 +79,7 @@ async function req(path, { method = "GET", body, signal } = {}) {
   if (!r.ok) {
     let detail = "请求失败";
     try {
-      detail = (await r.json()).detail || detail;
+      detail = readableErrorDetail((await r.json()).detail);
     } catch {
       /* ignore */
     }
@@ -179,7 +200,7 @@ async function streamEngine(path, fen, options = {}) {
   });
   if (!response.ok) {
     let message = "流式分析启动失败";
-    try { message = (await response.json()).detail || message; } catch { /* ignore */ }
+    try { message = readableErrorDetail((await response.json()).detail); } catch { /* ignore */ }
     throw new Error(message);
   }
   if (!response.body) throw new Error("当前环境不支持流式响应");

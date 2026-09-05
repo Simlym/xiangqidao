@@ -13,6 +13,7 @@ frontend/dist/
 frontend/dist-tauri/
 frontend/.verify-dist/
 frontend/.env.tauri.local
+frontend/.env.android.local
 .npm-cache/
 src-tauri/target/
 .cargo-target/
@@ -21,6 +22,11 @@ src-tauri/gen/
 # 浏览器本地引擎产物（自行放置，体积大不入库）
 frontend/public/engine/*
 !frontend/public/engine/README.md
+!frontend/public/engine/pikafish.worker.js
+.wasm-build-src/
+
+# 本机 Android 工具链下载包和临时安装/构建脚本
+scripts/setup/
 
 # misc
 .DS_Store

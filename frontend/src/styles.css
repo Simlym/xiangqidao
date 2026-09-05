@@ -3458,7 +3458,7 @@ body[data-app-theme="pixel"] {
   body { background: #f5f2ed; }
   .app-web {
     width: 100%;
-    padding: 0 16px calc(82px + env(safe-area-inset-bottom, 0px));
+    padding: env(safe-area-inset-top, 0px) 16px calc(82px + env(safe-area-inset-bottom, 0px));
   }
   .app-web .web-header {
     min-height: 68px;

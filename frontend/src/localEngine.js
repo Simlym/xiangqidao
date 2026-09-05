@@ -1,22 +1,22 @@
 // 浏览器本地 UCI 引擎（WebAssembly）封装。
 //
 // 把 Pikafish 的 WASM 构建产物放到 public/engine/ 下（见该目录 README）：
-//   pikafish.js / pikafish.wasm / pikafish.nnue
+//   pikafish.worker.js / pikafish.js / pikafish.wasm / pikafish.data
 // 文件存在即自动启用：评估、提示在用户浏览器里完成，服务器零开销；
 // 文件缺失或加载失败时由调用方降级到服务器接口，功能不受影响。
 //
 // 通信协议为标准 UCI 文本（Web Worker postMessage 一行一条），与主流
 // WASM 引擎构建（Emscripten + worker 包装）兼容。
 
-const INIT_TIMEOUT = 20000; // 首次加载含 wasm 编译 + 网络权重，放宽些
+const INIT_TIMEOUT = 60000; // Android 首次读取 18MB 权重并编译 wasm，低端设备需更久
 const GO_TIMEOUT = 15000;
 
 const runtimes = new Map();
-import { abortError, analysisResult, goCommand, parseUciInfo, redPerspective } from "./core/engine/uci";
+import { abortError, analysisResult, goCommand, parseUciInfo, redPerspective } from "./core/engine/uci.js";
 
 function filesFor(variant) {
   const dir = variant === "jieqi" ? "/engine/jieqi" : "/engine";
-  return { js: `${dir}/pikafish.js`, nnue: `${dir}/pikafish.nnue` };
+  return { js: `${dir}/pikafish.worker.js`, glue: `${dir}/pikafish.js`, wasm: `${dir}/pikafish.wasm`, nnue: "pikafish.nnue" };
 }
 
 function getRuntime(variant) {
@@ -24,13 +24,15 @@ function getRuntime(variant) {
   return runtimes.get(variant);
 }
 
-// 探测引擎文件是否就位。生产环境常见 SPA 兜底会把任意路径重写到
-// index.html 并返回 200，因此还要校验 Content-Type 确实是脚本。
+// 探测引擎文件是否就位。Android WebView 的自定义资源协议不一定实现 HEAD，
+// 因此读取很小的 Worker 脚本；SPA 兜底返回 HTML 时再由 Content-Type 排除。
 async function engineFilesPresent(engineJs) {
   try {
-    const r = await fetch(engineJs, { method: "HEAD" });
+    const r = await fetch(engineJs, { method: "GET" });
     if (!r.ok) return false;
     const ct = r.headers.get("content-type") || "";
+    // 只检查响应头，避免探测时完整下载大型 WASM 文件。
+    await r.body?.cancel();
     return /javascript|ecmascript|wasm|octet-stream/i.test(ct);
   } catch {
     return false;
@@ -59,6 +61,12 @@ function bootWorker(variant) {
       resolve(null);
     };
     worker.onmessage = (e) => {
+      if (e.data?.type === "error") {
+        clearTimeout(timer);
+        worker.terminate();
+        resolve(null);
+        return;
+      }
       const line = typeof e.data === "string" ? e.data : "";
       if (line.startsWith("uciok")) {
         uciok = true;
@@ -81,7 +89,9 @@ export function getLocalEngine(variant = "xiangqi") {
     state.probePromise = (async () => {
       const files = filesFor(variant);
       if (typeof Worker === "undefined" || typeof WebAssembly === "undefined") return null;
-      if (!(await engineFilesPresent(files.js))) return null;
+      for (const path of [files.js, files.glue, files.wasm]) {
+        if (!(await engineFilesPresent(path))) return null;
+      }
       return bootWorker(variant);
     })();
   }
@@ -105,15 +115,22 @@ export function localEval(fen, options = {}) {
     return new Promise((resolve, reject) => {
       const latestByPv = new Map();
       let stopping = false;
+      const failWorker = (error) => {
+        cleanup();
+        worker.terminate();
+        state.probePromise = Promise.resolve(null);
+        reject(error);
+      };
       const timeoutMs = options.mode === "infinite" ? null : Math.max(GO_TIMEOUT, Number(options.value) + 5000 || 0);
       const timer = timeoutMs == null ? null : setTimeout(() => {
-        stopping = true;
-        worker.postMessage("stop");
+        // 损坏或卡死的 Worker 可能永远不回 bestmove，必须结束 Promise 才能降级。
+        failWorker(new Error("本地引擎分析超时"));
       }, timeoutMs);
       const onAbort = () => {
         stopping = true;
-        worker.postMessage("stop");
+        failWorker(abortError());
       };
+      const onError = () => failWorker(new Error("本地引擎运行失败"));
       const onMessage = (e) => {
         const line = typeof e.data === "string" ? e.data : "";
         if (line.startsWith("info ")) {
@@ -133,10 +150,15 @@ export function localEval(fen, options = {}) {
       const cleanup = () => {
         clearTimeout(timer);
         worker.removeEventListener("message", onMessage);
+        worker.removeEventListener("error", onError);
+        worker.removeEventListener("messageerror", onError);
         signal?.removeEventListener("abort", onAbort);
       };
       worker.addEventListener("message", onMessage);
+      worker.addEventListener("error", onError);
+      worker.addEventListener("messageerror", onError);
       signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) { onAbort(); return; }
       worker.postMessage(`setoption name MultiPV value ${Math.max(1, Math.min(10, Number(options.multiPv) || 1))}`);
       if (options.showWdl) worker.postMessage("setoption name UCI_ShowWDL value true");
       worker.postMessage(`position fen ${fen}`);

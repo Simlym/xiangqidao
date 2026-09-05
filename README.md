@@ -197,6 +197,40 @@ npm run tauri build
 
 线上后端需要把 Tauri 来源加入 `XQ_ORIGINS`，Windows 通常为 `http://tauri.localhost`。更换后端域名后需要重新打包客户端。
 
+### Android 客户端
+
+Android 客户端复用现有 React 前端，并通过 HTTPS 连接已部署的 FastAPI 后端。手机上不启动 PC 本地可执行引擎，引擎按浏览器 WASM、远程服务的顺序自动降级。
+
+首次构建前，安装 Android Studio 所需 SDK/NDK 和 Rust Android targets，然后配置后端地址：
+
+```powershell
+Copy-Item frontend/.env.android.example frontend/.env.android.local
+# 将 VITE_API_BASE_URL 改为 https://你的域名/api
+cd frontend
+npm install
+npm run tauri android init
+```
+
+连接开启 USB 调试的手机后运行：
+
+```powershell
+npm run tauri android dev
+```
+
+Android 调试会通过 `dev:android` 读取 `.env.android.local`。模拟器可设置
+`VITE_API_BASE_URL=http://10.0.2.2:8000/api`；真机请使用可访问的电脑局域网地址或线上 HTTPS 地址。
+API 必须使用完整地址：Android 的 `tauri.localhost` 资源代理不能可靠传递 POST 请求体。
+修改启动命令或环境文件后，停止旧 Vite 服务并重新运行 Android 调试命令。
+
+生成测试 APK 或 Google Play 使用的 AAB：
+
+```powershell
+npm run tauri android build -- --apk
+npm run tauri android build -- --aab
+```
+
+Android 发布构建会强制检查 `VITE_API_BASE_URL` 是以 `/api` 结尾的 HTTPS 地址，避免误连手机自身的 `localhost`。线上后端仍需将 Android WebView 来源加入 `XQ_ORIGINS`。
+
 ## 公网部署前检查
 
 - 设置 `XQ_ENV=production`、随机且足够长的 `XQ_SECRET`，并限制 `XQ_ORIGINS`。

@@ -1,34 +1,30 @@
-# 浏览器本地引擎目录
+# 浏览器 / Android 本地引擎
 
-把 Pikafish 的 WebAssembly 构建产物放进本目录，前端即自动启用浏览器本地分析
-（评估条 / 提示在用户设备上计算，不再请求服务器；缺失时自动降级到服务器引擎）。
+项目使用 `ousc/Pikafish-wasm` 的 `wasm-single-simd128` 构建。它在 Web Worker
+中运行，Android 模拟器和真机都不需要安装独立引擎，也不占用服务器算力。
 
-需要三个文件（命名必须一致）：
+运行时文件：
 
-| 文件 | 说明 |
+| 文件 | 来源 |
 |------|------|
-| `pikafish.js`   | Worker 入口脚本（Emscripten 产物） |
+| `pikafish.worker.js` | 本项目的 UCI Worker 适配器（提交到仓库） |
+| `pikafish.js` | Emscripten 构建产物 |
 | `pikafish.wasm` | 引擎本体 |
-| `pikafish.nnue` | 评估网络权重（从 official-pikafish/Networks 获取） |
+| `pikafish.data` | 构建时打包的 NNUE 权重 |
 
-揭棋引擎使用独立子目录，避免与标准象棋引擎和 NNUE 混用：
+后三个大文件由 `scripts/build-pikafish-wasm.ps1` 生成，已被 Git 忽略。文件存在
+时前端自动启用本地引擎；缺失或启动失败时仍会降级到服务器引擎。
 
-```text
-engine/jieqi/pikafish.js
-engine/jieqi/pikafish.wasm
-engine/jieqi/pikafish.nnue
+在项目根目录运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-pikafish-wasm.ps1
 ```
 
-获取方式：
+脚本会自动下载官方 `Pikafish 2023-03-05` 发布包中的匹配权重，也可以通过
+`-NnuePath` 指定与该 WASM 源码兼容的其他权重。2026 版 NNUE 架构已经变化，
+不能与此 WASM 分支混用。构建依赖正在运行的 Docker Desktop。
 
-1. 用 Emscripten 自行编译 Pikafish（`make build ARCH=wasm` 风格的社区构建脚本），
-   或使用社区发布的 WASM 版本；
-2. 权重下载后改名为 `pikafish.nnue` 放在同目录。
-
-注意：
-
-- 多线程构建依赖 `SharedArrayBuffer`，生产环境需要响应头
-  `Cross-Origin-Opener-Policy: same-origin` 和
-  `Cross-Origin-Embedder-Policy: require-corp`（开发服务器已配置）；
-  单线程构建无此要求，部署最简单。
-- 本目录除本说明外的文件已被 git 忽略，引擎产物（数十 MB）不会进仓库。
+许可注意事项：Pikafish 引擎为 GPLv3；分发构建产物时需要同时满足源码与许可
+义务。官方 NNUE 权重未经许可不得商用。当前脚本只用于本机开发测试，不会把权重
+或构建产物提交到 Git。

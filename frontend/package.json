@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:android": "vite --mode android",
     "build": "vite build",
     "build:tauri": "vite build --mode tauri --outDir dist-tauri",
-    "test:core": "node --test src/core/**/*.test.js",
+    "build:android": "vite build --mode android --outDir dist-tauri",
+    "test:core": "node --test src/core/**/*.test.js src/platform/**/*.test.js",
     "preview": "vite preview",
     "tauri": "cd .. && node frontend/node_modules/@tauri-apps/cli/tauri.js"
   },

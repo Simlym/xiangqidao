@@ -13,7 +13,7 @@ import Today from "./Today";
 import Learning from "./Learning";
 import { API_BASE_URL, fetchMe, getToken, setToken, resetGuestId, getCredits, checkinCredits, getEntitlements } from "./api";
 import { useReminders } from "./reminders";
-import { RUNTIME, runtime } from "./platform/runtime";
+import { runtime, usesDesktopLayout } from "./platform/runtime";
 import { useCosmeticPreferences } from "./cosmetics";
 
 const TAB_DESCRIPTIONS = {
@@ -69,7 +69,7 @@ function CreditsBadge({ credits, onCheckin }) {
 }
 
 export default function App() {
-  const isDesktop = runtime === RUNTIME.TAURI;
+  const isDesktop = usesDesktopLayout(runtime);
   const appearance = useCosmeticPreferences();
   const [tab, setTab] = React.useState("today");
   // 训练目标：null | {puzzleId} | {category}，用于从复盘/弱点跳转到指定练习

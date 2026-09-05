@@ -1,5 +1,5 @@
 import { EngineAdapter } from "./EngineAdapter";
-import { RUNTIME, runtime } from "../../platform/runtime";
+import { runtime, supportsNativeEngine } from "../../platform/runtime";
 import { abortError, analysisResult, goCommand, parseUciInfo, redPerspective } from "./uci";
 
 const profileKey = (variant) => `xq.nativeEngine.${variant}`;
@@ -33,7 +33,7 @@ export class TauriEngineAdapter extends EngineAdapter {
   }
 
   getProfile() {
-    if (runtime !== RUNTIME.TAURI) return null;
+    if (!supportsNativeEngine(runtime)) return null;
     try {
       const profile = JSON.parse(localStorage.getItem(profileKey(this.variant))) || null;
       return profile ? safeProfile(profile) : null;
@@ -43,7 +43,7 @@ export class TauriEngineAdapter extends EngineAdapter {
   }
 
   async ready() {
-    if (runtime !== RUNTIME.TAURI || !this.getProfile()?.path) return false;
+    if (!supportsNativeEngine(runtime) || !this.getProfile()?.path) return false;
     try {
       await this.start();
       this.lastError = null;
@@ -209,7 +209,7 @@ export class TauriEngineAdapter extends EngineAdapter {
   }
 
   async dispose() {
-    if (runtime !== RUNTIME.TAURI) return;
+    if (!supportsNativeEngine(runtime)) return;
     const { invoke } = await this.modules();
     await invoke("kill_engine").catch(() => {});
     this.unlisten?.();
