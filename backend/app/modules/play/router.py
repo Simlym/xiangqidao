@@ -97,8 +97,8 @@ def engine_info():
         import os
 
         name = getattr(eng, "name", None) or (os.path.basename(eng.path) if getattr(eng, "path", None) else "UCI")
-        return EngineResponse(engine="uci", label=f"用户引擎（{name}）", available=True)
-    return EngineResponse(engine="builtin", label="内置搜索引擎", available=False)
+        return EngineResponse(engine="uci", label=f"云端象棋引擎（{name}）", available=True)
+    return EngineResponse(engine="builtin", label="云端内置象棋引擎", available=False)
 
 
 @router.get("/book", response_model=BookResponse)

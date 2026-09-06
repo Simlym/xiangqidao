@@ -480,7 +480,6 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             <>
               当前引擎：
               <strong>{engineInfo.label}</strong>
-              {engineInfo.available ? "（用户引擎）" : "（未配置外部引擎，评分仅供参考）"}
             </>
           )}
         </p>
@@ -518,7 +517,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             <span>
               {localReady
                 ? localRuntime === "native" ? "PC 原生 UCI 引擎 · 已就绪" : "本地 WASM UCI 引擎 · 已就绪"
-                : engineInfo?.label ? `${engineInfo.label} · 自动降级可用` : "正在检测可用引擎…"}
+                : engineInfo?.label || "正在检测可用引擎…"}
             </span>
           </div>
           {onOpenSettings && (
@@ -552,7 +551,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     : "轮到你走";
   const engineDisplay = localReady
     ? localRuntime === "native" ? "UCI 引擎 · 本地" : "WASM UCI 引擎 · 本地"
-    : engineInfo?.available ? engineInfo.label : "内置引擎";
+    : engineInfo?.label || "云端内置象棋引擎";
   const evalInfo = describeEval(evalData || {}, humanSide);
 
   return (
@@ -564,8 +563,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
           <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
           {!localReady && engineInfo && (
-            <span className="tag" title={engineInfo.available ? "用户提供的 UCI 引擎" : "未配置外部引擎，使用内置搜索"}>
-              {engineInfo.available ? "♟ UCI 引擎" : "♟ 内置引擎"}
+            <span className="tag" title={engineInfo.available ? "服务器提供的云端象棋引擎" : "服务器提供的云端内置象棋引擎"}>
+              {engineInfo.available ? "☁ 云端引擎" : "☁ 云端内置引擎"}
             </span>
           )}
           {localReady && (

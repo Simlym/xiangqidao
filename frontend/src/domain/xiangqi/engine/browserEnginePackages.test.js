@@ -44,5 +44,8 @@ test("兼容的 WASM UCI 包只保存到设备缓存", async (t) => {
   ]);
   assert.equal(profile.name, "Demo");
   assert.equal(entries.size, 3);
+  const workerResponse = entries.get("/__user-engines__/xiangqi/demo/engine.worker.js");
+  assert.equal(workerResponse.headers.get("Cross-Origin-Embedder-Policy"), "require-corp");
+  assert.equal(workerResponse.headers.get("Cross-Origin-Resource-Policy"), "same-origin");
   assert.match(values.get("xq.browserEngine.xiangqi"), /__user-engines__/);
 });

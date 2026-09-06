@@ -19,8 +19,14 @@
 
 ```text
 local-engines/
-├── xiangqi/<engine-id>/<version>/
-└── jieqi/<engine-id>/<version>/
+├── xiangqi/
+│   ├── native/<engine-id>/<version>/<platform>/
+│   └── wasm/<engine-id>/<version>/<target>/
+└── jieqi/
+    ├── native/<engine-id>/<version>/<platform>/
+    └── wasm/<engine-id>/<version>/<target>/
 ```
+
+固定层级为“棋种 → 运行时 → 引擎 → 版本 → 平台或构建目标”。`native` 用于 PC/服务器原生程序，`wasm` 用于 Web/Android 浏览器包；详细命名规则见 [`local-engines/README.md`](../../local-engines/README.md)。
 
 浏览器包格式见 [package-spec.md](package-spec.md)，推荐来源元数据见 [catalog.json](catalog.json)。

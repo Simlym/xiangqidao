@@ -17,7 +17,19 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       caches.open("xiangqidao-user-engines-v1")
         .then((cache) => cache.match(request))
-        .then((response) => response || new Response("Not found", { status: 404 }))
+        .then((response) => {
+          if (!response) return new Response("Not found", { status: 404 });
+          // 兼容修复前已经导入的引擎包：返回时补齐跨源隔离响应头，
+          // 否则启用 COEP 的页面会在执行脚本前直接拒绝缓存 Worker。
+          const headers = new Headers(response.headers);
+          headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+          headers.set("Cross-Origin-Resource-Policy", "same-origin");
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+          });
+        })
     );
     return;
   }

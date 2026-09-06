@@ -67,7 +67,12 @@ export async function importBrowserEnginePackage(fileList, variant = "xiangqi") 
     const fallbackType = extension === "js" ? "text/javascript"
       : extension === "wasm" ? "application/wasm"
         : extension === "json" ? "application/json" : "application/octet-stream";
-    await cache.put(`${base}${path}`, new Response(file, { headers: { "Content-Type": file.type || fallbackType } }));
+    await cache.put(`${base}${path}`, new Response(file, { headers: {
+      "Content-Type": file.type || fallbackType,
+      // 页面启用 COEP 以支持多线程 WASM；Worker 及其依赖也必须明确加入同一隔离策略。
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Resource-Policy": "same-origin",
+    } }));
   }
   const profile = {
     id: packageId,

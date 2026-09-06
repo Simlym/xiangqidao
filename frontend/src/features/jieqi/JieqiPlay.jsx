@@ -382,7 +382,7 @@ export default function JieqiPlay({ onOpenSettings }) {
                   : runtimeKind === "wasm"
                   ? "揭棋 WASM 引擎 · 已就绪"
                   : runtimeKind === "remote"
-                  ? "云端揭棋引擎 · 自动降级可用"
+                  ? "云端揭棋引擎"
                   : "正在检测可用引擎…"}
               </span>
             </div>
