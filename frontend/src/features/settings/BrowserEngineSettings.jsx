@@ -71,27 +71,50 @@ export default function BrowserEngineSettings({ manager, variant = "xiangqi" }) 
     setMessage("本设备上的引擎包已移除");
   }
 
+  const capabilityItems = [
+    ["WASM", capabilities.webAssembly],
+    ["Worker", capabilities.worker],
+    ["多线程", capabilities.threads],
+  ];
+
   return <div className="native-engine-settings">
     <strong>本设备 WASM 引擎</strong>
-    <p className="muted">
-      象棋道不提供引擎文件。请自行下载并解压符合象棋道包规范的 WASM UCI 引擎，然后选择整个目录；文件只保存在当前设备。
-    </p>
-    <p className="muted" style={{ fontSize: 12 }}>
-      上游原生版本不能直接用于浏览器；需要作者提供或用户自行编译为兼容的 WASM 引擎包。
-    </p>
-    <div className="import-row" style={{ alignItems: "center" }}>
-      <label className="btn-import-submit">
-        {busy ? "导入中…" : profile ? "更换引擎包" : "选择引擎包目录"}
-        <input type="file" webkitdirectory="" multiple hidden disabled={busy} onChange={importFiles} />
-      </label>
-      {profile && <button className="game-delete-btn" style={{ width: "auto", padding: "0 12px" }} onClick={remove}>移除</button>}
-      <span className="muted" style={{ fontSize: 12 }}>
-        WASM {capabilities.webAssembly ? "✓" : "✕"} · Worker {capabilities.worker ? "✓" : "✕"} · 多线程 {capabilities.threads ? "✓" : "不可用"}
-      </span>
+    <div className="engine-package-card">
+      <div className="engine-package-intro">
+        <span className="engine-package-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 3 4.5 7v10l7.5 4 7.5-4V7L12 3Z"/><path d="m4.5 7 7.5 4 7.5-4M12 11v10"/></svg>
+        </span>
+        <div>
+          <h3>本地 WASM 引擎包</h3>
+          <p>选择符合象棋道规范的 WASM UCI 引擎目录。引擎仅保存在当前设备，不会上传。</p>
+        </div>
+      </div>
+      <div className="engine-package-note">
+        <span aria-hidden="true">i</span>
+        上游原生版本不能直接在浏览器运行，需使用作者提供或自行编译的 WASM 版本。
+      </div>
+      <div className="engine-package-actions">
+        <div className="engine-action-buttons">
+          <label className={`btn-import-submit ${busy ? "is-busy" : ""}`}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>
+            {busy ? "导入中…" : profile ? "更换引擎包" : "选择引擎包目录"}
+            <input type="file" webkitdirectory="" multiple hidden disabled={busy} onChange={importFiles} />
+          </label>
+          {profile && <button className="engine-remove-btn" onClick={remove}>移除</button>}
+        </div>
+        <div className="engine-capabilities" aria-label="浏览器能力">
+          {capabilityItems.map(([label, available]) => (
+            <span className={available ? "available" : "unavailable"} key={label}>
+              <i aria-hidden="true">{available ? "✓" : "—"}</i>{label}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
-    {profile && <div className={engineReady === false ? "import-error" : "engine-status-ok"}>
-      <strong>{engineReady === true ? "✓ 已就绪" : engineReady === false ? "✕ 启动失败" : "正在检测…"}</strong>
-      <span>{profile.name} {profile.version}</span>
+    {profile && <div className={`engine-profile-status ${engineReady === false ? "is-error" : engineReady === true ? "is-ready" : "is-checking"}`}>
+      <span className="engine-status-dot" aria-hidden="true" />
+      <div><strong>{engineReady === true ? "引擎已就绪" : engineReady === false ? "引擎启动失败" : "正在检测引擎"}</strong>
+      <span>{profile.name} {profile.version}</span></div>
     </div>}
     {error && <div className="import-error">{error}</div>}
     {message && <div className="import-ok">{message}</div>}

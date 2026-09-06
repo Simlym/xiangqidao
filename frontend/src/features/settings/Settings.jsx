@@ -11,11 +11,17 @@ import { runtime, supportsNativeEngine } from "../../platform/runtime";
 const xiangqiEngine = createEngineManager({ remoteEvaluate: evalPosition });
 const jieqiEngine = createEngineManager({ variant: "jieqi", remoteEvaluate: evalJieqiPosition });
 const SECTIONS = [
-  { key: "general", label: "通用" },
-  { key: "appearance", label: "棋盘与外观" },
-  { key: "xiangqi", label: "标准象棋引擎" },
-  { key: "jieqi", label: "揭棋引擎" },
+  { key: "general", label: "通用", icon: "sliders" },
+  { key: "appearance", label: "棋盘与外观", icon: "palette" },
+  { key: "xiangqi", label: "标准象棋引擎", icon: "cpu" },
+  { key: "jieqi", label: "揭棋引擎", icon: "spark" },
 ];
+const SECTION_ICONS = {
+  sliders: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></>,
+  palette: <><path d="M12 3a9 9 0 0 0 0 18h1.4a1.6 1.6 0 0 0 1.2-2.7 1.6 1.6 0 0 1 1.2-2.7H18A3 3 0 0 0 21 12a9 9 0 0 0-9-9Z"/><circle cx="7.5" cy="11.5" r=".7"/><circle cx="10" cy="7.5" r=".7"/><circle cx="15" cy="7.5" r=".7"/></>,
+  cpu: <><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/><rect x="10" y="10" width="4" height="4" rx=".5"/></>,
+  spark: <><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/></>,
+};
 const TYPE_META = { app: "软件主题色", board: "棋盘", piece: "棋子", sound: "音效" };
 const STYLE_PRESETS = [
   {
@@ -170,8 +176,12 @@ export default function Settings({ user, credits, onCreditsChanged, onRequireLog
   return (
     <div className="settings-page">
       <aside className="settings-sections" aria-label="设置分类">
+        <div className="settings-nav-title"><span>设置</span><small>偏好与引擎</small></div>
         {SECTIONS.map((item) => (
-          <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}>{item.label}</button>
+          <button key={item.key} className={section === item.key ? "active" : ""} onClick={() => setSection(item.key)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">{SECTION_ICONS[item.icon]}</svg>
+            <span>{item.label}</span>
+          </button>
         ))}
       </aside>
 
