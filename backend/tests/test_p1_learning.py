@@ -11,10 +11,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.deps import get_db
+from app.core.dependencies import get_db
 from app.main import app
-from app.models import Attempt, Base, Game, GameAnalysis, Puzzle
-from app.puzzle_content import rule_explanation, solution_lines
+from app.core.models import Attempt, Base, Game, GameAnalysis, Puzzle
+from app.modules.puzzles.content import rule_explanation, solution_lines
 
 GUEST = "cccccccccccccccccccccccccccccccc"
 HEADERS = {"X-Guest-ID": GUEST}

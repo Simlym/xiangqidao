@@ -12,8 +12,8 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app import models  # noqa: E402,F401
-from app.database import Base, DB_URL  # noqa: E402
+from app.core import models  # noqa: E402,F401
+from app.core.database import Base, DB_URL  # noqa: E402
 
 
 config = context.config

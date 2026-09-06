@@ -14,12 +14,12 @@ from sqlalchemy import select as sa_select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import credits
+from app.modules.credits import service as credits
 from app.main import app
-from app.auth import hash_password, make_token
-from app.deps import get_db
-from app.models import Base, CreditAccount, CreditLog, Puzzle, User
-from app.settings import KEY_LLM_API_KEY, KEY_LLM_ENABLED, set_setting
+from app.modules.auth.service import hash_password, make_token
+from app.core.dependencies import get_db
+from app.core.models import Base, CreditAccount, CreditLog, Puzzle, User
+from app.core.settings import KEY_LLM_API_KEY, KEY_LLM_ENABLED, set_setting
 
 MATE_FEN = "9/5k1R1/9/9/9/9/9/9/9/4K4 w"
 
@@ -183,7 +183,7 @@ def test_coach_plan_falls_back_when_no_credits(monkeypatch):
 def test_explain_charges_credits(monkeypatch):
     """已登录、有积分、大模型启用：题目讲解扣费并返回讲解；大模型函数被替身拦截。"""
     monkeypatch.delenv("LLM_API_KEY", raising=False)
-    monkeypatch.setattr("app.routes.training.explain_puzzle", lambda *a, **k: "测试讲解")
+    monkeypatch.setattr("app.modules.training.api.explain_puzzle", lambda *a, **k: "测试讲解")
     TestSession = _session_factory()
     with TestSession() as db:
         db.add(User(username="tester", password_hash=hash_password("password1")))

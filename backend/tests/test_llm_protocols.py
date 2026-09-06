@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import llm
-from app.llm import _chat_raw, _normalize_usage, _request_parts, _response_text
-from app.settings import (
+from app.integrations import llm
+from app.integrations.llm import _chat_raw, _normalize_usage, _request_parts, _response_text
+from app.core.settings import (
     PROTOCOL_ANTHROPIC,
     PROTOCOL_OPENAI_CHAT,
     PROTOCOL_OPENAI_RESPONSES,

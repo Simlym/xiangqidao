@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from app.srs import SrsState, review
+from app.modules.training.srs import SrsState, review
 
 
 def test_first_correct_interval_is_one_day():

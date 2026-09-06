@@ -14,8 +14,8 @@ def client(monkeypatch):
     db_path = os.path.join(tmp, "test.db")
     monkeypatch.setenv("XQ_SECRET", "test-secret")
 
-    from app import models
-    import app.deps as deps
+    from app.core import models
+    import app.core.dependencies as deps
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -29,7 +29,7 @@ def client(monkeypatch):
     monkeypatch.setattr(deps, "SessionLocal", SessionLocal)
 
     from app.main import app
-    from app.ratelimit import limiter
+    from app.core.rate_limit import limiter
     limiter._storage.reset()
     return TestClient(app)
 

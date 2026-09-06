@@ -8,27 +8,10 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from . import engine_install
-from .models import init_db
-from .ratelimit import limiter
-from .routes import (
-    account,
-    admin,
-    analysis,
-    auth,
-    challenge,
-    coach,
-    cosmetics,
-    credits,
-    engine_admin,
-    games,
-    learning,
-    play,
-    stats,
-    today,
-    training,
-    variants,
-)
+from .api import register_routes
+from .core.database import init_db
+from .core.rate_limit import limiter
+from .engine import install as engine_install
 
 _IS_PROD = os.environ.get("XQ_ENV", "").lower() in ("prod", "production")
 
@@ -56,23 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
-app.include_router(account.router)
-app.include_router(admin.router)
-app.include_router(engine_admin.router)
-app.include_router(training.router)
-app.include_router(today.router)
-app.include_router(learning.router)
-app.include_router(challenge.router)
-app.include_router(stats.router)
-app.include_router(coach.router)
-app.include_router(credits.router)
-app.include_router(cosmetics.router)
-app.include_router(play.router)
-app.include_router(variants.router)
-# analysis 必须在 games 前注册：/games/{id}/analyze 否则被 games 的 DELETE /{id} 拦截
-app.include_router(analysis.router)
-app.include_router(games.router)
+register_routes(app)
 
 
 @app.on_event("startup")
@@ -84,9 +51,9 @@ def _startup() -> None:
 
 def _setup_logging() -> None:
     """据数据库设置安装日志缓冲与等级；读不到则用默认 INFO。"""
-    from . import log_buffer
-    from .models import SessionLocal
-    from .settings import get_setting
+    from .core import logging as log_buffer
+    from .core.database import SessionLocal
+    from .core.settings import get_setting
 
     level = log_buffer.DEFAULT_LEVEL
     db = SessionLocal()

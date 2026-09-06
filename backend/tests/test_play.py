@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.play_engine import INITIAL_FEN, game_status, legal_moves_uci
+from app.modules.play.service import INITIAL_FEN, game_status, legal_moves_uci
 
 client = TestClient(app)
 

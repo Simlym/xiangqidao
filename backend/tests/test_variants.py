@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.routes import variants
+from app.modules.jieqi import api as variants
 
 client = TestClient(app)
 JIEQI_FEN = "xxxxkxxxx/9/1x5x1/x1x1x1x1x/9/9/X1X1X1X1X/1X5X1/9/XXXXKXXXX w A2B2N2R2C2P5a2b2n2r2c2p5 - 0 1"

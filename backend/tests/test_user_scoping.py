@@ -10,10 +10,10 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app import repository as repo
-from app.models import Base, Puzzle
-from app.routes.games import ImportRequest, get_game, import_game, list_games
-from app.routes.training import get_training_puzzle
+from app.modules.puzzles import repository as repo
+from app.core.models import Base, Puzzle
+from app.modules.games.api import ImportRequest, get_game, import_game, list_games
+from app.modules.training.api import get_training_puzzle
 
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False)

@@ -9,6 +9,35 @@
 - 揭棋支持人机对战与自由翻子两条流程：人机对战随机确定暗子身份；自由翻子由走子方从本方剩余暗子池指定身份，吃掉未揭暗子时不推断或扣减对方暗子池。
 - 自由翻子可持续调用揭棋专用引擎分析当前局面，统一展示红方视角评分、最佳着法、主变，并在棋盘上绘制推荐着法箭头；每次完成走子和翻子后自动刷新。
 
+## 目录与依赖方向
+
+```text
+frontend/src/
+├─ app/                 应用编排、导航，以及 Web/Android、PC 两套外壳
+├─ features/            训练、对弈、棋谱、教练、统计等用户能力
+├─ domain/xiangqi/      标准象棋/揭棋规则与端侧引擎
+├─ shared/              API、通用 UI、偏好、声音、Hooks 与工具
+├─ platform/            Web、PC、Android 运行时识别与能力开关
+├─ styles/              基础、功能、平台和主题样式入口
+└─ main.jsx             唯一前端入口
+
+backend/app/
+├─ core/                配置、数据库、ORM、安全、限流与日志
+├─ modules/             每项业务的 API 与服务，题库导入器也归入 puzzles
+├─ engine/              标准象棋/揭棋引擎、安装器和流式 API 契约
+├─ integrations/        LLM、云库等外部服务适配
+├─ shared/              象棋通用规则、杀棋校验、ELO 等稳定领域能力
+├─ api.py               统一路由注册表
+└─ main.py              FastAPI 装配入口
+
+src-tauri/
+├─ src/                 PC/Android 原生桥接与本地引擎进程
+├─ capabilities/        Tauri 权限白名单
+└─ gen/android/         Tauri 生成的 Android 工程，不放业务逻辑
+```
+
+依赖保持单向：`app/` → `features/` → `domain/`/`shared/` → `platform/`；后端 `modules/*/api.py` → 模块服务/仓储 → `core/models.py`。功能代码不得反向依赖应用外壳，前端页面不得自行调用 `fetch`。PC 与 Android 只在外壳和平台适配层分叉，训练、对弈、复盘等业务逻辑继续共享。
+
 ## 引擎选择
 
 客户端按以下顺序选择可用能力：

@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv sync
-uv run python -m app.importer.load app/importer/seed_puzzles.json   # seed the puzzle DB (first run)
+uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/seed_puzzles.json
 uv run python -m app
 ```
 
@@ -36,24 +36,24 @@ npm run build
 
 ## Architecture
 
-Two independent apps: `backend/app` (FastAPI) and `frontend/src` (React 18, no router library — navigation is tab state in `App.jsx`). The frontend talks to the backend only through `frontend/src/api.js`, a thin fetch wrapper that injects the Bearer token from localStorage.
+Two independent apps: `backend/app` (FastAPI) and `frontend/src` (React 18, no router library — navigation is tab state in `app/App.jsx`). Frontend HTTP access is centralized under `frontend/src/shared/api/`.
 
 ### Backend layering
 
-`routes/*` (HTTP) → `repository.py` (query helpers) → `models.py` (ORM) → `database.py` (engine/session/table creation). Keep business routes decoupled from raw ORM where a repository helper exists.
+`modules/*/api.py` (HTTP) → module services / `modules/puzzles/repository.py` → `core/models.py` → `core/database.py`. `engine/` owns engine processes and protocol, while `integrations/` owns external services. Keep business APIs decoupled from raw ORM where a repository helper exists.
 
 **Migrations use Alembic.** `backend/migrations/` (config in `backend/alembic.ini`) is the migration framework; app startup calls `migrations.upgrade_database()` via `database.init_db()`. Schema changes go in a new revision under `migrations/versions/` — do NOT add them to `database.py:_ensure_columns()`. That function (plus `_migrate_reviews_unique`) is legacy-only: it runs once from `_bootstrap_legacy_database()` when Alembic takes over a pre-Alembic database (existing tables but no `alembic_version` table), which is then stamped to baseline `202608310001`. Empty databases are built by the baseline revision.
 
 ### Cross-cutting concepts
 
 - **Move notation is UCI coordinates** (e.g. `h2e2`): file `a..i`, rank `0..9` with red at the bottom; matches Pikafish. Multi-step puzzle solutions alternate player/opponent moves (even indices = player).
-- **Xiangqi rules are implemented twice** and must stay consistent: backend `app/xiangqi_utils.py` (+ `app/importer/verify_mate.py` for check/mate validation) and frontend `src/xiangqi.js`.
+- **Xiangqi rules are implemented twice** and must stay consistent: backend `app/shared/xiangqi/` (including `validation.py`) and frontend `src/domain/xiangqi/`.
 - **User scoping**: `user_id` is a username *string*, with `'default'` for anonymous/guest data. Puzzles with `user_id='default'` are the public library; other values are private (e.g. auto-generated from a user's game blunders). Most queries must filter on this.
-- **Auth** (`app/auth.py`) is stdlib-only: PBKDF2 password hashing + HMAC-signed tokens (no JWT library). First registered user becomes admin (or `XQ_ADMIN` env var). `XQ_SECRET` signs tokens.
-- **Engine fallback chain** for play/eval: cloud opening book (`app/cloudbook.py`, with TTL cache + circuit breaker) → Pikafish binary (looked up in `data/engine/` first, then PATH — `app/engine.py:find_engine`) → built-in negamax (`app/play_engine.py`). Everything must keep working with no Pikafish installed. Browser-side Pikafish WASM (`frontend/src/localEngine.js`) is optional and degrades to the server.
-- **LLM features** (coach narrative, review reports, explanations) support OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages via `app/llm.py`; configuration comes from admin settings in DB (preferred) or `LLM_*` environment variables. All LLM features are optional — rule-engine output in `app/coach.py` must work without a key.
-- **Router registration order matters** in `main.py`: `analysis` must be registered before `games` (otherwise `/games/{id}/analyze` is captured by games' `DELETE /{id}`).
-- **Rate limiting** uses slowapi keyed by client IP (`app/ratelimit.py`); security-sensitive events log to the `xiangqidao.security` logger (`app/security_log.py`).
+- **Auth** (`app/modules/auth/service.py`) is stdlib-only: PBKDF2 password hashing + HMAC-signed tokens (no JWT library). First registered user becomes admin (or `XQ_ADMIN` env var). `XQ_SECRET` signs tokens.
+- **Engine fallback chain** for play/eval: cloud opening book (`app/integrations/cloudbook.py`) → Pikafish (`app/engine/standard.py`) → built-in negamax (`app/modules/play/service.py`). Browser WASM lives under `frontend/src/domain/xiangqi/engine/`.
+- **LLM features** live in `app/integrations/llm.py`; all are optional and the rule-based coach in `app/modules/coach/service.py` must work without a key.
+- **Router registration order matters** in `app/api.py`: game analysis must be registered before the game `/{id}` route.
+- **Rate limiting** and security logging live under `app/core/`.
 
 ### Configuration
 
@@ -61,6 +61,8 @@ All backend config is via `XQ_*` environment variables (`XQ_DB_URL`, `XQ_SECRET`
 
 ### Frontend notes
 
-- One top-level component per tab (`Trainer`, `Play`, `Games`, `Stats`, `Challenge`, `Coach`, `Admin`); cross-tab jumps (e.g. "practice this puzzle", "review this game") are passed as props from `App.jsx`.
+- One feature directory per user-facing capability under `src/features/`; cross-feature jumps are orchestrated in `src/app/App.jsx`.
+- `src/app/shells/` owns platform layout: `DesktopShell` for PC and the responsive `WebShell` for Web/Android. Keep authentication and page orchestration in `App.jsx`, not in a shell.
+- `src/shared/api/` separates session storage, HTTP transport, resource endpoints, and the engine streaming protocol; feature pages must not call `fetch` directly.
 - `vite.config.js` sets COOP/COEP headers because the optional multi-threaded WASM engine needs `SharedArrayBuffer`; production deployments need the same headers.
-- The app is a PWA (installable, local notifications for due reviews via `reminders.js`).
+- The app is a PWA (installable, local notifications for due reviews via `features/today/useReminders.js`).

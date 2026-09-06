@@ -10,17 +10,18 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app import elo, ratings
-from app import repository as repo
-from app.models import Base, Puzzle, PuzzleSession
-from app.puzzle_sessions import create_session
-from app.routes.challenge import (
+from app.shared import elo
+from app.modules.training import ratings
+from app.modules.puzzles import repository as repo
+from app.core.models import Base, Puzzle, PuzzleSession
+from app.modules.training.sessions import create_session
+from app.modules.challenge.api import (
     ChallengeSubmitRequest,
     get_level,
     list_levels,
     submit as challenge_submit,
 )
-from app.routes.stats import leaderboard, rating as rating_overview
+from app.modules.stats.api import leaderboard, rating as rating_overview
 
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False)

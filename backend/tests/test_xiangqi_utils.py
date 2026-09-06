@@ -6,7 +6,7 @@ FEN: "4k4/R8/8R/9/9/9/9/9/9/3K5 w - - 0 1"
   row2 (rank7): 8R    → col8=R  → square "i7"
 """
 
-from app.xiangqi_utils import _parse_placement, apply_move
+from app.shared.xiangqi import _parse_placement, apply_move
 
 FEN = "4k4/R8/8R/9/9/9/9/9/9/3K5 w - - 0 1"
 

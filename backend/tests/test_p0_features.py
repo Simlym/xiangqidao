@@ -12,10 +12,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.deps import get_db
+from app.core.dependencies import get_db
 from app.main import app
-from app import credits
-from app.models import Attempt, Base, Puzzle, User
+from app.modules.credits import service as credits
+from app.core.models import Attempt, Base, Puzzle, User
 
 FEN = "9/9/5k1R1/9/9/9/9/9/7R1/4K4 w"
 SOLUTION = "h7f7"

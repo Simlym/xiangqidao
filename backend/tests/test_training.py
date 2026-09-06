@@ -10,8 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
-from app.deps import get_db
-from app.models import Base, Puzzle, Attempt
+from app.core.dependencies import get_db
+from app.core.models import Base, Puzzle, Attempt
 
 # 双车错局面：h7f7 与 h1f1 均为成立的一步杀
 MULTI_MATE_FEN = "9/9/5k1R1/9/9/9/9/9/7R1/4K4 w"
@@ -297,7 +297,7 @@ def test_forecast_buckets_overdue_into_today():
 
 def test_daily_new_limit(monkeypatch):
     """达到每日新题上限后不再发新题，并置 new_limit_reached。"""
-    import app.routes.training as t
+    import app.modules.training.api as t
     monkeypatch.setattr(t, "NEW_PER_DAY", 1)
     client = _client_multi(2)
     try:

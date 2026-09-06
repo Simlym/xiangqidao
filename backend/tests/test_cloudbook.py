@@ -2,9 +2,9 @@
 
 from fastapi.testclient import TestClient
 
-from app import cloudbook
+from app.integrations import cloudbook
 from app.main import app
-from app.play_engine import INITIAL_FEN
+from app.modules.play.service import INITIAL_FEN
 
 client = TestClient(app)
 

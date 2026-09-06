@@ -5,8 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi import HTTPException
 
-from app.models import Base
-from app.routes.games import (
+from app.core.models import Base
+from app.modules.games.api import (
     INITIAL_FEN,
     ImportRequest,
     import_game,
@@ -14,7 +14,7 @@ from app.routes.games import (
     get_game,
     delete_game,
 )
-from app.xiangqi_utils import apply_move
+from app.shared.xiangqi import apply_move
 
 TEST_DB_URL = "sqlite:///:memory:"
 engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})

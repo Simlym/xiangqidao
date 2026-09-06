@@ -7,8 +7,8 @@ Create Date: 2026-08-31
 
 from alembic import op
 
-from app.database import Base
-from app import models  # noqa: F401
+from app.core.database import Base
+from app.core import models  # noqa: F401
 
 
 revision = "202608310001"

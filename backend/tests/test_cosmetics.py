@@ -10,11 +10,11 @@ from sqlalchemy import create_engine as sa_create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import credits
-from app.auth import hash_password, make_token
-from app.deps import get_db
+from app.modules.credits import service as credits
+from app.modules.auth.service import hash_password, make_token
+from app.core.dependencies import get_db
 from app.main import app
-from app.models import Base, CosmeticPurchase, CreditLog, User
+from app.core.models import Base, CosmeticPurchase, CreditLog, User
 
 
 def setup_client():

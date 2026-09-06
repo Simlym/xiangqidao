@@ -12,10 +12,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
-from app.auth import hash_password, make_token
-from app.deps import get_db
-from app.coach import build_profile, build_progress, build_recommendations
-from app.models import Attempt, Base, CoachPlan, Puzzle, User
+from app.modules.auth.service import hash_password, make_token
+from app.core.dependencies import get_db
+from app.modules.coach.service import build_profile, build_progress, build_recommendations
+from app.core.models import Attempt, Base, CoachPlan, Puzzle, User
 
 MATE_FEN = "9/5k1R1/9/9/9/9/9/9/9/4K4 w"
 

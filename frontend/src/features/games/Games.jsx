@@ -1,0 +1,623 @@
+import React from "react";
+import Board from "../../shared/ui/Board";
+import { uciToChinese } from "../../domain/xiangqi/xiangqi";
+import { parseJieqiBoard } from "../../domain/xiangqi/jieqi/rules";
+import { getGames, importGame, getGamePositions, deleteGame, analyzeGame, getAnalysis, createGameTrainingPack } from "../../shared/api";
+import EvaluationChart from "../analysis/EvaluationChart";
+import { AnalysisPanel, MoveItem } from "./ReviewAnalysis";
+
+const RESULT_LABELS = {
+  "1-0": { text: "红胜", color: "#c0392b" },
+  "0-1": { text: "黑胜", color: "#222" },
+  "1/2-1/2": { text: "和棋", color: "#888" },
+  "": { text: "未知", color: "#aaa" },
+};
+
+function resultLabel(result) {
+  return RESULT_LABELS[result] || { text: result || "未知", color: "#aaa" };
+}
+
+const EMPTY_FORM = {
+  moves: "",
+  red_player: "",
+  black_player: "",
+  date: "",
+  result: "1-0",
+  opening: "",
+};
+
+export default function Games({ onNavigateToTrain, onStartPack, initialGameId, onInitialGameConsumed, user, onCreditsChanged, onRequireLogin }) {
+  const [games, setGames] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [selectedId, setSelectedId] = React.useState(null);
+  const [positions, setPositions] = React.useState(null);
+  const [posLoading, setPosLoading] = React.useState(false);
+  const [stepIndex, setStepIndex] = React.useState(0);
+  const [showImport, setShowImport] = React.useState(false);
+  const [form, setForm] = React.useState(EMPTY_FORM);
+  const [importing, setImporting] = React.useState(false);
+  const [importError, setImportError] = React.useState("");
+  const moveListRef = React.useRef(null);
+
+  // Analysis state
+  // idle: 未分析 | analyzing: 分析进行中 | partial: 有历史分析但未完成（可继续） | done: 已完成
+  const [analyzeStatus, setAnalyzeStatus] = React.useState("idle");
+  const [analysisData, setAnalysisData] = React.useState(null); // null or {moves, blunder_count, mistake_count}
+  const [progress, setProgress] = React.useState({ analyzed: 0, total: 0 });
+  const pollRef = React.useRef(null);
+  const pendingAutoAnalyze = React.useRef(null); // 来自对弈跳转、需自动拉取分析的棋局 id
+  const [packError, setPackError] = React.useState("");
+
+  async function trainKeyProblems() {
+    if (!selectedId) return;
+    try {
+      setPackError("");
+      const pack = await createGameTrainingPack(selectedId);
+      onStartPack?.(pack);
+    } catch (e) {
+      setPackError(e.message || "训练包生成失败");
+    }
+  }
+
+  // 轮询分析进度，完成后落地结果（不重复触发分析）
+  const startPolling = React.useCallback((id) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setAnalyzeStatus("analyzing");
+    pollRef.current = setInterval(async () => {
+      try {
+        const result = await getAnalysis(id);
+        if (result.total != null) {
+          setProgress({ analyzed: result.analyzed || 0, total: result.total });
+        }
+        if (result.status === "done") {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          setAnalyzeStatus("done");
+          setAnalysisData(result);
+          onCreditsChanged?.(); // 分析期间的大模型点评已消耗积分，刷新余额
+        }
+      } catch {
+        // keep polling
+      }
+    }, 1000);
+  }, [onCreditsChanged]);
+
+  // Load games list
+  const loadGames = React.useCallback(() => {
+    setLoading(true);
+    getGames(50, 0)
+      .then((data) => {
+        setGames(Array.isArray(data) ? data : data.games || []);
+      })
+      .catch(() => setGames([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  React.useEffect(() => {
+    loadGames();
+  }, [loadGames]);
+
+  // 从对弈结束「一键复盘」跳转而来：自动选中该局并拉取（已在后台进行的）分析
+  React.useEffect(() => {
+    if (initialGameId) {
+      pendingAutoAnalyze.current = initialGameId;
+      setSelectedId(initialGameId);
+      loadGames(); // 刷新列表以纳入刚结束的对局
+      onInitialGameConsumed?.();
+    }
+  }, [initialGameId, loadGames, onInitialGameConsumed]);
+
+  // Load positions when a game is selected
+  React.useEffect(() => {
+    if (!selectedId) {
+      setPositions(null);
+      setStepIndex(0);
+      return;
+    }
+    setPosLoading(true);
+    getGamePositions(selectedId)
+      .then((data) => {
+        setPositions(data);
+        setStepIndex(0);
+      })
+      .catch(() => setPositions(null))
+      .finally(() => setPosLoading(false));
+  }, [selectedId]);
+
+  // 切换棋局：重置状态后检查数据库里已保存的分析，有则直接加载，避免重复分析
+  React.useEffect(() => {
+    setAnalyzeStatus("idle");
+    setAnalysisData(null);
+    setProgress({ analyzed: 0, total: 0 });
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (!selectedId) return;
+    // 若该局是从对弈跳转而来，分析已在后台进行，直接轮询进度
+    if (pendingAutoAnalyze.current === selectedId) {
+      pendingAutoAnalyze.current = null;
+      startPolling(selectedId);
+      return;
+    }
+    let alive = true;
+    getAnalysis(selectedId)
+      .then((result) => {
+        if (!alive) return;
+        if (result.status === "done") {
+          setAnalyzeStatus("done");
+          setAnalysisData(result);
+          setProgress({ analyzed: result.analyzed || 0, total: result.total || 0 });
+        } else if (result.analyzed > 0) {
+          // 有部分历史分析（可能中途中断）：先展示已有结果，按钮变为「继续分析」
+          setAnalyzeStatus("partial");
+          setAnalysisData(result);
+          setProgress({ analyzed: result.analyzed || 0, total: result.total || 0 });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [selectedId, startPolling]);
+
+  // Cleanup polling on unmount
+  React.useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  // Keyboard navigation
+  React.useEffect(() => {
+    function onKey(e) {
+      if (!positions) return;
+      const total = positions.positions ? positions.positions.length : 0;
+      if (e.key === "ArrowLeft") {
+        setStepIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        setStepIndex((i) => Math.min(total - 1, i + 1));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [positions]);
+
+  // Scroll current move into view
+  React.useEffect(() => {
+    if (moveListRef.current) {
+      const active = moveListRef.current.querySelector(".move-item.active");
+      if (active) active.scrollIntoView({ block: "nearest" });
+    }
+  }, [stepIndex]);
+
+  const positionsList = positions?.positions || [];
+  // 后端 moves 字段是空格分隔字符串；着法直接取自每一步局面（move_index≥1 带 UCI），与 fen 天然对齐
+  const movesList = positionsList.slice(1).map((p) => p.move);
+  const currentPos = positionsList[stepIndex] || null;
+  const currentFen = currentPos?.fen || "";
+  // lastMove is the move that led to current position
+  const lastMove = stepIndex > 0 ? movesList[stepIndex - 1] : null;
+
+  // 把 UCI 着法转成中文棋谱（用走子前的局面 positionsList[i] 解析）
+  const moveTexts = React.useMemo(
+    () =>
+      positionsList
+        .slice(1)
+        .map((p, i) =>
+          positions?.variant === "jieqi"
+            ? p.move
+            : positionsList[i]?.fen ? uciToChinese(positionsList[i].fen, p.move) : p.move
+        ),
+    [positionsList, positions?.variant]
+  );
+
+  // Group moves into rounds (pair of moves)
+  const rounds = [];
+  for (let i = 0; i < movesList.length; i += 2) {
+    rounds.push({ round: Math.floor(i / 2) + 1, red: i, black: i + 1 });
+  }
+
+  // Build analysis map: move_index -> move data
+  const analysisMap = React.useMemo(() => {
+    if (!analysisData || !analysisData.moves) return {};
+    const map = {};
+    for (const m of analysisData.moves) {
+      map[m.move_index] = m;
+    }
+    return map;
+  }, [analysisData]);
+
+  // Current analysis detail: stepIndex corresponds to move at index stepIndex-1
+  const currentMoveAnalysis = stepIndex > 0 ? analysisMap[stepIndex - 1] : null;
+
+  function handleSelectGame(id) {
+    setSelectedId(id === selectedId ? null : id);
+  }
+
+  function handleFormChange(e) {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+  }
+
+  async function handleImport(e) {
+    e.preventDefault();
+    if (!form.moves.trim()) {
+      setImportError("着法序列不能为空");
+      return;
+    }
+    setImporting(true);
+    setImportError("");
+    try {
+      await importGame({
+        moves: form.moves.trim(),
+        red_player: form.red_player,
+        black_player: form.black_player,
+        date: form.date,
+        result: form.result,
+        opening: form.opening,
+      });
+      setForm(EMPTY_FORM);
+      setShowImport(false);
+      loadGames();
+    } catch {
+      setImportError("导入失败，请检查格式");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleDelete(e, id) {
+    e.stopPropagation();
+    if (!window.confirm("确认删除这局棋局？")) return;
+    await deleteGame(id);
+    if (selectedId === id) setSelectedId(null);
+    loadGames();
+  }
+
+  async function handleAnalyze() {
+    if (!selectedId || analyzeStatus === "analyzing") return;
+    if (!user) {
+      onRequireLogin?.();
+      return;
+    }
+    setProgress({ analyzed: 0, total: 0 });
+    try {
+      await analyzeGame(selectedId);
+    } catch (e) {
+      if (e.status === 401) {
+        onRequireLogin?.();
+        return;
+      }
+      // 其它错误：仍尝试轮询（分析可能已在进行）
+    }
+    onCreditsChanged?.(); // 分析会按余额消耗大模型点评积分
+    startPolling(selectedId);
+  }
+
+  return (
+    <div className="games-layout">
+      {/* Left: game list */}
+      <div className="games-list-panel">
+        <div className="games-list-header">
+          <span className="games-list-title">棋局列表</span>
+          {loading && <span className="muted"> 加载中…</span>}
+        </div>
+
+        <div className="games-list-scroll">
+          {games.length === 0 && !loading && (
+            <div className="muted" style={{ padding: "12px" }}>
+              暂无棋局，请导入
+            </div>
+          )}
+          {games.map((g) => {
+            const rl = resultLabel(g.result);
+            const isSelected = g.id === selectedId;
+            return (
+              <div
+                key={g.id}
+                className={"game-item" + (isSelected ? " selected" : "")}
+                onClick={() => handleSelectGame(g.id)}
+              >
+                <div className="game-item-players">
+                  <span className="game-red">{g.red_player || "红方"}</span>
+                  <span className="game-vs"> vs </span>
+                  <span className="game-black">{g.black_player || "黑方"}</span>
+                </div>
+                <div className="game-item-meta">
+                  <span className="game-date muted">{g.date || ""}</span>
+                  <span
+                    className="game-result-tag"
+                    style={{ color: rl.color, borderColor: rl.color }}
+                  >
+                    {rl.text}
+                  </span>
+                  <button
+                    className="game-delete-btn"
+                    title="删除"
+                    onClick={(e) => handleDelete(e, g.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Import button */}
+        <div className="games-list-footer">
+          <button
+            className="btn-import"
+            onClick={() => setShowImport((v) => !v)}
+          >
+            {showImport ? "▲ 收起" : "＋ 导入棋局"}
+          </button>
+        </div>
+
+        {/* Import form */}
+        {showImport && (
+          <form className="import-form" onSubmit={handleImport}>
+            <label className="import-label">
+              着法序列（UCI格式，必填）
+              <textarea
+                name="moves"
+                value={form.moves}
+                onChange={handleFormChange}
+                placeholder="h2e2 h9g7 e2e6 ..."
+                rows={3}
+                className="import-textarea"
+              />
+            </label>
+            <div className="import-row">
+              <label className="import-label half">
+                红方
+                <input
+                  name="red_player"
+                  value={form.red_player}
+                  onChange={handleFormChange}
+                  className="import-input"
+                  placeholder="红方姓名"
+                />
+              </label>
+              <label className="import-label half">
+                黑方
+                <input
+                  name="black_player"
+                  value={form.black_player}
+                  onChange={handleFormChange}
+                  className="import-input"
+                  placeholder="黑方姓名"
+                />
+              </label>
+            </div>
+            <div className="import-row">
+              <label className="import-label half">
+                日期
+                <input
+                  name="date"
+                  type="date"
+                  value={form.date}
+                  onChange={handleFormChange}
+                  className="import-input"
+                />
+              </label>
+              <label className="import-label half">
+                结果
+                <select
+                  name="result"
+                  value={form.result}
+                  onChange={handleFormChange}
+                  className="import-input"
+                >
+                  <option value="1-0">红胜</option>
+                  <option value="0-1">黑胜</option>
+                  <option value="1/2-1/2">和棋</option>
+                </select>
+              </label>
+            </div>
+            <label className="import-label">
+              开局名
+              <input
+                name="opening"
+                value={form.opening}
+                onChange={handleFormChange}
+                className="import-input"
+                placeholder="如：中炮对屏风马"
+              />
+            </label>
+            {importError && (
+              <div className="import-error">{importError}</div>
+            )}
+            <button
+              type="submit"
+              className="btn-import-submit"
+              disabled={importing}
+            >
+              {importing ? "导入中…" : "确认导入"}
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* Right: review area */}
+      <div className="games-review-panel">
+        {!selectedId ? (
+          <div className="games-empty">
+            <span>请从左侧选择一局棋局</span>
+          </div>
+        ) : posLoading ? (
+          <div className="games-empty">
+            <span className="muted">加载中…</span>
+          </div>
+        ) : !positions ? (
+          <div className="games-empty">
+            <span className="muted">加载失败</span>
+          </div>
+        ) : (
+          <div className="review-content">
+            {/* Board */}
+            <div className="review-board-wrap">
+              {/* Analyze button row */}
+              <div className="review-meta-row">
+                <button
+                  className={"btn-analyze" + (analyzeStatus === "analyzing" ? " analyzing" : "")}
+                  onClick={handleAnalyze}
+                  disabled={analyzeStatus === "analyzing"}
+                >
+                  {analyzeStatus === "analyzing"
+                    ? "分析中…"
+                    : analyzeStatus === "done"
+                    ? "重新分析"
+                    : analyzeStatus === "partial"
+                    ? "继续分析"
+                    : "分析此局"}
+                </button>
+                {positions.variant === "jieqi" && <span className="tag">揭棋棋谱</span>}
+                {analyzeStatus === "done" && (
+                  <span className="tag" style={{ background: "#e6efe0", color: "#2e7d32" }}>
+                    ✓ 已分析（结果已保存）
+                  </span>
+                )}
+                {analyzeStatus === "analyzing" && (
+                  <div className="analyze-progress">
+                    <div className="analyze-progress-track">
+                      <div
+                        className="analyze-progress-fill"
+                        style={{
+                          width: progress.total
+                            ? `${Math.round((progress.analyzed / progress.total) * 100)}%`
+                            : "0%",
+                        }}
+                      />
+                    </div>
+                    <span className="analyze-progress-text muted">
+                      {progress.total ? `${progress.analyzed}/${progress.total}` : "准备中…"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {currentFen ? (
+                <Board
+                  fen={currentFen}
+                  onMove={() => {}}
+                  lastMove={lastMove}
+                  disabled={true}
+                  parsePosition={positions.variant === "jieqi" ? parseJieqiBoard : undefined}
+                />
+              ) : (
+                <div className="muted">无棋盘数据</div>
+              )}
+              {/* Nav buttons */}
+              <div className="review-nav btn-row">
+                <button
+                  className="btn-retry"
+                  onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
+                  disabled={stepIndex === 0}
+                >
+                  ◀ 上一步
+                </button>
+                <span className="review-step-counter muted">
+                  {stepIndex}/{positionsList.length - 1}
+                </span>
+                <button
+                  className="btn-retry"
+                  onClick={() =>
+                    setStepIndex((i) =>
+                      Math.min(positionsList.length - 1, i + 1)
+                    )
+                  }
+                  disabled={stepIndex === positionsList.length - 1}
+                >
+                  下一步 ▶
+                </button>
+              </div>
+            </div>
+
+            {/* Move list */}
+            <div className="review-moves-wrap">
+              {(analyzeStatus === "done" || analyzeStatus === "partial") && analysisData?.moves?.length > 1 && (
+                <EvaluationChart moves={analysisData.moves} activeStep={stepIndex} onSelect={setStepIndex} />
+              )}
+              <div className="review-moves-title">着法列表</div>
+              <div className="review-moves-list" ref={moveListRef}>
+                {rounds.map(({ round, red, black }) => (
+                  <div key={round} className="move-round">
+                    <span className="move-round-num">{round}.</span>
+                    <MoveItem
+                      moveIndex={red}
+                      moveText={moveTexts[red] || ""}
+                      isActive={stepIndex === red + 1}
+                      analysisEntry={analysisMap[red]}
+                      onClick={() => setStepIndex(red + 1)}
+                    />
+                    {movesList[black] !== undefined && (
+                      <MoveItem
+                        moveIndex={black}
+                        moveText={moveTexts[black]}
+                        isActive={stepIndex === black + 1}
+                        analysisEntry={analysisMap[black]}
+                        onClick={() => setStepIndex(black + 1)}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* 综合复盘报告（LLM 生成，未配置时自动省略） */}
+              {analyzeStatus === "done" && analysisData?.report && (
+                <div className="analysis-panel">
+                  <div className="review-moves-title">📋 综合复盘报告</div>
+                  <div
+                    className="analysis-explanation"
+                    style={{ whiteSpace: "pre-wrap", marginTop: 6 }}
+                  >
+                    {analysisData.report}
+                  </div>
+                </div>
+              )}
+
+              {/* AI 复盘未启用时给出提示，避免「无报告」让人以为功能缺失 */}
+              {analyzeStatus === "done" && !analysisData?.report && analysisData?.llm_enabled === false && (
+                <div className="analysis-panel">
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    💡 已完成引擎逐步分析。开启「AI 复盘」后还能获得失误讲解与整局总评（管理员可在后台配置）。
+                  </div>
+                </div>
+              )}
+
+              {/* 历史分析未完成（中途中断）时的提示 */}
+              {analyzeStatus === "partial" && (
+                <div className="analysis-panel">
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    本局有一次未完成的分析（{progress.analyzed}/{progress.total} 步），
+                    已展示现有结果；点「继续分析」可完成剩余着法。
+                  </div>
+                </div>
+              )}
+
+              {/* Analysis detail panel */}
+              {(analyzeStatus === "done" || analyzeStatus === "partial") && analysisData && (
+                <AnalysisPanel
+                  summary={{ blunder_count: analysisData.blunder_count, mistake_count: analysisData.mistake_count }}
+                  moveAnalysis={currentMoveAnalysis}
+                  stepIndex={stepIndex}
+                  preFen={stepIndex > 0 ? positionsList[stepIndex - 1]?.fen : ""}
+                  onNavigateToTrain={onNavigateToTrain}
+                />
+              )}
+              {analyzeStatus === "done" && (analysisData?.blunder_count > 0 || analysisData?.mistake_count > 0) && (
+                <div className="analysis-panel key-problems-cta">
+                  <div><strong>把复盘变成训练</strong><p className="muted">按失分排序，重走本局最值得修正的 3 个决策。</p></div>
+                  <button onClick={trainKeyProblems}>训练本局 3 个关键问题 →</button>
+                  {packError && <small className="error">{packError}</small>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

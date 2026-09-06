@@ -5,8 +5,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.importer.generate import generate
-from app.importer.verify_mate import is_mate_in_one
+from app.modules.puzzles.importer.generate import generate
+from app.shared.xiangqi.validation import is_mate_in_one
 
 
 def test_generated_puzzles_are_valid_mates():

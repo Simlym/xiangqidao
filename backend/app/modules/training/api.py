@@ -1,0 +1,376 @@
+"""训练相关接口：取到期题、逐步校验着法、最终提交自评。"""
+
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+
+from app.modules.credits import service as credits
+from app.modules.puzzles import repository as repo
+from app.modules.auth.service import current_user_id
+from app.core.dependencies import get_db
+from app.shared.xiangqi.validation import FILES, parse_fen
+from app.integrations.llm import explain_puzzle
+from app.core.models import Attempt, Review, User
+from .sessions import create_session, require_session
+from app.modules.puzzles.content import primary_line, rule_explanation, solution_lines
+from app.modules.play.service import game_status, legal_moves_uci
+from app.core.rate_limit import limiter
+from app.core.settings import get_llm_config
+from .srs import SrsState, review as srs_review
+from app.shared.xiangqi import apply_move
+from . import ratings
+from .config import NEW_PER_DAY
+from .schemas import (
+    CheckMoveRequest,
+    CheckMoveResponse,
+    ExplainRequest,
+    ExplainResponse,
+    NextResponse,
+    PuzzleOut,
+    RatingChange,
+    SubmitRequest,
+    SubmitResponse,
+)
+
+router = APIRouter(prefix="/api/training", tags=["training"])
+
+QUALITY_MAP = {"again": 1, "hard": 3, "good": 4, "easy": 5}
+
+PIECE_NAMES = {
+    "K": "帅", "A": "仕", "B": "相", "N": "马", "R": "车", "C": "炮", "P": "兵",
+    "k": "将", "a": "士", "b": "象", "n": "马", "r": "车", "c": "炮", "p": "卒",
+}
+
+
+def _piece_name_at(fen: str, sq: str) -> str:
+    """返回 UCI 方格 sq 处棋子的中文名，空格返回'棋子'。"""
+    try:
+        board = parse_fen(fen)
+        col = FILES.index(sq[0])
+        row = 9 - int(sq[1])  # verify_mate 内部 row0=rank9
+        p = board[row][col]
+        return PIECE_NAMES.get(p, "棋子") if p else "棋子"
+    except Exception:
+        return "棋子"
+
+
+def _graded_hint(fen_now: str, expected: str, attempt: int) -> str:
+    """分级提示：错得越多透露越多。
+    1 次错→起点格；2 次错→起点棋子名；3 次及以上→完整正解。
+    """
+    start, target = expected[:2], expected[2:]
+    if attempt <= 0:
+        return f"该走的棋子在 {start}"
+    name = _piece_name_at(fen_now, start)
+    if attempt == 1:
+        return f"动用 {start} 的{name}"
+    return f"正解：{name} {start} → {target}"
+
+
+def _target_difficulty(db: Session, user: str) -> int:
+    """据最近表现估计合适难度（1-5）：首答正确率越高，难度目标越高。"""
+    rows = repo.recent_attempts(db, user, limit=20)
+    if len(rows) < 5:
+        return 2  # 冷启动：偏易上手
+    first_try = sum(1 for c, r in rows if c and not r)
+    acc = first_try / len(rows)
+    if acc >= 0.85:
+        return 5
+    if acc >= 0.70:
+        return 4
+    if acc >= 0.50:
+        return 3
+    if acc >= 0.30:
+        return 2
+    return 1
+
+
+# ── 接口 ───────────────────────────────────────────────────────
+
+def _puzzle_out(db: Session, puzzle, user: str, context: str = "training") -> PuzzleOut:
+    n = len(primary_line(puzzle.solution))
+    steps = (n + 1) // 2  # 仅玩家要走的着法数（对方应着自动走出）
+    session = create_session(db, user, puzzle, context)
+    return PuzzleOut(
+        id=puzzle.id,
+        fen=puzzle.fen,
+        side_to_move=puzzle.side_to_move,
+        kind=getattr(puzzle, "kind", "杀法") or "杀法",
+        category=puzzle.category,
+        difficulty=puzzle.difficulty,
+        total_steps=steps,
+        session_id=session.id,
+    )
+
+
+@router.get("/puzzle/{puzzle_id}", response_model=PuzzleOut)
+def get_training_puzzle(
+    puzzle_id: int,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+    context: str = "training",
+):
+    """按 id 取一道题用于训练（如从复盘报告/弱点跳转而来）。
+
+    仅返回对该用户可见的题（公共题库 + 本人私有题），否则 404。
+    """
+    puzzle = repo.get_visible_puzzle(db, puzzle_id, user)
+    if puzzle is None:
+        raise HTTPException(404, "题目不存在")
+    safe_context = context if context.startswith(("assessment:", "game_review:")) else "training"
+    return _puzzle_out(db, puzzle, user, safe_context)
+
+
+@router.get("/next", response_model=NextResponse)
+def next_puzzle(
+    category: str | None = None,
+    kind: str | None = None,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
+    """返回到期题或新题。
+
+    传入 category（具体名目）或 kind（大类）时进入「专项练习」模式：
+    只在该范围内取题，优先到期题、其次新题，并放宽每日新题上限
+    （用户主动针对性练习）。
+    """
+    today = date.today()
+    due_count = repo.count_due(db, user, today)
+
+    new_limit_reached = False
+    if category or kind:
+        puzzle = repo.first_due_puzzle(
+            db, user, today, category, kind
+        ) or repo.pick_new_puzzle(
+            db, user, _target_difficulty(db, user), category, kind
+        )
+    else:
+        puzzle = repo.first_due_puzzle(db, user, today)
+        if puzzle is None:
+            # 无到期题才考虑新题，且受每日新题上限约束
+            if repo.count_new_today(db, user, today) < NEW_PER_DAY:
+                # 难度自适应：优先选难度最接近目标的新题
+                puzzle = repo.pick_pending_private_puzzle(db, user) or repo.pick_new_puzzle(
+                    db, user, _target_difficulty(db, user)
+                )
+                # 取不到说明题库已学完；取到则正常返回
+            else:
+                # 仍有未学新题但今日额度用尽时才算“达上限”
+                new_limit_reached = repo.count_unlearned(db, user) > 0
+
+    context = "training"
+    if puzzle:
+        review = repo.get_review(db, puzzle.id, user)
+        if getattr(puzzle, "user_id", "default") == user:
+            context = "blunder"
+        elif review and review.next_review <= today:
+            context = "review"
+    p_out = _puzzle_out(db, puzzle, user, context) if puzzle else None
+    return NextResponse(puzzle=p_out, due_count=due_count, new_limit_reached=new_limit_reached)
+
+
+@router.post("/check_move", response_model=CheckMoveResponse)
+def check_move(
+    req: CheckMoveRequest,
+    db: Session = Depends(get_db),
+    user: str = Depends(current_user_id),
+):
+    """校验用户走的某一步是否正确，返回新局面 FEN（不写库）。"""
+    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user)
+    if puzzle is None:
+        raise HTTPException(404, "题目不存在")
+    session = require_session(db, req.session_id, user, puzzle.id)
+    if session.settled:
+        raise HTTPException(409, "本次解题已经结算")
+    if session.completed:
+        raise HTTPException(409, "题目已经完成，请进行结算")
+    if req.step != session.step:
+        raise HTTPException(409, "解题步骤不同步，请重新进入题目")
+
+    lines = solution_lines(puzzle.solution)
+    if not lines:
+        raise HTTPException(409, "题目缺少有效解答")
+    # 首个玩家着决定采用哪条录入分支；分支按顺序录入，首条应是引擎最强应手。
+    if session.line_index < 0:
+        candidates = [(i, line) for i, line in enumerate(lines) if 2 * req.step < len(line)]
+    else:
+        candidates = [(session.line_index, lines[session.line_index])]
+    solution = candidates[0][1]
+    n = len(solution)
+    sol_idx = 2 * req.step  # 玩家第 step 步对应的 solution 下标（偶数位）
+    if sol_idx >= n:
+        raise HTTPException(400, "step 超出解题步数")
+
+    user_move = req.move.strip()
+    matched = [(i, line) for i, line in candidates if line[sol_idx] == user_move]
+    if matched:
+        session.line_index, solution = matched[0]
+    expected = solution[sol_idx]
+    is_mating_move = sol_idx == n - 1  # 之后无对方应着，通常即终结(将死)的一手
+
+    # 当前步之前的局面（已走完前面所有 己方+对方 着法）
+    fen_now = puzzle.fen
+    for mv in solution[:sol_idx]:
+        fen_now = apply_move(fen_now, mv)
+
+    correct = bool(matched)
+
+    # 变着容错：仅终结步放宽——走出“另一条同样成立的杀着”也算对；
+    # 中间步换着会让后续录入的对方应着无法衔接，故仍要求精确。
+    if not correct and is_mating_move:
+        try:
+            if user_move in legal_moves_uci(fen_now):
+                if game_status(apply_move(fen_now, user_move)) == "checkmate":
+                    correct = True
+        except Exception:
+            pass
+
+    if not correct:
+        # 分级提示：随重试次数逐步透露更多
+        hint = _graded_hint(fen_now, expected, session.wrong_count)
+        session.wrong_count += 1
+        db.commit()
+        return CheckMoveResponse(correct=False, done=False, fen_after=None, hint=hint)
+
+    # 应用玩家这一手（终结步可能是等效变着）
+    fen_after = apply_move(fen_now, user_move)
+
+    # 自动走出对方应着（若有），让玩家只需关心己方着法
+    opponent_move = None
+    if sol_idx + 1 < n:
+        opponent_move = solution[sol_idx + 1]
+        try:
+            fen_after = apply_move(fen_after, opponent_move)
+        except Exception:
+            opponent_move = None
+
+    done = sol_idx + 2 >= n  # 没有下一玩家步即完成
+    if done:
+        session.completed = True
+    else:
+        session.step += 1
+    db.commit()
+    return CheckMoveResponse(
+        correct=True, done=done, fen_after=fen_after, hint=None, opponent_move=opponent_move,
+    )
+
+
+@router.post("/explain", response_model=ExplainResponse)
+@limiter.limit("10/minute")
+def explain(
+    request: Request,
+    req: ExplainRequest,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user_id),
+):
+    """规则讲解始终免费；登录用户可在已配置时获得 AI 增强讲解。"""
+    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user_id)
+    if puzzle is None:
+        raise HTTPException(404, "题目不存在")
+
+    # 命中缓存直接返回（不扣分）：同题只调用一次大模型
+    if puzzle.ai_explanation:
+        return ExplainResponse(enabled=True, explanation=puzzle.ai_explanation, cached=True, mode="ai")
+
+    if not get_llm_config(db).active:
+        return ExplainResponse(enabled=True, explanation=rule_explanation(puzzle), mode="rules")
+
+    if not credits.charge(db, user_id, "puzzle_explain", f"puzzle:{puzzle.id}"):
+        return ExplainResponse(enabled=True, explanation=rule_explanation(puzzle), mode="rules")
+
+    solution = primary_line(puzzle.solution)
+    side = "红方" if puzzle.side_to_move == "w" else "黑方"
+    text = explain_puzzle(puzzle.fen, solution, puzzle.category, side,
+                          user_id=user_id, ref=f"puzzle:{puzzle.id}")
+    if text:
+        puzzle.ai_explanation = text
+        db.commit()
+    else:
+        credits.refund(db, user_id, "puzzle_explain", f"puzzle:{puzzle.id}")
+    if not text:
+        return ExplainResponse(enabled=True, explanation=rule_explanation(puzzle), mode="rules")
+    return ExplainResponse(enabled=True, explanation=text, mode="ai")
+
+
+@router.post("/submit", response_model=SubmitResponse)
+def submit(req: SubmitRequest, db: Session = Depends(get_db), user: str = Depends(current_user_id)):
+    """记录本次作答结果（含自评），更新 SM-2。"""
+    puzzle = repo.get_visible_puzzle(db, req.puzzle_id, user)
+    if puzzle is None:
+        raise HTTPException(404, "题目不存在")
+    session = require_session(db, req.session_id, user, puzzle.id)
+    if not (session.context in {"training", "review", "blunder"} or session.context.startswith(("assessment:", "game_review:"))):
+        raise HTTPException(409, "解题会话来源不正确")
+    if session.settled:
+        raise HTTPException(409, "本次解题已经结算")
+    if req.correct and not session.completed:
+        raise HTTPException(409, "服务端尚未确认完成全部正确步骤")
+
+    correct = session.completed
+    had_retry = session.wrong_count > 0
+
+    lines = solution_lines(puzzle.solution)
+    chosen = session.line_index if 0 <= session.line_index < len(lines) else 0
+    solution = lines[chosen] if lines else []
+
+    # 评分只在首次遇题时结算（须在写入本次 Attempt 之前判定）
+    rating_change = None
+    first_attempt = not repo.has_attempt(db, user, puzzle.id)
+    if first_attempt:
+        rating_change = ratings.apply(
+            db, user, puzzle, ratings.score_of(correct, had_retry)
+        )
+    # 首次做对奖励积分（每日封顶，防刷），鼓励多训练
+    if first_attempt and correct:
+        credits.earn(db, user, "puzzle", f"puzzle:{puzzle.id}")
+
+    rev = repo.get_review(db, puzzle.id, user)
+    if rev is None:
+        rev = Review(puzzle_id=puzzle.id, user_id=user)
+        db.add(rev)
+
+    # 答错放弃强制 again；答对但中途重试则自评最多降到 hard
+    if not correct:
+        quality = QUALITY_MAP["again"]
+    elif had_retry and req.self_rating in ("good", "easy"):
+        quality = QUALITY_MAP["hard"]
+    else:
+        quality = QUALITY_MAP.get(req.self_rating, 4)
+
+    state = SrsState(
+        repetitions=rev.repetitions or 0,
+        interval=rev.interval or 0,
+        ease_factor=rev.ease_factor or 2.5,
+        next_review=rev.next_review,
+    )
+    new = srs_review(state, quality)
+    rev.repetitions = new.repetitions
+    rev.interval = new.interval
+    rev.ease_factor = new.ease_factor
+    rev.next_review = new.next_review
+
+    db.add(
+        Attempt(
+            puzzle_id=puzzle.id,
+            user_id=user,
+            correct=correct,
+            time_spent_ms=req.time_spent_ms,
+            had_retry=had_retry,
+            context=session.context,
+        )
+    )
+    session.settled = True
+    db.commit()
+
+    rc = (
+        RatingChange(old=rating_change["old"], new=rating_change["new"], delta=rating_change["delta"])
+        if rating_change
+        else None
+    )
+    return SubmitResponse(
+        next_review=rev.next_review,
+        solution=solution,
+        rating=rc,
+        rule_explanation=rule_explanation(puzzle),
+    )

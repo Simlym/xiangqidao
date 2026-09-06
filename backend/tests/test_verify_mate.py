@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from app.importer.verify_mate import (
+from app.shared.xiangqi.validation import (
     generals_facing,
     in_check,
     is_checkmate,
@@ -42,7 +42,7 @@ def test_flying_general_is_check():
 
 def test_seed_puzzles_all_mate():
     """题库里每道题都应是成立的一步杀。"""
-    path = Path(__file__).resolve().parent.parent / "app" / "importer" / "seed_puzzles.json"
+    path = Path(__file__).resolve().parent.parent / "app" / "modules" / "puzzles" / "importer" / "seed_puzzles.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     for p in data:
         sol = p["solution"]

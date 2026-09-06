@@ -10,7 +10,7 @@
 | 维度 | xiangqidao（当前项目） | JieqiBox |
 |------|----------------------|----------|
 | **技术栈** | React 18 + Tauri + Python FastAPI 后端 | Vue 3 + TypeScript + Tauri（纯前端+Rust） |
-| **揭棋核心** | `frontend/src/core/game/jieqi.js`（421行，纯JS） | `src/composables/useChessGame.ts`（3356行，Vue Composable） |
+| **揭棋核心** | `frontend/src/domain/xiangqi/jieqi/rules.js`（421行，纯JS） | `src/composables/useChessGame.ts`（3356行，Vue Composable） |
 | **引擎架构** | 三层降级：Native → WASM → 云端远程 | 本地 UCI 引擎（Pikafish）+ JAI  tournament 引擎 |
 | **数据持久化** | 云端后端（用户系统、复盘库、积分、闯关） | 本地文件（棋谱 JSON、配置、FEN） |
 | **目标用户** | 在线象棋学习平台用户（含训练、闯关、教练） | 揭棋桌面工具玩家和引擎开发者 |

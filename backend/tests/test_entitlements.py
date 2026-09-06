@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
-from app.entitlements import entitlement_payload, membership_active
-from app.models import User
+from app.modules.auth.entitlements import entitlement_payload, membership_active
+from app.core.models import User
 
 
 def make_user(**values):

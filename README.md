@@ -57,7 +57,7 @@ Pikafish 和 LLM 服务都是可选项。没有它们也能启动、训练和对
 cd backend
 uv sync
 uv run alembic upgrade head
-uv run python -m app.importer.load app/importer/seed_puzzles.json
+uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/seed_puzzles.json
 uv run python -m app
 ```
 
@@ -132,25 +132,25 @@ npm run tauri build
 在 `backend/` 目录中导入：
 
 ```bash
-uv run python -m app.importer.load app/importer/generated_puzzles.json
-uv run python -m app.importer.load app/importer/wukong_puzzles.audited.json
+uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/generated_puzzles.json
+uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/wukong_puzzles.audited.json
 ```
 
 也可以生成新的一步杀题：
 
 ```bash
-uv run python -m app.importer.generate --count 100 --seed 1234 --out app/importer/more.json
-uv run python -m app.importer.load app/importer/more.json
+uv run python -m app.modules.puzzles.importer.generate --count 100 --seed 1234 --out app/modules/puzzles/importer/more.json
+uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/more.json
 ```
 
 自有题库需转换为项目 JSON 格式，着法统一使用与 Pikafish 兼容的 UCI 坐标制，例如 `h2e2`。可用 `--verify` 调用 Pikafish 校验，或先运行审计工具：
 
 ```bash
-uv run python -m app.importer.load path/to/puzzles.json --verify
-uv run python -m app.importer.audit_puzzles
+uv run python -m app.modules.puzzles.importer.load path/to/puzzles.json --verify
+uv run python -m app.modules.puzzles.importer.audit_puzzles
 ```
 
-格式示例可参考 [`backend/app/importer/seed_puzzles.json`](backend/app/importer/seed_puzzles.json)，审计说明见 [`backend/app/importer/puzzle_audit_report.md`](backend/app/importer/puzzle_audit_report.md)。
+格式示例可参考 [`backend/app/modules/puzzles/importer/seed_puzzles.json`](backend/app/modules/puzzles/importer/seed_puzzles.json)，审计说明见 [`backend/app/modules/puzzles/importer/puzzle_audit_report.md`](backend/app/modules/puzzles/importer/puzzle_audit_report.md)。
 
 ## 数据与账号
 
