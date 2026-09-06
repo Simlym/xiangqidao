@@ -186,6 +186,45 @@ uv run python -m app.modules.puzzles.importer.audit_puzzles
 
 更多云库参数和多端引擎降级逻辑见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
+## Docker Compose 部署
+
+Docker Compose 会启动三个服务：Nginx 提供 Web 页面并转发 `/api`，FastAPI 负责数据、对弈和分析，PostgreSQL 负责持久化业务数据。数据库和服务端引擎分别保存在 Docker 命名卷中，重建容器不会丢失。
+
+先复制配置并设置随机密钥：
+
+```powershell
+Copy-Item .env.docker.example .env
+# 编辑 .env，替换 SECRET_KEY 和 POSTGRES_PASSWORD
+docker compose up -d --build
+```
+
+Linux/macOS 可使用 `cp .env.docker.example .env`。启动后访问 `http://localhost:8080`；可通过 `.env` 中的 `HTTP_PORT` 修改端口。查看状态和日志：
+
+```bash
+docker compose ps
+docker compose logs -f
+```
+
+升级代码后重新构建即可：
+
+```bash
+docker compose up -d --build
+```
+
+### Docker 中安装象棋引擎
+
+部署后可用管理员账号进入“管理后台 → 对弈引擎”安装标准 Pikafish。引擎会写入持久化的 `engine-data` 卷，容器更新后仍然保留。基础镜像使用 Debian slim，应选择与服务器架构（通常为 `amd64` 或 `arm64`）和 CPU 指令集匹配的 Linux 引擎版本。
+
+揭棋需要单独的揭棋版引擎，放入卷内 `/app/data/engine/jieqi/pikafish`，并确保文件可执行；Compose 已通过 `JIEQI_ENGINE` 指向该路径。若希望由宿主机直接管理引擎文件，可将后端卷配置改为目录挂载，例如 `./docker-engine:/app/data/engine`。
+
+停止服务不会删除数据：
+
+```bash
+docker compose down
+```
+
+只有明确不再需要数据库、配置和已安装引擎时才使用 `docker compose down -v`。
+
 ### PC 安装包连接线上服务
 
 PC 后端地址在打包时写入。复制示例文件并修改：
