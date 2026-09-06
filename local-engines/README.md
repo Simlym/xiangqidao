@@ -30,10 +30,19 @@ local-engines/
 ## 当前文件
 
 ```text
-xiangqi/native/pikafish/2026-01-02/windows-x64-bmi2/
+xiangqi/native/pikafish/2026-01-02/
+├── windows-x64-{avx2,avx512,avx512icl,avxvnni,bmi2,sse41-popcnt,vnni512}/
+├── linux-x64-{avx2,avx512,avx512icl,avxvnni,bmi2,sse41-popcnt,vnni512}/
+├── macos-arm64/                                     # apple-silicon
+├── android-arm64/                                   # armv8 基线
+└── android-arm64-dotprod/                           # armv8.2 dotprod，支持的 SoC 上更快
+    （指令集变体的速度/棋力对比与选择指南见该目录下 指令集变体说明.md）
 xiangqi/wasm/pikafish/legacy/browser/
 jieqi/native/pikafish/jieqi-old-23b9466/windows-x64-avxvnni/
+jieqi/native/pikafish/jieqi-old-23b9466/android-arm64/
 jieqi/wasm/                                          # 预留
 ```
+
+`pikafish.nnue` 说明：同一引擎版本的网络文件跨平台通用（纯数据，与 CPU 架构无关），2026-01-02 各平台目录内的 nnue 为同一官方文件的硬链接，内容一致；但**跨棋种、跨引擎代际不通用**（象棋 2026 版网络与揭棋 2022 版网络互不兼容，引擎校验架构不符会拒绝启动），两条目录链的 nnue 不可混用。
 
 `legacy` 表示版本来源暂未确认，不代表推荐使用。当前目录中的旧版 Pikafish 浏览器产物已补充兼容 Worker 和清单，可以按 `docs/engines/package-spec.md` 导入；新增的 Web/Android 引擎包也必须遵守该规范。
