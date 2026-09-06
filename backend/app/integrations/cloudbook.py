@@ -11,10 +11,10 @@
 - 任何网络/解析异常都静默降级为「无数据」。
 
 环境变量：
-- XQ_CLOUDBOOK        ："0" 关闭（默认开启）
-- XQ_CLOUDBOOK_URL    ：查询接口地址（默认 chessdb 公共云库）
-- XQ_CLOUDBOOK_TIMEOUT：单次查询超时秒数（默认 1.5）
-- XQ_CLOUDBOOK_MAX_PLY：引擎走子参考云库的最大步数（默认 24，即前 12 回合）
+- CLOUDBOOK_ENABLED        ："0" 关闭（默认开启）
+- CLOUDBOOK_URL    ：查询接口地址（默认 chessdb 公共云库）
+- CLOUDBOOK_TIMEOUT：单次查询超时秒数（默认 1.5）
+- CLOUDBOOK_MAX_PLY：引擎走子参考云库的最大步数（默认 24，即前 12 回合）
 """
 from __future__ import annotations
 
@@ -39,19 +39,19 @@ _BREAK_SECS = 300
 
 
 def enabled() -> bool:
-    return os.getenv("XQ_CLOUDBOOK", "1") != "0"
+    return os.getenv("CLOUDBOOK_ENABLED", "1") != "0"
 
 
 def _timeout() -> float:
     try:
-        return float(os.getenv("XQ_CLOUDBOOK_TIMEOUT", "1.5"))
+        return float(os.getenv("CLOUDBOOK_TIMEOUT", "1.5"))
     except ValueError:
         return 1.5
 
 
 def _max_ply() -> int:
     try:
-        return int(os.getenv("XQ_CLOUDBOOK_MAX_PLY", "24"))
+        return int(os.getenv("CLOUDBOOK_MAX_PLY", "24"))
     except ValueError:
         return 24
 
@@ -75,7 +75,7 @@ def ply_of(fen: str) -> int:
 
 def _fetch(fen_key: str) -> str:
     """发起一次云库查询，返回原始响应文本。独立成函数便于测试替换。"""
-    url = os.getenv("XQ_CLOUDBOOK_URL", DEFAULT_URL)
+    url = os.getenv("CLOUDBOOK_URL", DEFAULT_URL)
     qs = urllib.parse.urlencode({"action": "queryall", "board": fen_key + " - - 0 1"})
     req = urllib.request.Request(f"{url}?{qs}", headers={"User-Agent": "xiangqidao/1.0"})
     with urllib.request.urlopen(req, timeout=_timeout()) as resp:
@@ -152,7 +152,7 @@ def query_book(fen: str) -> list[dict] | None:
 def best_book_move(fen: str, level: str = "hard") -> str | None:
     """为引擎走子挑一个云库着法；不适用时返回 None（由引擎搜索兜底）。
 
-    - 仅在开局阶段（前 XQ_CLOUDBOOK_MAX_PLY 个半着）参考云库；
+    - 仅在开局阶段（前 CLOUDBOOK_MAX_PLY 个半着）参考云库；
     - hard 走库中最优；medium 在接近最优（差距 ≤50cp）的着法里随机，保持多样性；
     - easy 不用云库，避免开局过强。
     """

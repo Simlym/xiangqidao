@@ -60,8 +60,8 @@ DEFAULT_TZ = "Asia/Shanghai"
 
 
 def _today() -> date:
-    """积分体系的「今天」：按 XQ_TZ（默认 Asia/Shanghai）取日期。"""
-    name = os.environ.get("XQ_TZ", DEFAULT_TZ).strip() or DEFAULT_TZ
+    """积分体系的「今天」：按 TZ（默认 Asia/Shanghai）取日期。"""
+    name = os.environ.get("TZ", DEFAULT_TZ).strip() or DEFAULT_TZ
     try:
         return datetime.now(ZoneInfo(name)).date()
     except Exception:  # 时区名无效或系统缺 tzdata 时退回服务器本地日期

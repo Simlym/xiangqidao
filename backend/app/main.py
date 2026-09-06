@@ -13,7 +13,7 @@ from .core.database import init_db
 from .core.rate_limit import limiter
 from .engine import install as engine_install
 
-_IS_PROD = os.environ.get("XQ_ENV", "").lower() in ("prod", "production")
+_IS_PROD = os.environ.get("APP_ENV", "").lower() in ("prod", "production")
 
 # 生产环境关闭交互式文档，减少攻击面；开发保留 /docs 方便调试。
 app = FastAPI(
@@ -29,8 +29,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# CORS：默认放开仅为本地开发；生产用 XQ_ORIGINS 指定允许的前端来源（逗号分隔）。
-_origins_env = os.environ.get("XQ_ORIGINS", "").strip()
+# CORS：默认放开仅为本地开发；生产用 CORS_ORIGINS 指定允许的前端来源（逗号分隔）。
+_origins_env = os.environ.get("CORS_ORIGINS", "").strip()
 _allow_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] or ["*"]
 app.add_middleware(
     CORSMiddleware,

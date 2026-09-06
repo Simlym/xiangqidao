@@ -643,7 +643,7 @@ function JieqiEnginePanel() {
         )}
       </div>
       <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-        也可用环境变量 <code>XQ_JIEQI_ENGINE</code> 配置；后台保存的路径优先，并会立即生效，无需重启服务。
+        也可用环境变量 <code>JIEQI_ENGINE</code> 配置；后台保存的路径优先，并会立即生效，无需重启服务。
       </p>
       {err && <div className="import-error">{err}</div>}
       {msg && <div className={status?.available ? "import-ok" : "muted"}>{msg}</div>}

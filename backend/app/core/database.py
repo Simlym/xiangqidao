@@ -1,6 +1,6 @@
 """持久化层配置：引擎、会话、建表与轻量迁移，与模型定义解耦。
 
-DB 连接串通过环境变量 XQ_DB_URL 配置，默认沿用本地 sqlite，便于在
+DB 连接串通过环境变量 DATABASE_URL 配置，默认沿用本地 sqlite，便于在
 不同环境（测试/生产/其他数据库）切换而无需改动模型与业务代码。
 """
 
@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DB_URL = os.environ.get("XQ_DB_URL", "sqlite:///./data/puzzles.db")
+DB_URL = os.environ.get("DATABASE_URL", "sqlite:///./data/puzzles.db")
 
 # sqlite 本地文件库：自动创建父目录，避免首次运行报 "unable to open database file"
 _url = make_url(DB_URL)

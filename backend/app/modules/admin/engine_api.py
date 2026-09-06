@@ -29,7 +29,7 @@ class JieqiEngineUpdate(BaseModel):
 
 def _jieqi_status(db: Session) -> dict:
     configured = get_setting(db, KEY_JIEQI_ENGINE_PATH).strip()
-    env_path = os.getenv("XQ_JIEQI_ENGINE", "").strip()
+    env_path = os.getenv("JIEQI_ENGINE", "").strip()
     effective = find_jieqi_engine()
     if configured:
         source = "admin"

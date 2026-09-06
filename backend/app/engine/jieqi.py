@@ -26,7 +26,7 @@ def find_jieqi_engine() -> str | None:
         pass
     candidates = [
         configured,
-        os.getenv("XQ_JIEQI_ENGINE", "").strip(),
+        os.getenv("JIEQI_ENGINE", "").strip(),
         os.path.join("data", "engine", "jieqi", "PikaJieQi.exe"),
         os.path.join("data", "engine", "jieqi", "pikafish.exe"),
         os.path.join("data", "engine", "jieqi", "pikafish"),

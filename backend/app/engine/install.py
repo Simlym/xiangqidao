@@ -271,7 +271,7 @@ _status: dict = {
 # ── 路径与状态 ──────────────────────────────────────────────────
 
 def engine_dir() -> str:
-    return os.environ.get("XQ_ENGINE_DIR", os.path.join("data", "engine"))
+    return os.environ.get("ENGINE_DIR", os.path.join("data", "engine"))
 
 
 def binary_name() -> str:

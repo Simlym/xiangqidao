@@ -22,18 +22,18 @@ from app.core.dependencies import get_db
 from app.core.models import User
 
 _DEFAULT_SECRET = "xiangqidao-dev-secret-change-me"
-_secret = os.environ.get("XQ_SECRET", _DEFAULT_SECRET)
+_secret = os.environ.get("SECRET_KEY", _DEFAULT_SECRET)
 
-# 默认密钥意味着任何人都能伪造登录 token。生产环境必须显式设置 XQ_SECRET。
+# 默认密钥意味着任何人都能伪造登录 token。生产环境必须显式设置 SECRET_KEY。
 if _secret == _DEFAULT_SECRET:
-    _env = os.environ.get("XQ_ENV", "").lower()
+    _env = os.environ.get("APP_ENV", "").lower()
     if _env in ("prod", "production"):
         raise RuntimeError(
-            "检测到 XQ_ENV=production 但 XQ_SECRET 仍为默认值；"
-            "请设置一个随机密钥（如 `export XQ_SECRET=$(openssl rand -hex 32)`）后再启动。"
+            "检测到 APP_ENV=production 但 SECRET_KEY 仍为默认值；"
+            "请设置一个随机密钥（如 `export SECRET_KEY=$(openssl rand -hex 32)`）后再启动。"
         )
     logging.getLogger("uvicorn.error").warning(
-        "⚠️ XQ_SECRET 使用内置默认值，仅供本地开发；上线前务必设置 XQ_SECRET 环境变量。"
+        "⚠️ SECRET_KEY 使用内置默认值，仅供本地开发；上线前务必设置 SECRET_KEY 环境变量。"
     )
 
 SECRET = _secret.encode()

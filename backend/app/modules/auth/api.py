@@ -16,9 +16,9 @@ from app.core.security_log import login_failed
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# 管理员引导：仅当 XQ_ADMIN 显式设置时，匹配该用户名者注册即为管理员；
+# 管理员引导：仅当 ADMIN_USERNAME 显式设置时，匹配该用户名者注册即为管理员；
 # 未设置则只有「首个注册用户」成为管理员，避免公网上 'admin' 用户名被抢注提权。
-ADMIN_USERNAME = os.environ.get("XQ_ADMIN", "").strip()
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "").strip()
 
 
 class Credentials(BaseModel):
@@ -47,7 +47,7 @@ def register(request: Request, body: Credentials, db: Session = Depends(get_db))
     if db.scalar(select(User).where(User.username == username)):
         raise HTTPException(409, "用户名已被占用")
 
-    # 管理员引导：首个注册用户必为管理员；此外仅当显式配置 XQ_ADMIN 时匹配者为管理员。
+    # 管理员引导：首个注册用户必为管理员；此外仅当显式配置 ADMIN_USERNAME 时匹配者为管理员。
     is_first = (db.scalar(select(func.count()).select_from(User)) or 0) == 0
     is_named_admin = bool(ADMIN_USERNAME) and username == ADMIN_USERNAME
     role = "admin" if (is_first or is_named_admin) else "user"

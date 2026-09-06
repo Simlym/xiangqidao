@@ -106,7 +106,7 @@ npm run tauri build
 
 后端按以下顺序查找标准象棋引擎：
 
-1. `XQ_ENGINE_DIR` 指定的受管目录，默认 `backend/data/engine/`；
+1. `ENGINE_DIR` 指定的受管目录，默认 `backend/data/engine/`；
 2. 系统 `PATH`。
 
 安装或修改路径后请重启后端。PC 客户端还可以在“本机设置”中单独指定原生标准象棋与揭棋引擎；局面分析会在原生引擎、浏览器 WASM 和服务端能力之间自动降级。
@@ -156,31 +156,33 @@ uv run python -m app.modules.puzzles.importer.audit_puzzles
 
 - 游客可以直接训练，数据归入当前访客身份。
 - 注册后，训练记录、统计、棋谱和个人题目按用户隔离。
-- 未指定 `XQ_ADMIN` 时，第一个注册用户会成为管理员。
+- 未指定 `ADMIN_USERNAME` 时，第一个注册用户会成为管理员。
 - 管理员可以管理用户、题库、会员权益、AI 配置和服务端引擎。
-- 默认使用 SQLite，数据库连接可通过 `XQ_DB_URL` 替换。
+- 默认使用 SQLite，数据库连接可通过 `DATABASE_URL` 替换。
 
 如果要公开部署，请务必先注册并确认管理员账号，再对外开放服务。
 
 ## 常用配置
 
+后端配置可写入 `backend/.env` 文件，启动时自动加载：复制 [`backend/.env.example`](backend/.env.example) 为 `backend/.env`，按需取消注释即可，无需重启脚本之外的操作。同名环境变量优先级高于 `.env`，线上部署（Docker、systemd 等）仍可直接用环境变量覆盖；`.env` 含密钥，已被 `.gitignore` 排除。
+
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `XQ_HOST` / `XQ_PORT` | 后端监听地址与端口 | `127.0.0.1` / `8000` |
-| `XQ_DB_URL` | SQLAlchemy 数据库连接串 | `sqlite:///./data/puzzles.db` |
-| `XQ_ENV` | 设为 `production` 时启用生产校验并关闭 API 文档 | 空 |
-| `XQ_SECRET` | 登录 token 签名密钥；生产环境必须更换 | 本地开发占位值 |
-| `XQ_ORIGINS` | 允许访问 API 的前端来源，逗号分隔 | 本地开发放开 |
-| `XQ_ADMIN` | 指定管理员用户名；留空则首位注册者为管理员 | 空 |
-| `XQ_ENGINE_DIR` | Pikafish 受管安装目录 | `./data/engine` |
-| `XQ_JIEQI_ENGINE` | 服务端揭棋引擎路径 | `./data/engine/jieqi/pikafish[.exe]` |
+| `HOST` / `PORT` | 后端监听地址与端口 | `127.0.0.1` / `8000` |
+| `DATABASE_URL` | SQLAlchemy 数据库连接串 | `sqlite:///./data/puzzles.db` |
+| `APP_ENV` | 设为 `production` 时启用生产校验并关闭 API 文档 | 空 |
+| `SECRET_KEY` | 登录 token 签名密钥；生产环境必须更换 | 本地开发占位值 |
+| `CORS_ORIGINS` | 允许访问 API 的前端来源，逗号分隔 | 本地开发放开 |
+| `ADMIN_USERNAME` | 指定管理员用户名；留空则首位注册者为管理员 | 空 |
+| `ENGINE_DIR` | Pikafish 受管安装目录 | `./data/engine` |
+| `JIEQI_ENGINE` | 服务端揭棋引擎路径 | `./data/engine/jieqi/pikafish[.exe]` |
 | `LLM_API_KEY` | AI 教练与复盘讲解密钥 | 空 |
 | `LLM_PROTOCOL` | 接口格式：`openai_chat` / `openai_responses` / `anthropic` | `openai_chat` |
 | `LLM_BASE_URL` | LLM 服务地址 | `https://api.openai.com/v1` |
 | `LLM_MODEL` | LLM 模型名称 | `gpt-4.1-mini` |
 | `LLM_THINKING_ENABLED` | 是否开启思考模式：`1` / `0` | `1` |
 | `LLM_REASONING_EFFORT` | 思考强度：`low` / `medium` / `high` / `xhigh` / `max` | `high` |
-| `XQ_CLOUDBOOK` | 是否启用在线开局库，设为 `0` 关闭 | `1` |
+| `CLOUDBOOK_ENABLED` | 是否启用在线开局库，设为 `0` 关闭 | `1` |
 
 更多云库参数和多端引擎降级逻辑见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
@@ -195,7 +197,7 @@ cd frontend
 npm run tauri build
 ```
 
-线上后端需要把 Tauri 来源加入 `XQ_ORIGINS`，Windows 通常为 `http://tauri.localhost`。更换后端域名后需要重新打包客户端。
+线上后端需要把 Tauri 来源加入 `CORS_ORIGINS`，Windows 通常为 `http://tauri.localhost`。更换后端域名后需要重新打包客户端。
 
 ### Android 客户端
 
@@ -229,11 +231,11 @@ npm run tauri android build -- --apk
 npm run tauri android build -- --aab
 ```
 
-Android 发布构建会强制检查 `VITE_API_BASE_URL` 是以 `/api` 结尾的 HTTPS 地址，避免误连手机自身的 `localhost`。线上后端仍需将 Android WebView 来源加入 `XQ_ORIGINS`。
+Android 发布构建会强制检查 `VITE_API_BASE_URL` 是以 `/api` 结尾的 HTTPS 地址，避免误连手机自身的 `localhost`。线上后端仍需将 Android WebView 来源加入 `CORS_ORIGINS`。
 
 ## 公网部署前检查
 
-- 设置 `XQ_ENV=production`、随机且足够长的 `XQ_SECRET`，并限制 `XQ_ORIGINS`。
+- 设置 `APP_ENV=production`、随机且足够长的 `SECRET_KEY`，并限制 `CORS_ORIGINS`。
 - 使用 nginx、Caddy 等反向代理提供 HTTPS，不要让登录 token 经明文网络传输。
 - 正确配置可信代理 IP，使登录、对弈和分析接口的限流能识别真实客户端。
 - 限制数据库文件权限，并备份数据库；备份中可能包含后台保存的 AI 密钥。

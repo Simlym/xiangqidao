@@ -12,7 +12,7 @@ def client(monkeypatch):
     # 用独立的临时数据库，避免污染开发库
     tmp = tempfile.mkdtemp()
     db_path = os.path.join(tmp, "test.db")
-    monkeypatch.setenv("XQ_SECRET", "test-secret")
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
 
     from app.core import models
     import app.core.dependencies as deps
