@@ -228,7 +228,7 @@ function LevelSolver({ level, onExit }) {
         </div>
       </div>
 
-      <div className="challenge-board-area" ref={boardAreaRef}>
+      <div className="trainer-board-area" ref={boardAreaRef}>
         <Board fen={fen} onMove={onMove} lastMove={lastMove} disabled={phase !== "thinking"} maxHeight={boardMaxHeight} />
       </div>
 

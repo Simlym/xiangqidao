@@ -335,16 +335,17 @@
     color: #73503d; background: #f5ece5; font-size: 11px; text-align: center;
   }
 
-  /* 每日训练：题面信息移到右侧，首屏优先完整呈现棋盘。 */
+  /* 训练/闯关：题面信息在左、棋盘居中、答题结果在右。 */
   .app-web .trainer {
-    width: min(100%, 980px);
+    width: min(100%, 1180px);
     display: grid;
-    grid-template-columns: minmax(520px, 620px) minmax(260px, 1fr);
-    grid-template-areas: "board info";
+    grid-template-columns: minmax(260px, 1fr) minmax(520px, 620px) minmax(260px, 1fr);
+    grid-template-areas: "info board result";
     align-items: start;
     gap: 18px;
   }
   .app-web .trainer > .trainer-board-area { grid-area: board; min-width: 0; }
+  .app-web .trainer > :is(.result, .trainer-result-area) { grid-area: result; margin: 0; position: sticky; top: 12px; }
   .app-web .trainer > .info {
     grid-area: info;
     margin: 0;

@@ -621,11 +621,11 @@ body.desktop-runtime {
 
 .app-desktop .trainer {
   width: 100%;
-  max-width: 1040px;
+  max-width: 1160px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(430px, 600px) minmax(250px, 1fr);
-  grid-template-areas: "board info";
+  grid-template-columns: minmax(250px, 1fr) minmax(430px, 600px) minmax(250px, 1fr);
+  grid-template-areas: "info board result";
   gap: 16px;
   align-items: start;
 }
@@ -636,6 +636,12 @@ body.desktop-runtime {
   top: 0;
 }
 .app-desktop .trainer > .trainer-board-area { grid-area: board; }
+.app-desktop .trainer > :is(.result, .trainer-result-area) {
+  grid-area: result;
+  margin: 0;
+  position: sticky;
+  top: 0;
+}
 
 .app-desktop .games-layout {
   width: 100%;
@@ -1019,7 +1025,11 @@ body.desktop-runtime {
 
 @media (max-width: 1080px) {
   .app-desktop { grid-template-columns: 168px minmax(0, 1fr); }
-  .app-desktop .trainer { grid-template-columns: minmax(390px, 1fr) 250px; }
+  .app-desktop .trainer {
+    grid-template-columns: minmax(390px, 1fr) 250px;
+    grid-template-areas: "board info";
+  }
+  .app-desktop .trainer > :is(.result, .trainer-result-area) { grid-area: auto; position: static; }
   .app-desktop .play-main .move-log { width: 230px; }
   .settings-page { grid-template-columns: 170px minmax(0, 1fr); }
 }
