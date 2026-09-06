@@ -24,6 +24,9 @@ const jieqiEngine = createEngineManager({ variant: "jieqi", remoteEvaluate: eval
 
 export default function JieqiPlay({ onOpenSettings }) {
   const isDesktop = usesDesktopLayout(runtime);
+  const [wideWeb, setWideWeb] = React.useState(() =>
+    runtime === "web" && typeof window !== "undefined" && window.matchMedia("(min-width: 1100px)").matches
+  );
   const initialAnalysis = React.useMemo(() => analysisPreferences("jieqi"), []);
   const [fen, setFen] = React.useState(null);
   const [gameMode, setGameMode] = React.useState("human-ai");
@@ -59,6 +62,15 @@ export default function JieqiPlay({ onOpenSettings }) {
   const analysisSession = React.useRef(null);
   const turnReqId = React.useRef(0);
   const desktopMoveLogRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (runtime !== "web") return undefined;
+    const media = window.matchMedia("(min-width: 1100px)");
+    const update = () => setWideWeb(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   React.useEffect(() => {
     jieqiEngine.availableKinds().then((kinds) => {
@@ -493,9 +505,10 @@ export default function JieqiPlay({ onOpenSettings }) {
     : analysisData?.runtime === "wasm"
     ? "揭棋 WASM 引擎"
     : "云端揭棋引擎";
+  const useSideLayout = isDesktop || wideWeb;
 
   return (
-    <div className="play">
+    <div className="play jieqi-play">
       {pendingFlip && (
         <div className="jieqi-flip-overlay" role="dialog" aria-modal="true" aria-label="翻子提示">
           <div className="panel jieqi-flip-dialog">
@@ -518,7 +531,7 @@ export default function JieqiPlay({ onOpenSettings }) {
           </div>
         </div>
       )}
-      {!isDesktop && <div className="panel play-status-bar">
+      {!useSideLayout && <div className="panel play-status-bar">
         <div className="play-status-line">
           <span className="tag">揭棋</span>
           <span className="tag">{gameMode === "free" ? "自由翻子" : humanSide === "w" ? "你执红" : "你执黑"}</span>
@@ -542,8 +555,37 @@ export default function JieqiPlay({ onOpenSettings }) {
           <button className="btn-newgame" onClick={() => { turnReqId.current++; setThinking(false); setPendingFlip(null); setFen(null); }}>新对局</button>
         </div>
       </div>}
-      {!isDesktop && error && <div className="panel import-error">{error}</div>}
+      {!useSideLayout && error && <div className="panel import-error">{error}</div>}
       <div className="play-main">
+        {wideWeb && (
+          <aside className="panel web-play-rail jieqi-status-rail" aria-label="揭棋本局状态">
+            <div className="web-play-rail-title">揭棋对弈</div>
+            <div className="web-player-card opponent">
+              <span className="web-player-avatar">黑</span>
+              <div>
+                <strong>{gameMode === "free" ? "黑方" : humanSide === "b" ? "你" : "电脑"}</strong>
+                <small>{gameMode === "free" ? "手动走棋" : humanSide === "b" ? "你执黑" : engineDisplay}</small>
+              </div>
+            </div>
+            <div className="web-turn-card">
+              <small>{gameMode === "free" ? "自由翻子" : levelLabel}</small>
+              <strong>{currentTurnText}</strong>
+              <span>已走 {moves.length} 步</span>
+            </div>
+            <div className="web-player-card self">
+              <span className="web-player-avatar">红</span>
+              <div>
+                <strong>{gameMode === "free" ? "红方" : humanSide === "w" ? "你" : "电脑"}</strong>
+                <small>{gameMode === "free" ? "手动走棋" : humanSide === "w" ? "你执红" : engineDisplay}</small>
+              </div>
+            </div>
+            <div className="web-play-rail-meta">
+              <span>当前行棋</span>
+              <strong className={currentSide === "w" ? "red" : "black"}>{currentSide === "w" ? "红方" : "黑方"}</strong>
+            </div>
+            {winner && <div className="jieqi-status-result">{saved ? "棋局已存入复盘" : "正在保存棋局…"}</div>}
+          </aside>
+        )}
         <div className="play-board-area">
           {inCheck && (
             <div className="jieqi-check-alert" role="status" aria-live="assertive">
@@ -593,7 +635,7 @@ export default function JieqiPlay({ onOpenSettings }) {
               pieceImage={jieqiPieceImage}
               maxScale={1.75}
               onScaleChange={setBoardScale}
-              fitContainerHeight={isDesktop}
+              fitContainerHeight={useSideLayout}
               reservedBottomHeight={46}
             />
           </div>
@@ -603,7 +645,7 @@ export default function JieqiPlay({ onOpenSettings }) {
             label={boardFlipped ? "黑方" : "红方"}
           />
         </div>
-        {isDesktop ? (
+        {useSideLayout ? (
           <aside className="panel move-log desktop-play-inspector desktop-jieqi-inspector">
             <div className="desktop-game-summary">
               <strong>本局信息</strong>

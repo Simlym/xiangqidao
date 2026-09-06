@@ -7,7 +7,6 @@ import { useBoardMaxHeight } from "../../shared/hooks/useBoardMaxHeight";
 // 闯关：关卡网格 → 选关进入解题器，依次解完本关全部题目。
 
 export default function Challenge() {
-  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight();
   const [levels, setLevels] = React.useState(null);
   const [active, setActive] = React.useState(null); // 当前关卡详情
   const [loading, setLoading] = React.useState(false);
@@ -86,6 +85,7 @@ function LevelCard({ lv, onOpen, disabled }) {
 // ── 解题器：依次解完本关 puzzles ──────────────────────────────────
 
 function LevelSolver({ level, onExit }) {
+  const [boardAreaRef, boardMaxHeight] = useBoardMaxHeight();
   const puzzles = level.puzzles;
   const [idx, setIdx] = React.useState(0);
   const [phase, setPhase] = React.useState("thinking"); // thinking | wrong | solved | levelDone

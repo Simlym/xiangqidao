@@ -263,6 +263,25 @@ npm run tauri android build -- --aab
 
 Android 发布构建会强制检查 `VITE_API_BASE_URL` 是以 `/api` 结尾的 HTTPS 地址，避免误连手机自身的 `localhost`。线上后端仍需将 Android WebView 来源加入 `CORS_ORIGINS`。
 
+### Android 发布签名
+
+未签名的 release APK 无法安装到手机。签名需要一次性生成 keystore（放在仓库外的安全位置并做好备份，丢失后老用户将无法覆盖升级）：
+
+```powershell
+keytool -genkeypair -v -keystore E:\keys\xiangqidao-release.keystore -alias xiangqidao -keyalg RSA -keysize 2048 -validity 10000
+```
+
+构建前在同一个 PowerShell 会话设置以下环境变量（只对本次构建生效，避免密码持久化），`KEYSTORE_PATH` 存在时 gradle 才启用签名：
+
+```powershell
+$env:KEYSTORE_PATH = "E:\keys\xiangqidao-release.keystore"
+$env:KEYSTORE_ALIAS = "xiangqidao"
+$env:KEYSTORE_PASSWORD = "<keystore 密码>"
+$env:KEYSTORE_ALIAS_PASSWORD = "<别名密码>"
+```
+
+签名配置位于 `src-tauri/gen/android/app/build.gradle.kts` 的 `signingConfigs` 段。`src-tauri/gen/` 不入库，重新执行 `tauri android init` 后需按本节恢复该段代码。产物在 `src-tauri/gen/android/app/build/outputs/apk/universal/release/`。
+
 ## 公网部署前检查
 
 - 设置 `APP_ENV=production`、随机且足够长的 `SECRET_KEY`，并限制 `CORS_ORIGINS`。

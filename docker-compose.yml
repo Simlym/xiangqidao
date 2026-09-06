@@ -28,6 +28,7 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-xiangqidao}:${POSTGRES_PASSWORD:?请先在根目录 .env 中设置 POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-xiangqidao}
       XIANGQI_ENGINE: ${XIANGQI_ENGINE:-}
       JIEQI_ENGINE: ${JIEQI_ENGINE:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       FORWARDED_ALLOW_IPS: "*"
       TZ: ${TZ:-Asia/Shanghai}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}

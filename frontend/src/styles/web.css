@@ -235,6 +235,130 @@
 .app-web .today-growth { justify-content: center; padding-inline: 24px; }
 .app-web .today-rating { font-size: 50px; }
 
+/* 宽屏 Web 对弈：信息放到棋盘两侧，避免横向工具条挤占宝贵的纵向空间。 */
+@media (min-width: 1100px) {
+  .app-web > main > .play { max-width: 1248px; }
+  .app-web .play-main {
+    display: grid;
+    grid-template-columns: 210px minmax(500px, 1fr) 286px;
+    align-items: start;
+    gap: 16px;
+  }
+  .app-web .play-board-area { min-width: 0; padding-top: 0; }
+  .app-web .desktop-board-playerbar {
+    min-height: 26px;
+    margin: 0 auto 2px;
+    padding-inline: 10px;
+    max-width: 610px;
+  }
+  .app-web .xq-board-measure { max-width: 610px; margin-inline: auto; }
+  .app-web .play-main .desktop-play-inspector {
+    width: 286px;
+    height: min(700px, calc(100vh - 178px));
+    min-height: 520px;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: sticky;
+    top: 12px;
+  }
+  .app-web .desktop-inspector-body { min-height: 0; flex: 1; overflow-y: auto; padding: 10px 12px; }
+  .app-web .desktop-play-inspector .move-log-list { max-height: none; }
+  .app-web .web-play-rail {
+    min-height: 420px;
+    margin: 0;
+    padding: 16px;
+    position: sticky;
+    top: 12px;
+  }
+  .web-play-rail-title { margin-bottom: 14px; color: #3d342d; font-size: 15px; font-weight: 750; }
+  .web-player-card { display: flex; align-items: center; gap: 10px; padding: 11px 0; }
+  .web-player-card + .web-turn-card { margin-top: 4px; }
+  .web-player-avatar {
+    width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center;
+    border-radius: 50%; color: #fff; background: #4b4540; font-weight: 750;
+  }
+  .web-player-card.self .web-player-avatar { background: #a24733; }
+  .web-player-card div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .web-player-card strong { color: #3e3731; font-size: 14px; }
+  .web-player-card small { overflow: hidden; color: #948a80; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .web-turn-card {
+    margin-block: 9px; padding: 16px 12px; border: 1px solid #eaded3; border-radius: 12px;
+    background: #faf6f1; text-align: center;
+  }
+  .web-turn-card small, .web-turn-card span { display: block; color: #968b81; font-size: 11px; }
+  .web-turn-card strong { display: block; margin: 6px 0; color: #9f432f; font-size: 17px; }
+  .web-play-rail-meta { display: flex; justify-content: space-between; margin-top: 14px; padding-top: 13px; border-top: 1px solid #eee6de; font-size: 12px; }
+  .web-play-rail-meta span { color: #91877d; }
+  .web-play-rail-meta strong { color: #4a413a; font-variant-numeric: tabular-nums; }
+  .web-sound-button {
+    width: 100%; margin-top: 16px; padding: 8px; border: 1px solid #ded1c5; border-radius: 8px;
+    color: #755243; background: #fff; cursor: pointer;
+  }
+
+  /* 揭棋需要更宽的暗子池，因此采用棋盘 + 综合信息栏的双栏工作区。 */
+  .app-web .jieqi-play .play-main {
+    width: 100%;
+    height: calc(100dvh - 158px);
+    min-height: 680px;
+    margin-inline: auto;
+    grid-template-columns: 210px minmax(500px, 1fr) 286px;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .app-web .jieqi-play .play-board-area {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .app-web .jieqi-play .desktop-board-playerbar,
+  .app-web .jieqi-play .jieqi-pool-strip { flex: 0 0 auto; }
+  .app-web .jieqi-play .jieqi-board-stage { min-height: 0; }
+  .app-web .jieqi-play .xq-board-measure { max-width: 590px; }
+  .app-web .jieqi-play .jieqi-pool-strip { max-width: 590px; }
+  .app-web .jieqi-play .desktop-play-inspector {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+  }
+  .app-web .jieqi-status-rail { height: fit-content; min-height: 0; }
+  .app-web .jieqi-status-rail .web-player-card.opponent .web-player-avatar { background: #403b37; }
+  .app-web .jieqi-status-rail .web-player-card.self .web-player-avatar { background: #b33c32; }
+  .app-web .jieqi-status-rail .web-play-rail-meta strong.red { color: #b33c32; }
+  .app-web .jieqi-status-rail .web-play-rail-meta strong.black { color: #34312e; }
+  .jieqi-status-result {
+    margin-top: 14px; padding: 9px; border-radius: 8px;
+    color: #73503d; background: #f5ece5; font-size: 11px; text-align: center;
+  }
+
+  /* 每日训练：题面信息移到右侧，首屏优先完整呈现棋盘。 */
+  .app-web .trainer {
+    width: min(100%, 980px);
+    display: grid;
+    grid-template-columns: minmax(520px, 620px) minmax(260px, 1fr);
+    grid-template-areas: "board info";
+    align-items: start;
+    gap: 18px;
+  }
+  .app-web .trainer > .trainer-board-area { grid-area: board; min-width: 0; }
+  .app-web .trainer > .info {
+    grid-area: info;
+    margin: 0;
+    padding: 18px;
+    position: sticky;
+    top: 12px;
+  }
+  .app-web .trainer > .info .info-top { gap: 6px; margin-bottom: 14px; }
+  .app-web .trainer > .info .tag { margin: 0; }
+  .app-web .trainer > .info .due-badge { width: 100%; margin-top: 3px; }
+  .app-web .trainer > .info p { margin: 18px 0 4px; color: #443b34; line-height: 1.7; }
+  .app-web .trainer > .info .feedback-slot { min-height: 56px; margin-top: 8px; }
+}
+
 @media (max-width: 960px) {
   .app-web { padding-inline: 20px; }
   .app-web .web-header { gap: 12px; }

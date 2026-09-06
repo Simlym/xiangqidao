@@ -24,6 +24,9 @@ const positionEngine = createEngineManager({ remoteEvaluate: evalPosition, remot
 
 export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogin, onOpenSettings }) {
   const isDesktop = usesDesktopLayout(runtime);
+  const [wideWeb, setWideWeb] = React.useState(() =>
+    runtime === "web" && typeof window !== "undefined" && window.matchMedia("(min-width: 1100px)").matches
+  );
   const [fen, setFen] = React.useState(null);
   const [legalMoves, setLegalMoves] = React.useState([]);
   const [lastMove, setLastMove] = React.useState(null);
@@ -71,6 +74,15 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
   const evalSession = React.useRef(null);
   const logRef = React.useRef(null);                  // 棋谱滚动容器
   const keysRef = React.useRef({});                   // 键盘快捷键的最新处理函数
+
+  React.useEffect(() => {
+    if (runtime !== "web") return undefined;
+    const media = window.matchMedia("(min-width: 1100px)");
+    const update = () => setWideWeb(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   // 新着法出现时棋谱自动滚到最底部，最新一着始终可见
   React.useEffect(() => {
@@ -553,12 +565,13 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     ? localRuntime === "native" ? "UCI 引擎 · 本地" : "WASM UCI 引擎 · 本地"
     : engineInfo?.label || "云端内置象棋引擎";
   const evalInfo = describeEval(evalData || {}, humanSide);
+  const useSideLayout = isDesktop || wideWeb;
 
   return (
     <div className="play">
       {moveError && <div className="result bad" role="alert">{moveError}</div>}
       {/* 状态与操作分两行：状态文案变化（引擎思考中 ↔ 轮到你走）不再挤动按钮换行，棋盘不跳动 */}
-      {!isDesktop && <div className="panel play-status-bar">
+      {!useSideLayout && <div className="panel play-status-bar">
         <div className="play-status-line">
           <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
           <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
@@ -637,7 +650,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         </div>
       </div>}
 
-      {!isDesktop && showEval && (() => {
+      {!useSideLayout && showEval && (() => {
         const info = describeEval(evalData || {}, humanSide);
         return (
           <div className="panel eval-bar-wrap">
@@ -652,7 +665,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         );
       })()}
 
-      {!isDesktop && hint && (
+      {!useSideLayout && hint && (
         <div className="panel hint-strip">
           💡 推荐：<strong>{hint.text}</strong>
           <span className="muted">（{hint.source}）</span>
@@ -679,7 +692,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
         </div>
       )}
 
-      {!isDesktop && showBook && (
+      {!useSideLayout && showBook && (
         <div className="panel book-panel">
           <div className="book-panel-head">
             <strong>云库着法</strong>
@@ -724,8 +737,32 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
 
       {/* PC：棋盘居左、棋谱在右侧伴随显示；移动端自动堆叠回上下布局 */}
       <div className="play-main">
+        {wideWeb && (
+          <aside className="panel web-play-rail" aria-label="本局状态">
+            <div className="web-play-rail-title">本局对弈</div>
+            <div className="web-player-card opponent">
+              <span className="web-player-avatar">机</span>
+              <div><strong>电脑</strong><small>{engineDisplay}</small></div>
+            </div>
+            <div className="web-turn-card">
+              <small>当前局面</small>
+              <strong>{currentTurnText}</strong>
+              <span>{LEVELS.find((item) => item.key === level)?.label} · {Math.ceil(moveLog.length / 2)} 回合</span>
+            </div>
+            <div className="web-player-card self">
+              <span className="web-player-avatar">我</span>
+              <div><strong>你</strong><small>{humanSide === "w" ? "执红先行" : "执黑后行"}</small></div>
+            </div>
+            <div className="web-play-rail-meta">
+              <span>累计用时</span><strong>{totalMs > 0 ? fmtDuration(totalMs) : "00:00"}</strong>
+            </div>
+            <button className="web-sound-button" onClick={cycleSound}>
+              {muted ? "🔇 已静音" : `🔊 ${soundThemeLabel(soundKey)}`}
+            </button>
+          </aside>
+        )}
         <div className="play-board-area">
-          {isDesktop && (
+          {useSideLayout && (
             <div className="desktop-board-playerbar">
               <span>电脑</span>
               <strong>{currentTurnText}</strong>
@@ -793,7 +830,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           )}
         </div>
 
-        {isDesktop ? (
+        {useSideLayout ? (
           <aside className="panel move-log desktop-play-inspector">
             <div className="desktop-game-summary">
               <strong>本局信息</strong>
