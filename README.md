@@ -137,6 +137,16 @@ uv run python -m app.modules.puzzles.importer.load seeds/more.json
 
 自有题库需转换为项目 JSON 格式，着法统一使用 UCI 坐标制，例如 `h2e2`。设置 `XIANGQI_ENGINE` 后可用 `--verify` 调用用户引擎校验，或先运行审计工具（默认读取 `backend/wukong_puzzles.json`，产出写入 `seeds/`）：
 
+内置课程还包含由 [CCPD](https://github.com/Yvonne761/Chinese-Chess-Practical-Dataset)（CC BY 4.0）转换的开局、中局和残局实战谱。重新生成时，将 CCPD 的 `Dataset` 目录传给转换器；转换过程会解码 Big5 中文棋谱、转换为 UCI 并逐手检查合法性：
+
+```bash
+cd backend
+python -m app.modules.puzzles.importer.import_ccpd ../Chinese-Chess-Practical-Dataset/Dataset
+python -m app.modules.puzzles.importer.load seeds/ccpd_curriculum.json
+```
+
+生成时可通过 `--engine <Pikafish路径>` 逐题核对第一手；与引擎首选一致的题会标记为已验证，其余题仍作为大师实战主线保留。已有数据库不会在启动时自动扩容，需手动执行导入命令；全新数据库会自动播种 `seeds/` 下全部 JSON。
+
 ```bash
 uv run python -m app.modules.puzzles.importer.load path/to/puzzles.json --verify
 uv run python -m app.modules.puzzles.importer.audit_puzzles
