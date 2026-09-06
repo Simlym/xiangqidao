@@ -191,6 +191,8 @@ Copy-Item .env.docker.example .env
 docker compose up -d --build
 ```
 
+构建已内置国内网络加速：基础镜像默认经 DaoCloud 公共镜像源拉取，pip 走阿里源，npm 走 npmmirror。均可在 `.env` 中用 `IMAGE_REGISTRY`、`PIP_INDEX_URL`、`NPM_REGISTRY` 覆盖（海外服务器可设 `IMAGE_REGISTRY=docker.io` 直连官方源）。
+
 Linux/macOS 可使用 `cp .env.docker.example .env`。启动后访问 `http://localhost:8080`；可通过 `.env` 中的 `HTTP_PORT` 修改端口。查看状态和日志：
 
 ```bash
