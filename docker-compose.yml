@@ -43,7 +43,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       LLM_MODEL: ${LLM_MODEL:-gpt-4.1-mini}
     volumes:
-      - user-engine-data:/app/data/engines
+      - ./local-engines:/app/data/engines
     depends_on:
       database:
         condition: service_healthy
@@ -69,4 +69,3 @@ services:
 
 volumes:
   postgres-data:
-  user-engine-data:
