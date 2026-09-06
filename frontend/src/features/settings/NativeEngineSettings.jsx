@@ -11,9 +11,6 @@ export default function NativeEngineSettings({
   variant = "xiangqi",
   label = "标准象棋 UCI 引擎",
 }) {
-  const sourceUrl = variant === "jieqi"
-    ? "https://github.com/official-pikafish/Pikafish/branches"
-    : "https://github.com/official-pikafish/Pikafish/releases";
   const initial = React.useMemo(() => getNativeEngineProfile(variant), [variant]);
   const [path, setPath] = React.useState(() => initial?.path || "");
   const [threads, setThreads] = React.useState(() => initial?.threads || 2);
@@ -102,8 +99,7 @@ export default function NativeEngineSettings({
         {platform.features?.length ? ` · ${platform.features.join(" / ")}` : ""}
       </p>}
       <p className="muted" style={{ fontSize: 12 }}>
-        <a href={sourceUrl} target="_blank" rel="noreferrer">根据上述平台信息查看推荐上游页面</a>
-        。项目不代理下载；程序与权重许可需分别确认。
+        请根据上述平台信息自行选择引擎来源。项目不代理下载、不指定推荐引擎；程序与权重许可需分别确认。
       </p>
       <div className="native-engine-input">
         <input

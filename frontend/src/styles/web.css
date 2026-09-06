@@ -87,31 +87,6 @@
   .section-tabs button { white-space: nowrap; }
 }
 
-.admin-service-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  border: 1px solid #d9c7ad;
-  border-radius: 10px;
-  background: #fffaf2;
-  color: #51483e;
-}
-.admin-service-notice strong { display: block; margin-bottom: 3px; }
-.admin-service-notice p { margin: 0 0 6px; color: #756b60; font-size: 13px; }
-.admin-service-notice code { color: #81552d; overflow-wrap: anywhere; }
-.admin-service-badge {
-  flex: none;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: #8a5a2b;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .04em;
-}
-
 /* ── Web 端响应式外壳与统一视觉 ───────────────────────────
    桌面客户端有独立布局；以下规则只服务浏览器与 PWA。 */
 .app-web {

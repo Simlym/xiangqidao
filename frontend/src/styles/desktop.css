@@ -385,7 +385,6 @@ body.desktop-runtime {
 /* PC 工作区充分利用横向空间，业务组件仍与 Web 共用。 */
 .app-desktop .play,
 .app-desktop .play-setup,
-.app-desktop .admin,
 .app-desktop .coach,
 .app-desktop .stats,
 .app-desktop .challenge {

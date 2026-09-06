@@ -26,7 +26,7 @@ const TABS = [
   { key: "logs", label: "日志" },
 ];
 
-export default function Admin({ desktop = false, serviceUrl = "" }) {
+export default function Admin() {
   const [tab, setTab] = React.useState("overview");
   const [ov, setOv] = React.useState(null);
   const [users, setUsers] = React.useState([]);
@@ -97,16 +97,6 @@ export default function Admin({ desktop = false, serviceUrl = "" }) {
 
   return (
     <div className="admin">
-      {desktop && (
-        <div className="admin-service-notice">
-          <span className="admin-service-badge">WEB 服务</span>
-          <div>
-            <strong>这里管理的是当前连接的 Web 服务</strong>
-            <p>用户、题库、权益和云端功能配置会影响所有连接到该服务的客户端，不属于本机偏好。</p>
-            {serviceUrl && <code>{serviceUrl}</code>}
-          </div>
-        </div>
-      )}
       <div className="admin-tabs">
         {TABS.map((t) => (
           <button
@@ -114,7 +104,7 @@ export default function Admin({ desktop = false, serviceUrl = "" }) {
             className={tab === t.key ? "active" : ""}
             onClick={() => setTab(t.key)}
           >
-            {desktop && t.key === "settings" ? "服务配置" : t.label}
+            {t.label}
           </button>
         ))}
       </div>
@@ -433,15 +423,13 @@ const OS_LABEL = { windows: "Windows", macos: "macOS", linux: "Linux" };
 const ENGINE_GUIDES = {
   xiangqi: {
     title: "标准象棋 UCI 引擎",
-    description: "象棋道不提供或代下载引擎。请先根据服务器平台前往上游项目自行下载，再将文件放到服务器的非公开目录。",
+    description: "象棋道不提供或代下载引擎，也不指定推荐引擎。请根据服务器平台自行选择上游来源下载，再将文件放到服务器的非公开目录。",
     example: "例如 /opt/xiangqidao/engines/xiangqi/engine 或 D:\\engines\\xiangqi\\engine.exe",
-    url: "https://github.com/official-pikafish/Pikafish/releases",
   },
   jieqi: {
     title: "揭棋 UCI 引擎",
     description: "请选择明确支持揭棋扩展 FEN 的专用 UCI 引擎。标准象棋引擎不能直接用于揭棋。",
     example: "例如 /opt/xiangqidao/engines/jieqi/engine 或 D:\\engines\\jieqi\\engine.exe",
-    url: "https://github.com/official-pikafish/Pikafish/branches",
   },
 };
 
@@ -491,8 +479,7 @@ function ServerEnginePanel({ variant }) {
       {status?.configured_path && <button className="game-delete-btn" style={{ width: "auto", padding: "0 12px" }} disabled={busy} onClick={() => save("")}>清除</button>}
     </div>
     <p className="muted" style={{ fontSize: 12 }}>
-      <a href={guide.url} target="_blank" rel="noreferrer">查看上游下载/源码页面</a>
-      。引擎程序和权重可能采用不同许可；商业使用前请自行确认。象棋道只保存路径并通过 UCI 协议调用。
+      引擎程序和权重可能采用不同许可；商业使用前请自行确认。象棋道只保存路径并通过 UCI 协议调用。
     </p>
     {error && <div className="import-error">{error}</div>}
     {message && <div className={status?.available ? "import-ok" : "muted"}>{message}</div>}

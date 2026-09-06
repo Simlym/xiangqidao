@@ -11,9 +11,9 @@ import Admin from "../features/admin/Admin";
 import Settings from "../features/settings/Settings";
 import Today from "../features/today/Today";
 import Learning from "../features/learning/Learning";
-import { API_BASE_URL, fetchMe, getToken, setToken, resetGuestId, getCredits, checkinCredits, getEntitlements } from "../shared/api";
+import { fetchMe, getToken, setToken, resetGuestId, getCredits, checkinCredits, getEntitlements } from "../shared/api";
 import { useReminders } from "../features/today/useReminders";
-import { runtime, usesDesktopLayout } from "../platform/runtime";
+import { runtime, usesDesktopLayout, RUNTIME } from "../platform/runtime";
 import { useCosmeticPreferences } from "../shared/preferences/cosmetics";
 import { PrimaryNavigation, SecondaryNavigation } from "./AppNavigation";
 import { resolveNavigation } from "./navigation";
@@ -181,10 +181,10 @@ export default function App() {
     setTab("train");
   }
 
-  const { activeGroup, activeTab } = resolveNavigation(tab, {
-    isDesktop,
-    isAdmin: user?.role === "admin",
-  });
+  // 管理后台只服务于 Web 部署，PC/移动客户端不提供入口
+  const isAdmin = runtime === RUNTIME.WEB && user?.role === "admin";
+
+  const { activeGroup, activeTab } = resolveNavigation(tab, { isAdmin });
   const navigation = <PrimaryNavigation tab={tab} desktop={isDesktop} onNavigate={setTab} />;
   const secondaryNavigation = <SecondaryNavigation tab={tab} activeGroup={activeGroup} onNavigate={setTab} />;
 
@@ -285,9 +285,7 @@ export default function App() {
       {tab === "jieqi" && (
         <JieqiPlay onOpenSettings={isDesktop ? () => setTab("settings") : null} />
       )}
-      {tab === "admin" && user?.role === "admin" && (
-        <Admin desktop={isDesktop} serviceUrl={API_BASE_URL} />
-      )}
+      {tab === "admin" && isAdmin && <Admin />}
       {tab === "settings" && (
         <Settings
           user={user}
@@ -314,7 +312,7 @@ export default function App() {
     <div className={`app app-theme-${appearance.app} ${appearance.app !== "classic" ? "app-theme-custom" : ""} ${isDesktop ? "app-desktop" : "app-web"}`}>
       {isDesktop ? (
         <DesktopShell
-          tab={tab} user={user} activeGroup={activeGroup} activeTab={activeTab}
+          tab={tab} activeGroup={activeGroup} activeTab={activeTab}
           navigation={navigation} secondaryNavigation={secondaryNavigation}
           reminderBanner={reminderBanner} account={desktopAccount} onNavigate={setTab}
         >

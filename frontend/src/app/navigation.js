@@ -30,10 +30,10 @@ export const PAGE_TABS = [
   { key: "games", label: "我的棋局" },
 ];
 
-export function resolveNavigation(tab, { isDesktop, isAdmin }) {
+export function resolveNavigation(tab, { isAdmin }) {
   const utilityTabs = [
-    { key: "settings", icon: "⚙️", desktopIcon: "⚙", label: isDesktop ? "本机设置" : "设置", short: "设置" },
-    ...(isAdmin ? [{ key: "admin", icon: "◎", desktopIcon: "◎", label: isDesktop ? "Web 管理后台" : "管理后台", short: "后台" }] : []),
+    { key: "settings", icon: "⚙️", desktopIcon: "⚙", label: "设置", short: "设置" },
+    ...(isAdmin ? [{ key: "admin", icon: "◎", desktopIcon: "◎", label: "管理后台", short: "后台" }] : []),
   ];
   return {
     utilityTabs,
