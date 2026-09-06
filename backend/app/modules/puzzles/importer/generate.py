@@ -5,8 +5,8 @@
 凡能将死黑方者即为一道合格题。所有题都经 verify_mate 校验，保证正解成立。
 
 用法（在 backend/ 目录）:
-    python -m app.modules.puzzles.importer.generate --count 50 --out app/modules/puzzles/importer/generated.json
-    python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/generated.json   # 再导入
+    python -m app.modules.puzzles.importer.generate --count 50 --out seeds/generated.json
+    python -m app.modules.puzzles.importer.load seeds/generated.json   # 再导入（库空时重启也会自动播种 seeds/）
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from pathlib import Path
 
 from app.shared.xiangqi.validation import (
     FILES,
@@ -141,7 +142,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="生成内置规则校验过的一步杀题")
     ap.add_argument("--count", type=int, default=30)
     ap.add_argument("--seed", type=int, default=None)
-    ap.add_argument("--out", default="app/modules/puzzles/importer/generated.json")
+    ap.add_argument("--out", default=str(Path(__file__).resolve().parents[4] / "seeds" / "generated_puzzles.json"))
     args = ap.parse_args()
 
     puzzles = generate(args.count, seed=args.seed)

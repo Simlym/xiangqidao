@@ -9,10 +9,12 @@
 保证导出的每一题都是经规则引擎验证成立的连将杀，正解可靠。
 
 用法（在 backend/ 目录）:
-    # 下载并求解，产出 JSON（可加 --limit 先小批量试跑）
-    python -m app.modules.puzzles.importer.import_wukong --out app/modules/puzzles/importer/wukong_puzzles.json
-    # 再导入数据库
-    python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/wukong_puzzles.json
+    # 下载并求解，产出原始 JSON（可加 --limit 先小批量试跑）
+    python -m app.modules.puzzles.importer.import_wukong --out wukong_puzzles.json
+    # 审计剔除非法/多解题，产出可播种题库到 seeds/（见 audit_puzzles.py）
+    python -m app.modules.puzzles.importer.audit_puzzles
+    # 公共题库为空时重启应用会自动播种 seeds/，也可手动导入
+    python -m app.modules.puzzles.importer.load seeds/wukong_puzzles.audited.json
 """
 
 from __future__ import annotations
@@ -85,7 +87,7 @@ def convert(raw: list[dict], limit: int | None = None) -> tuple[list[dict], dict
 def main() -> None:
     ap = argparse.ArgumentParser(description="接入 wukong-xiangqi 实战杀局题库")
     ap.add_argument("--src", default=SOURCE_URL, help="puzzles.js 的 URL 或本地路径")
-    ap.add_argument("--out", default="app/modules/puzzles/importer/wukong_puzzles.json")
+    ap.add_argument("--out", default="wukong_puzzles.json")
     ap.add_argument("--limit", type=int, default=None, help="只取前 N 道成功求解的题（试跑用）")
     args = ap.parse_args()
 

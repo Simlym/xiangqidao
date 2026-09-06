@@ -12,9 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv sync
-uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/seed_puzzles.json
 uv run python -m app
 ```
+
+首次启动若公共题库为空，会自动导入 `backend/seeds/` 下的种子题库（`app/modules/puzzles/seeding.py`，`SEEDS_DIR` 可覆盖目录）；扩容/更新题库仍手动运行 `python -m app.modules.puzzles.importer.load <json路径>`。
 
 ### Tests (from `backend/`)
 

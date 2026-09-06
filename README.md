@@ -56,14 +56,12 @@
 ```bash
 cd backend
 uv sync
-uv run alembic upgrade head
-uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/seed_puzzles.json
 uv run python -m app
 ```
 
 后端默认运行在 `http://127.0.0.1:8000`。开发环境可访问 `http://127.0.0.1:8000/docs` 查看 API。
 
-> 数据库迁移也会在应用启动时自动执行。导入命令可以重复运行，题库会按现有导入逻辑处理。
+> 数据库迁移在应用启动时自动执行；公共题库为空时也会自动导入 [`backend/seeds/`](backend/seeds/) 下的种子题库（见[题库](#题库)），无需手动执行导入脚本。
 
 ### 2. 启动 Web 前端
 
@@ -118,34 +116,33 @@ Web 和 Android 用户可在设置页导入符合[引擎包规范](docs/engines/
 
 ## 题库
 
-仓库内包含三类可直接使用的数据：
+题库数据与代码分离，存放在 [`backend/seeds/`](backend/seeds/)：
 
-- `seed_puzzles.json`：小型种子题库，适合首次启动。
+- `seed_puzzles.json`：小型种子题库。
 - `generated_puzzles.json`：内置生成器产出的杀法题。
 - `wukong_puzzles.audited.json`：经过合法性、终局、多解与重复局面审计的较大题库。
 
-在 `backend/` 目录中导入：
+应用启动时若公共题库为空，会自动导入 `seeds/` 目录下全部 JSON（目录可用 `SEEDS_DIR` 覆盖）；已有题库则跳过，因此扩容或更新题库需手动导入：
 
 ```bash
-uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/generated_puzzles.json
-uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/wukong_puzzles.audited.json
+uv run python -m app.modules.puzzles.importer.load seeds/wukong_puzzles.audited.json
 ```
 
-也可以生成新的一步杀题：
+也可以生成新的一步杀题，产出直接放进种子目录：
 
 ```bash
-uv run python -m app.modules.puzzles.importer.generate --count 100 --seed 1234 --out app/modules/puzzles/importer/more.json
-uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/more.json
+uv run python -m app.modules.puzzles.importer.generate --count 100 --seed 1234 --out seeds/more.json
+uv run python -m app.modules.puzzles.importer.load seeds/more.json
 ```
 
-自有题库需转换为项目 JSON 格式，着法统一使用 UCI 坐标制，例如 `h2e2`。设置 `XIANGQI_ENGINE` 后可用 `--verify` 调用用户引擎校验，或先运行审计工具：
+自有题库需转换为项目 JSON 格式，着法统一使用 UCI 坐标制，例如 `h2e2`。设置 `XIANGQI_ENGINE` 后可用 `--verify` 调用用户引擎校验，或先运行审计工具（默认读取 `backend/wukong_puzzles.json`，产出写入 `seeds/`）：
 
 ```bash
 uv run python -m app.modules.puzzles.importer.load path/to/puzzles.json --verify
 uv run python -m app.modules.puzzles.importer.audit_puzzles
 ```
 
-格式示例可参考 [`backend/app/modules/puzzles/importer/seed_puzzles.json`](backend/app/modules/puzzles/importer/seed_puzzles.json)，审计说明见 [`backend/app/modules/puzzles/importer/puzzle_audit_report.md`](backend/app/modules/puzzles/importer/puzzle_audit_report.md)。
+格式示例可参考 [`backend/seeds/seed_puzzles.json`](backend/seeds/seed_puzzles.json)，审计说明见 [`backend/seeds/puzzle_audit_report.md`](backend/seeds/puzzle_audit_report.md)。
 
 ## 数据与账号
 
@@ -165,6 +162,7 @@ uv run python -m app.modules.puzzles.importer.audit_puzzles
 | --- | --- | --- |
 | `HOST` / `PORT` | 后端监听地址与端口 | `127.0.0.1` / `8000` |
 | `DATABASE_URL` | SQLAlchemy 数据库连接串 | `sqlite:///./data/puzzles.db` |
+| `SEEDS_DIR` | 首次启动自动导入的题库种子目录 | `backend/seeds` |
 | `APP_ENV` | 设为 `production` 时启用生产校验并关闭 API 文档 | 空 |
 | `SECRET_KEY` | 登录 token 签名密钥；生产环境必须更换 | 本地开发占位值 |
 | `CORS_ORIGINS` | 允许访问 API 的前端来源，逗号分隔 | 本地开发放开 |

@@ -11,6 +11,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from .routes import register_routes
 from .core.database import init_db
 from .core.rate_limit import limiter
+from .modules.puzzles.seeding import seed_default_library
 
 _IS_PROD = os.environ.get("APP_ENV", "").lower() in ("prod", "production")
 
@@ -44,6 +45,7 @@ register_routes(app)
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    seed_default_library()  # 首次启动自动导入 backend/seeds/ 种子题库
     _setup_logging()  # 安装内存日志缓冲，等级取自数据库设置（后台可调）
 
 

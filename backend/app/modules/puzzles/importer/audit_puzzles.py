@@ -198,11 +198,12 @@ def _markdown(source: Path, report: dict) -> str:
 
 
 def main() -> None:
-    here = Path(__file__).resolve().parent
+    # 默认读取 backend/ 下的原始题库（import_wukong.py 产出），审计结果写入 seeds/
+    backend = Path(__file__).resolve().parents[4]
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=Path, default=here / "wukong_puzzles.json")
-    parser.add_argument("--output", type=Path, default=here / "wukong_puzzles.audited.json")
-    parser.add_argument("--report", type=Path, default=here / "puzzle_audit_report.md")
+    parser.add_argument("--input", type=Path, default=backend / "wukong_puzzles.json")
+    parser.add_argument("--output", type=Path, default=backend / "seeds" / "wukong_puzzles.audited.json")
+    parser.add_argument("--report", type=Path, default=backend / "seeds" / "puzzle_audit_report.md")
     args = parser.parse_args()
 
     items = json.loads(args.input.read_text(encoding="utf-8"))
