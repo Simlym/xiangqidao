@@ -382,7 +382,9 @@ export default function Trainer({ target = null, onTargetConsumed, user, onCredi
           lastMove={lastMove}
           disabled={boardDisabled}
         />
+      </div>
 
+      <div className="trainer-result-area">
         {/* 答错面板 */}
         {phase === "wrong" && (
           <div className="board-overlay">

@@ -397,6 +397,18 @@
 
 /* 战术训练：结果/自评面板浮于棋面正中，配暖棕遮罩聚焦弹窗 */
 .trainer-board-area { position: relative; }
+.trainer-result-area:empty { display: none; }
+.trainer-result-area .board-overlay {
+  position: static;
+  padding: 0;
+  background: none;
+  animation: none;
+}
+.trainer-result-area .board-overlay > .panel {
+  max-width: none;
+  max-height: calc(100vh - 180px);
+  box-shadow: 0 6px 22px rgba(65, 47, 34, .08);
+}
 .board-overlay {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
