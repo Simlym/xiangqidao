@@ -9,6 +9,8 @@ backend/data/*.db
 
 # 引擎下载/安装产物（由管理后台一键安装，不入库）
 backend/data/engine/
+local-engines/*
+!local-engines/README.md
 
 # Node
 frontend/node_modules/
@@ -25,7 +27,6 @@ src-tauri/gen/
 # 浏览器本地引擎产物（自行放置，体积大不入库）
 frontend/public/engine/*
 !frontend/public/engine/README.md
-!frontend/public/engine/pikafish.worker.js
 .wasm-build-src/
 .wasm-official-*/
 

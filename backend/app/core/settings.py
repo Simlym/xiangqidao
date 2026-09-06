@@ -16,6 +16,7 @@ KEY_LLM_PROTOCOL = "llm_protocol"
 KEY_LLM_BASE_URL = "llm_base_url"
 KEY_LLM_THINKING_ENABLED = "llm_thinking_enabled"
 KEY_LLM_REASONING_EFFORT = "llm_reasoning_effort"
+KEY_XIANGQI_ENGINE_PATH = "xiangqi_engine_path"
 KEY_JIEQI_ENGINE_PATH = "jieqi_engine_path"
 
 PROTOCOL_OPENAI_CHAT = "openai_chat"

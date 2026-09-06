@@ -1,61 +1,55 @@
-"""管理后台：标准象棋与揭棋 Pikafish 配置。所有接口需管理员权限。"""
+"""管理后台：配置用户自行提供的标准象棋与揭棋 UCI 引擎。"""
 
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.engine import installer as engine_install
-from app.modules.auth.service import require_admin
 from app.core.dependencies import get_db
-from app.engine.jieqi import find_jieqi_engine, reset_shared_jieqi_engine
 from app.core.models import User
 from app.core.security_log import admin_action
-from app.core.settings import KEY_JIEQI_ENGINE_PATH, get_setting, set_setting
-from .schemas import InstallRequest, JieqiEngineUpdate
+from app.core.settings import KEY_JIEQI_ENGINE_PATH, KEY_XIANGQI_ENGINE_PATH, set_setting
+from app.engine.jieqi import reset_shared_jieqi_engine
+from app.engine.uci import reset_shared_engine
+from app.engine.profiles import profile_status
+from app.modules.auth.service import require_admin
+from .schemas import EnginePathUpdate
 
 router = APIRouter(
     prefix="/api/admin/engine", tags=["admin"], dependencies=[Depends(require_admin)]
 )
 
-
-def _jieqi_status(db: Session) -> dict:
-    configured = get_setting(db, KEY_JIEQI_ENGINE_PATH).strip()
-    env_path = os.getenv("JIEQI_ENGINE", "").strip()
-    effective = find_jieqi_engine()
-    if configured:
-        source = "admin"
-    elif env_path:
-        source = "environment"
-    elif effective:
-        source = "managed"
-    else:
-        source = "none"
-    return {
-        "configured_path": configured,
-        "effective_path": os.path.abspath(effective) if effective else "",
-        "available": bool(effective),
-        "source": source,
-    }
+_KEYS = {"xiangqi": KEY_XIANGQI_ENGINE_PATH, "jieqi": KEY_JIEQI_ENGINE_PATH}
 
 
 @router.get("")
 def get_status():
-    """返回引擎安装状态、操作系统、安装进度等，供前端展示与轮询。"""
-    return engine_install.status()
+    """返回平台信息和双棋种配置；不访问第三方下载服务。"""
+    return {
+        "distribution": "user-provided",
+        "xiangqi": profile_status("xiangqi"),
+        "jieqi": profile_status("jieqi"),
+    }
 
 
-@router.get("/jieqi")
-def get_jieqi_status(db: Session = Depends(get_db)):
-    """读取 Web 服务器当前的揭棋引擎路径和发现状态。"""
-    return _jieqi_status(db)
+@router.get("/{variant}")
+def get_variant_status(variant: str):
+    if variant not in _KEYS:
+        raise HTTPException(404, "不支持的棋种")
+    return profile_status(variant)
 
 
-@router.put("/jieqi")
-def update_jieqi_engine(body: JieqiEngineUpdate, request: Request,
-                         db: Session = Depends(get_db),
-                         admin: User = Depends(require_admin)):
-    """保存揭棋引擎绝对路径；传空字符串则恢复环境变量/固定目录发现。"""
+@router.put("/{variant}")
+def update_engine(
+    variant: str,
+    body: EnginePathUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """保存服务器上由管理员自行放置的引擎绝对路径。"""
+    if variant not in _KEYS:
+        raise HTTPException(404, "不支持的棋种")
     path = body.path.strip()
     if path:
         if not os.path.isabs(path):
@@ -63,31 +57,12 @@ def update_jieqi_engine(body: JieqiEngineUpdate, request: Request,
         path = os.path.abspath(path)
         if not os.path.isfile(path):
             raise HTTPException(400, "服务器上找不到该引擎文件")
-    set_setting(db, KEY_JIEQI_ENGINE_PATH, path)
+    set_setting(db, _KEYS[variant], path)
     db.commit()
-    reset_shared_jieqi_engine()
-    admin_action(
-        request,
-        admin.username,
-        "update_jieqi_engine",
-        "configured" if path else "cleared",
-        db=db,
-    )
-    return _jieqi_status(db)
-
-
-@router.post("/install")
-def install(body: InstallRequest, request: Request, admin: User = Depends(require_admin)):
-    """从官方 Release 下载并安装/更新 Pikafish（后台异步执行，前端轮询进度）。"""
-    variant = engine_install.sanitize_variant(body.variant)
-    res = engine_install.start_install(variant)
-    admin_action(request, admin.username, "install_engine", variant or "auto")
-    return {**engine_install.status(), **res}
-
-
-@router.delete("")
-def remove(request: Request, admin: User = Depends(require_admin)):
-    """卸载受管目录中的 Pikafish，回退到 PATH / 内置引擎。"""
-    engine_install.remove()
-    admin_action(request, admin.username, "remove_engine", "")
-    return engine_install.status()
+    if variant == "jieqi":
+        reset_shared_jieqi_engine()
+    else:
+        reset_shared_engine()
+    action = f"{variant}:configured" if path else f"{variant}:cleared"
+    admin_action(request, admin.username, "update_user_engine", action, db=db)
+    return profile_status(variant)

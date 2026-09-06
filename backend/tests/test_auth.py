@@ -93,7 +93,7 @@ def test_admin_can_list_and_create_puzzle(client):
 def test_admin_can_configure_jieqi_engine(client, tmp_path):
     admin = client.post("/api/auth/register", json={"username": "alice", "password": "password1"})
     headers = {"Authorization": f"Bearer {admin.json()['token']}"}
-    engine = tmp_path / "jieqi-pikafish"
+    engine = tmp_path / "jieqi-uci-engine"
     engine.write_bytes(b"test executable placeholder")
 
     saved = client.put(
@@ -113,7 +113,7 @@ def test_admin_can_configure_jieqi_engine(client, tmp_path):
 def test_jieqi_engine_path_must_exist(client, tmp_path):
     admin = client.post("/api/auth/register", json={"username": "alice", "password": "password1"})
     headers = {"Authorization": f"Bearer {admin.json()['token']}"}
-    missing = tmp_path / "missing-pikafish"
+    missing = tmp_path / "missing-uci-engine"
     response = client.put(
         "/api/admin/engine/jieqi",
         headers=headers,
@@ -121,6 +121,19 @@ def test_jieqi_engine_path_must_exist(client, tmp_path):
     )
     assert response.status_code == 400
     assert "找不到" in response.json()["detail"]
+
+
+def test_admin_can_configure_xiangqi_engine(client, tmp_path):
+    admin = client.post("/api/auth/register", json={"username": "alice", "password": "password1"})
+    headers = {"Authorization": f"Bearer {admin.json()['token']}"}
+    engine = tmp_path / "xiangqi-uci-engine"
+    engine.write_bytes(b"test executable placeholder")
+
+    saved = client.put("/api/admin/engine/xiangqi", headers=headers, json={"path": str(engine)})
+    assert saved.status_code == 200
+    assert saved.json()["configured_path"] == str(engine)
+    assert saved.json()["variant"] == "xiangqi"
+    assert saved.json()["available"] is True
 
 
 def test_per_user_data_isolation(client):

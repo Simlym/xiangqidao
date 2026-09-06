@@ -63,11 +63,8 @@ export const adminAdjustCredits = (username, delta, reason = "") => request(`/ad
 export const adminPuzzles = ({ limit = 20, offset = 0, category = "", difficulty = 0, q = "" } = {}) => request(`/admin/puzzles?limit=${limit}&offset=${offset}&difficulty=${difficulty}&category=${encodeURIComponent(category)}&q=${encodeURIComponent(q)}`);
 export const adminCreatePuzzle = (payload) => request("/admin/puzzles", { method: "POST", body: payload });
 export const adminDeletePuzzle = (id) => request(`/admin/puzzles/${id}`, { method: "DELETE" });
-export const adminGetEngine = () => request("/admin/engine");
-export const adminInstallEngine = (variant) => request("/admin/engine/install", { method: "POST", body: { variant: variant || null } });
-export const adminRemoveEngine = () => request("/admin/engine", { method: "DELETE" });
-export const adminGetJieqiEngine = () => request("/admin/engine/jieqi");
-export const adminUpdateJieqiEngine = (path) => request("/admin/engine/jieqi", { method: "PUT", body: { path } });
+export const adminGetVariantEngine = (variant) => request(`/admin/engine/${variant}`);
+export const adminUpdateVariantEngine = (variant, path) => request(`/admin/engine/${variant}`, { method: "PUT", body: { path } });
 export const adminGetLlmSettings = () => request("/admin/settings/llm");
 export const adminUpdateLlmSettings = (payload) => request("/admin/settings/llm", { method: "PUT", body: payload });
 export const adminTestLlmSettings = () => request("/admin/settings/llm/test", { method: "POST", body: {} });

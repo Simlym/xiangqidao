@@ -1,10 +1,12 @@
 import React from "react";
 import NativeEngineSettings from "./NativeEngineSettings";
+import BrowserEngineSettings from "./BrowserEngineSettings";
 import { createEngineManager } from "../../domain/xiangqi/engine/createEngineManager";
 import { evalPosition, evalJieqiPosition, getCosmetics, purchaseCosmetic } from "../../shared/api";
 import { cosmeticPreferences, setCosmeticPreference } from "../../shared/preferences/cosmetics";
 import { playSound, soundMuted, setSoundMuted, soundTheme, setSoundTheme } from "../../shared/sounds";
 import { analysisPreferences, saveAnalysisPreferences } from "../../shared/preferences/analysisPreferences";
+import { runtime, supportsNativeEngine } from "../../platform/runtime";
 
 const xiangqiEngine = createEngineManager({ remoteEvaluate: evalPosition });
 const jieqiEngine = createEngineManager({ variant: "jieqi", remoteEvaluate: evalJieqiPosition });
@@ -259,7 +261,9 @@ export default function Settings({ user, credits, onCreditsChanged, onRequireLog
         {section === "xiangqi" && (
           <div className="settings-group">
             <div className="settings-heading"><h2>标准象棋引擎</h2><p>用于人机对弈、局面评分和着法提示。</p></div>
-            <NativeEngineSettings manager={xiangqiEngine} />
+            {supportsNativeEngine(runtime)
+              ? <NativeEngineSettings manager={xiangqiEngine} />
+              : <BrowserEngineSettings manager={xiangqiEngine} />}
           </div>
         )}
         {section === "jieqi" && (
@@ -293,7 +297,9 @@ export default function Settings({ user, credits, onCreditsChanged, onRequireLog
                 </label>
               </div>
             </section>
-            <NativeEngineSettings manager={jieqiEngine} variant="jieqi" label="揭棋 Pikafish" />
+            {supportsNativeEngine(runtime)
+              ? <NativeEngineSettings manager={jieqiEngine} variant="jieqi" label="揭棋 UCI 引擎" />
+              : <BrowserEngineSettings manager={jieqiEngine} variant="jieqi" />}
           </div>
         )}
       </section>

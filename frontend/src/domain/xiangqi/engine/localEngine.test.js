@@ -16,15 +16,22 @@ function mockWorker(t) {
     headers: { "content-type": "application/javascript" },
   }));
   const previous = globalThis.Worker;
+  const previousStorage = globalThis.localStorage;
   globalThis.Worker = WorkerMock;
-  t.after(() => { globalThis.Worker = previous; });
+  globalThis.localStorage = {
+    getItem(key) {
+      const variant = key.split(".").at(-1);
+      return JSON.stringify({ base: `/__user-engines__/${variant}/test/`, entrypoint: "engine.worker.js", network: null });
+    },
+  };
+  t.after(() => { globalThis.Worker = previous; globalThis.localStorage = previousStorage; });
   return instances;
 }
 
-test("只有 Worker 包装文件、主脚本返回 HTML 时不启动引擎", async (t) => {
+test("用户引擎入口返回 HTML 时不启动引擎", async (t) => {
   const workers = mockWorker(t);
   t.mock.method(globalThis, "fetch", async (url) => new Response("", {
-    headers: { "content-type": url.endsWith("worker.js") ? "application/javascript" : "text/html" },
+    headers: { "content-type": "text/html" },
   }));
   assert.equal(await getLocalEngine("missing-test"), null);
   assert.equal(workers.length, 0);

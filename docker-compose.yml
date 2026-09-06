@@ -26,8 +26,8 @@ services:
       APP_ENV: production
       SECRET_KEY: ${SECRET_KEY:?请先在根目录 .env 中设置 SECRET_KEY}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-xiangqidao}:${POSTGRES_PASSWORD:?请先在根目录 .env 中设置 POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-xiangqidao}
-      ENGINE_DIR: /app/data/engine
-      JIEQI_ENGINE: /app/data/engine/jieqi/pikafish
+      XIANGQI_ENGINE: ${XIANGQI_ENGINE:-}
+      JIEQI_ENGINE: ${JIEQI_ENGINE:-}
       FORWARDED_ALLOW_IPS: "*"
       TZ: ${TZ:-Asia/Shanghai}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
@@ -37,7 +37,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       LLM_MODEL: ${LLM_MODEL:-gpt-4.1-mini}
     volumes:
-      - engine-data:/app/data/engine
+      - user-engine-data:/app/data/engines
     depends_on:
       database:
         condition: service_healthy
@@ -60,4 +60,4 @@ services:
 
 volumes:
   postgres-data:
-  engine-data:
+  user-engine-data:

@@ -11,7 +11,6 @@ from slowapi.middleware import SlowAPIMiddleware
 from .routes import register_routes
 from .core.database import init_db
 from .core.rate_limit import limiter
-from .engine import installer as engine_install
 
 _IS_PROD = os.environ.get("APP_ENV", "").lower() in ("prod", "production")
 
@@ -46,7 +45,6 @@ register_routes(app)
 def _startup() -> None:
     init_db()
     _setup_logging()  # 安装内存日志缓冲，等级取自数据库设置（后台可调）
-    engine_install.warm_cpu_cache()  # 后台预热 CPU 探测，使首个引擎状态请求不再卡数秒
 
 
 def _setup_logging() -> None:

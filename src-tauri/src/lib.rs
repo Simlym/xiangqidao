@@ -34,26 +34,46 @@ fn is_engine_candidate(path: &Path) -> bool {
     }
 }
 
-fn engine_candidate_priority(path: &Path) -> u8 {
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if name.contains("pikafish") {
-        0
-    } else if name.contains("pika") || name.contains("jieqi") {
-        1
-    } else {
-        2
-    }
-}
-
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EnginePathInspection {
     engine_path: Option<String>,
     nnue_path: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlatformInfo {
+    os: &'static str,
+    arch: &'static str,
+    cpu_count: usize,
+    features: Vec<&'static str>,
+}
+
+#[tauri::command]
+fn platform_info() -> PlatformInfo {
+    let mut features = Vec::new();
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if std::is_x86_feature_detected!("sse4.1") {
+            features.push("sse4.1");
+        }
+        if std::is_x86_feature_detected!("avx2") {
+            features.push("avx2");
+        }
+        if std::is_x86_feature_detected!("bmi2") {
+            features.push("bmi2");
+        }
+        if std::is_x86_feature_detected!("avx512f") {
+            features.push("avx512f");
+        }
+    }
+    PlatformInfo {
+        os: std::env::consts::OS,
+        arch: std::env::consts::ARCH,
+        cpu_count: std::thread::available_parallelism().map_or(1, usize::from),
+        features,
+    }
 }
 
 #[tauri::command]
@@ -70,7 +90,7 @@ fn inspect_engine_path(path: String) -> Result<EnginePathInspection, String> {
             .map(|entry| entry.path())
             .filter(|candidate| candidate.is_file() && is_engine_candidate(candidate))
             .collect::<Vec<_>>();
-        candidates.sort_by_key(|candidate| engine_candidate_priority(candidate));
+        candidates.sort();
         candidates.into_iter().next()
     } else {
         None
@@ -238,7 +258,8 @@ pub fn run() {
             spawn_engine,
             send_to_engine,
             kill_engine,
-            inspect_engine_path
+            inspect_engine_path,
+            platform_info
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

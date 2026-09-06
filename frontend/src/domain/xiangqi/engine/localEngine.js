@@ -1,9 +1,6 @@
 // 浏览器本地 UCI 引擎（WebAssembly）封装。
 //
-// 把 Pikafish 的 WASM 构建产物放到 public/engine/ 下（见该目录 README）：
-//   pikafish.worker.js / pikafish.js / pikafish.wasm / pikafish.data
-// 文件存在即自动启用：评估、提示在用户浏览器里完成，服务器零开销；
-// 文件缺失或加载失败时由调用方降级到服务器接口，功能不受影响。
+// 用户在设置页导入兼容的 WASM UCI 引擎包后，引擎只保存在浏览器本地。
 //
 // 通信协议为标准 UCI 文本（Web Worker postMessage 一行一条），与主流
 // WASM 引擎构建（Emscripten + worker 包装）兼容。
@@ -13,10 +10,15 @@ const GO_TIMEOUT = 15000;
 
 const runtimes = new Map();
 import { abortError, analysisResult, goCommand, parseUciInfo, redPerspective } from "./uci.js";
+import { getBrowserEngineProfile } from "./browserEnginePackages.js";
 
 function filesFor(variant) {
-  const dir = variant === "jieqi" ? "/engine/jieqi" : "/engine";
-  return { js: `${dir}/pikafish.worker.js`, glue: `${dir}/pikafish.js`, wasm: `${dir}/pikafish.wasm`, nnue: "pikafish.nnue" };
+  const profile = getBrowserEngineProfile(variant);
+  if (!profile) return null;
+  return {
+    js: `${profile.base}${profile.entrypoint}`,
+    nnue: profile.network ? `${profile.base}${profile.network}` : null,
+  };
 }
 
 function getRuntime(variant) {
@@ -43,6 +45,7 @@ async function engineFilesPresent(engineJs) {
 function bootWorker(variant) {
   return new Promise((resolve) => {
     const files = filesFor(variant);
+    if (!files) { resolve(null); return; }
     let worker;
     try {
       worker = new Worker(files.js);
@@ -55,6 +58,7 @@ function bootWorker(variant) {
       resolve(null);
     }, INIT_TIMEOUT);
     let uciok = false;
+    const uciOptions = new Set();
     worker.onerror = () => {
       clearTimeout(timer);
       worker.terminate();
@@ -68,13 +72,15 @@ function bootWorker(variant) {
         return;
       }
       const line = typeof e.data === "string" ? e.data : "";
+      const option = /^option name (.+?) type /i.exec(line);
+      if (option) uciOptions.add(option[1].trim().toLowerCase());
       if (line.startsWith("uciok")) {
         uciok = true;
-        // 权重文件由引擎自行加载；构建若已内嵌网络则该选项被忽略
-        worker.postMessage(`setoption name EvalFile value ${files.nnue}`);
+        if (files.nnue && uciOptions.has("evalfile")) worker.postMessage(`setoption name EvalFile value ${files.nnue}`);
         worker.postMessage("isready");
       } else if (uciok && line.startsWith("readyok")) {
         clearTimeout(timer);
+        worker.uciOptions = uciOptions;
         resolve(worker);
       }
     };
@@ -88,10 +94,9 @@ export function getLocalEngine(variant = "xiangqi") {
   if (!state.probePromise) {
     state.probePromise = (async () => {
       const files = filesFor(variant);
+      if (!files) return null;
       if (typeof Worker === "undefined" || typeof WebAssembly === "undefined") return null;
-      for (const path of [files.js, files.glue, files.wasm]) {
-        if (!(await engineFilesPresent(path))) return null;
-      }
+      if (!(await engineFilesPresent(files.js))) return null;
       return bootWorker(variant);
     })();
   }
@@ -101,6 +106,12 @@ export function getLocalEngine(variant = "xiangqi") {
 // 是否可用（用于界面徽标展示）
 export async function localEngineReady(variant = "xiangqi") {
   return (await getLocalEngine(variant)) !== null;
+}
+
+export function resetLocalEngine(variant = "xiangqi") {
+  const state = runtimes.get(variant);
+  state?.probePromise?.then((worker) => worker?.terminate()).catch(() => {});
+  runtimes.delete(variant);
 }
 
 // 分析一个局面，返回**红方视角**的 {cp, mate, bestMove, pv}（与服务器
@@ -159,8 +170,8 @@ export function localEval(fen, options = {}) {
       worker.addEventListener("messageerror", onError);
       signal?.addEventListener("abort", onAbort, { once: true });
       if (signal?.aborted) { onAbort(); return; }
-      worker.postMessage(`setoption name MultiPV value ${Math.max(1, Math.min(10, Number(options.multiPv) || 1))}`);
-      if (options.showWdl) worker.postMessage("setoption name UCI_ShowWDL value true");
+      if (worker.uciOptions?.has("multipv")) worker.postMessage(`setoption name MultiPV value ${Math.max(1, Math.min(10, Number(options.multiPv) || 1))}`);
+      if (options.showWdl && worker.uciOptions?.has("uci_showwdl")) worker.postMessage("setoption name UCI_ShowWDL value true");
       worker.postMessage(`position fen ${fen}`);
       worker.postMessage(goCommand(options));
     });

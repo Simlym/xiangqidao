@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/variants", tags=["variants"])
 def evaluate_jieqi(request: Request, req: EngineEvalRequest):
     engine = get_shared_jieqi_engine()
     if engine is None:
-        raise HTTPException(503, "服务器尚未配置揭棋 Pikafish，请管理员前往“管理后台 → 系统设置 → 揭棋引擎”配置")
+        raise HTTPException(503, "服务器尚未配置揭棋 UCI 引擎，请管理员前往“管理后台 → 系统设置 → 揭棋引擎”配置")
     advanced = req.mode != "depth" or req.value is not None or req.multipv != 1 or req.show_wdl or req.search_moves
     result = engine.analyze(
         req.fen, depth=req.depth, **({
@@ -31,5 +31,5 @@ def evaluate_jieqi(request: Request, req: EngineEvalRequest):
 def stream_jieqi(request: Request, req: EngineEvalRequest):
     engine = get_shared_jieqi_engine()
     if engine is None:
-        raise HTTPException(503, "服务器尚未配置揭棋 Pikafish")
+        raise HTTPException(503, "服务器尚未配置揭棋 UCI 引擎")
     return stream_engine(engine, req, 1 if req.fen.split()[1] == "w" else -1)

@@ -49,7 +49,7 @@
 - [uv](https://docs.astral.sh/uv/)（后端依赖与运行）
 - Node.js 18 或更高版本及 npm
 
-Pikafish 和 LLM 服务都是可选项。没有它们也能启动、训练和对弈。
+外部 UCI 引擎和 LLM 服务都是可选项。没有它们也能启动、训练和对弈。
 
 ### 1. 启动后端
 
@@ -98,22 +98,17 @@ npm run tauri build
 
 ## 可选：启用更强的棋力与 AI 讲解
 
-### Pikafish
+### 用户提供的 UCI 引擎
 
-不安装 Pikafish 时，标准象棋对弈会使用内置搜索引擎。安装后，人机棋力、局面评估和复盘精度会明显提高。
+象棋道不包含、代下载或分发第三方引擎和评估权重。用户可根据平台前往上游项目页面自行下载；引擎程序与权重可能采用不同许可证，商业使用前请分别确认。
 
-最省事的方式是使用管理员账号进入“管理后台 → 对弈引擎”，由系统从 [Pikafish 官方发布页](https://github.com/official-pikafish/Pikafish/releases)下载、选择兼容版本并安装到受管目录。也可以手动把可执行文件与 `pikafish.nnue` 放在同一目录，再将该目录加入 `PATH`。
+PC 客户端可在“本机设置”中分别选择标准象棋和揭棋原生 UCI 引擎。自托管管理员可在“管理后台 → 系统设置”填写服务器上自行放置的引擎绝对路径。修改后立即生效，无需重启服务。未配置外部引擎时标准象棋使用内置搜索降级。
 
-后端按以下顺序查找标准象棋引擎：
-
-1. `ENGINE_DIR` 指定的受管目录，默认 `backend/data/engine/`；
-2. 系统 `PATH`。
-
-安装或修改路径后请重启后端。PC 客户端还可以在“本机设置”中单独指定原生标准象棋与揭棋引擎；局面分析会在原生引擎、浏览器 WASM 和服务端能力之间自动降级。
+完整说明、推荐来源与目录设计见 [`docs/engines/`](docs/engines/README.md)。
 
 ### 浏览器本地引擎
 
-将 Pikafish WebAssembly 构建放入 `frontend/public/engine/`，即可让评估和提示在浏览器本地运行。所需文件、线程版本和响应头要求见 [`frontend/public/engine/README.md`](frontend/public/engine/README.md)。文件缺失或加载失败时，界面会自动改用服务端。
+Web 和 Android 用户可在设置页导入符合[引擎包规范](docs/engines/package-spec.md)的 WASM UCI 引擎目录。文件保存在浏览器或应用的本地存储中，不上传服务器，也不会进入项目构建产物。未导入或加载失败时自动降级到服务端能力。
 
 ### 通用 LLM AI 教练
 
@@ -143,7 +138,7 @@ uv run python -m app.modules.puzzles.importer.generate --count 100 --seed 1234 -
 uv run python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/more.json
 ```
 
-自有题库需转换为项目 JSON 格式，着法统一使用与 Pikafish 兼容的 UCI 坐标制，例如 `h2e2`。可用 `--verify` 调用 Pikafish 校验，或先运行审计工具：
+自有题库需转换为项目 JSON 格式，着法统一使用 UCI 坐标制，例如 `h2e2`。设置 `XIANGQI_ENGINE` 后可用 `--verify` 调用用户引擎校验，或先运行审计工具：
 
 ```bash
 uv run python -m app.modules.puzzles.importer.load path/to/puzzles.json --verify
@@ -174,8 +169,8 @@ uv run python -m app.modules.puzzles.importer.audit_puzzles
 | `SECRET_KEY` | 登录 token 签名密钥；生产环境必须更换 | 本地开发占位值 |
 | `CORS_ORIGINS` | 允许访问 API 的前端来源，逗号分隔 | 本地开发放开 |
 | `ADMIN_USERNAME` | 指定管理员用户名；留空则首位注册者为管理员 | 空 |
-| `ENGINE_DIR` | Pikafish 受管安装目录 | `./data/engine` |
-| `JIEQI_ENGINE` | 服务端揭棋引擎路径 | `./data/engine/jieqi/pikafish[.exe]` |
+| `XIANGQI_ENGINE` | 管理员自行放置的服务端标准象棋 UCI 引擎绝对路径 | 空 |
+| `JIEQI_ENGINE` | 管理员自行放置的服务端揭棋 UCI 引擎绝对路径 | 空 |
 | `LLM_API_KEY` | AI 教练与复盘讲解密钥 | 空 |
 | `LLM_PROTOCOL` | 接口格式：`openai_chat` / `openai_responses` / `anthropic` | `openai_chat` |
 | `LLM_BASE_URL` | LLM 服务地址 | `https://api.openai.com/v1` |
@@ -188,7 +183,7 @@ uv run python -m app.modules.puzzles.importer.audit_puzzles
 
 ## Docker Compose 部署
 
-Docker Compose 会启动三个服务：Nginx 提供 Web 页面并转发 `/api`，FastAPI 负责数据、对弈和分析，PostgreSQL 负责持久化业务数据。数据库和服务端引擎分别保存在 Docker 命名卷中，重建容器不会丢失。
+Docker Compose 会启动三个服务：Nginx 提供 Web 页面并转发 `/api`，FastAPI 负责数据、对弈和分析，PostgreSQL 负责持久化业务数据。数据库保存在 Docker 命名卷中，重建容器不会丢失。
 
 先复制配置并设置随机密钥：
 
@@ -211,11 +206,9 @@ docker compose logs -f
 docker compose up -d --build
 ```
 
-### Docker 中安装象棋引擎
+### Docker 中配置用户引擎
 
-部署后可用管理员账号进入“管理后台 → 对弈引擎”安装标准 Pikafish。引擎会写入持久化的 `engine-data` 卷，容器更新后仍然保留。基础镜像使用 Debian slim，应选择与服务器架构（通常为 `amd64` 或 `arm64`）和 CPU 指令集匹配的 Linux 引擎版本。
-
-揭棋需要单独的揭棋版引擎，放入卷内 `/app/data/engine/jieqi/pikafish`，并确保文件可执行；Compose 已通过 `JIEQI_ENGINE` 指向该路径。若希望由宿主机直接管理引擎文件，可将后端卷配置改为目录挂载，例如 `./docker-engine:/app/data/engine`。
+镜像不包含引擎。自托管部署如需服务端引擎，应由管理员自行下载与服务器 OS、架构和 CPU 匹配的 UCI 程序，挂载到 `/app/data/engines`，再通过 `XIANGQI_ENGINE`、`JIEQI_ENGINE` 或管理后台填写容器内绝对路径。标准象棋和揭棋必须分别配置。
 
 停止服务不会删除数据：
 
@@ -316,7 +309,7 @@ uv run alembic check
 | 后端 API | FastAPI、SQLAlchemy、Alembic |
 | 数据库 | SQLite 默认，可通过连接串替换 |
 | 训练调度 | SM-2 间隔重复 + 题目/用户 ELO |
-| 棋类能力 | 标准象棋与揭棋规则层、Pikafish、WASM、云库与内置搜索降级 |
+| 棋类能力 | 标准象棋与揭棋规则层、用户 UCI/WASM 引擎、云库与内置搜索降级 |
 | AI | 可选通用 LLM 服务端集成 |
 
 ## 当前方向

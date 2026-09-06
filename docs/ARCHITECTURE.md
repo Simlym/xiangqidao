@@ -42,10 +42,10 @@ src-tauri/
 
 客户端按以下顺序选择可用能力：
 
-1. PC：Tauri 原生 Pikafish 子进程；
-2. Web/Android：Pikafish WASM Worker；
-3. 所有端：FastAPI 云端引擎；
-4. 标准象棋服务端无 Pikafish 时：内置搜索兜底。
+1. PC：用户选择的 Tauri 原生 UCI 子进程；
+2. Web/Android：用户导入并保存在设备本地的 WASM UCI Worker；
+3. 所有端：管理员明确配置的 FastAPI 远程 UCI 引擎；
+4. 标准象棋服务端无外部引擎时：内置搜索兜底。
 
 象棋和揭棋各自保存引擎 profile。切换棋类时会重启单一原生引擎进程，防止两个高负载引擎同时争抢 CPU。
 

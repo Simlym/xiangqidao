@@ -1,5 +1,19 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { rmSync } from "node:fs";
+import { resolve } from "node:path";
+
+function excludeBundledEngines() {
+  return {
+    name: "exclude-bundled-engines",
+    apply: "build",
+    closeBundle() {
+      // public/ 下的本机测试文件绝不能进入 Web、PC 或 Android 发行产物。
+      rmSync(resolve(process.cwd(), "dist/engine"), { recursive: true, force: true });
+      rmSync(resolve(process.cwd(), "dist-tauri/engine"), { recursive: true, force: true });
+    },
+  };
+}
 
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -13,7 +27,7 @@ export default defineConfig(({ mode, command }) => {
   }
 
   return {
-    plugins: [react()],
+    plugins: [react(), excludeBundledEngines()],
     server: {
       port: 5173,
       strictPort: true,

@@ -9,7 +9,7 @@ from app.modules.credits import service as credits
 from app.modules.auth.service import current_user, current_user_id
 from app.core.dependencies import get_db
 from app.core.rate_limit import limiter
-from app.engine.pikafish import get_shared_engine
+from app.engine.uci import get_shared_engine
 from app.engine.jieqi import get_shared_jieqi_engine
 from app.integrations.llm import explain_mistake, summarize_game
 from app.core.models import Game, GameAnalysis, Puzzle, User
@@ -55,7 +55,7 @@ class _Eval:
 
 
 def _evaluate(fen: str, engine, builtin_depth: int = 3) -> _Eval:
-    """评估局面：有 Pikafish 用之，否则回退内置 negamax，保证分析不静默失效。"""
+    """评估局面：有用户 UCI 引擎则使用，否则回退内置 negamax。"""
     if engine is not None:
         ev = engine.analyze(fen, depth=15)
         if ev.score_cp is not None:
@@ -324,7 +324,7 @@ def analyze_game(
     if (game.variant or "xiangqi") == "jieqi" and get_shared_jieqi_engine() is None:
         raise HTTPException(
             status_code=503,
-            detail="服务器尚未配置揭棋 Pikafish，请管理员前往“管理后台 → 系统设置 → 揭棋引擎”配置",
+            detail="服务器尚未配置揭棋 UCI 引擎，请管理员前往“管理后台 → 系统设置 → 揭棋引擎”配置",
         )
 
     background_tasks.add_task(_run_analysis, game_id, user.username)

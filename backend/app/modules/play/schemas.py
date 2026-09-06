@@ -50,9 +50,9 @@ class StateResponse(BaseModel):
 
 
 class EngineResponse(BaseModel):
-    engine: str       # "pikafish" / "builtin"
+    engine: str       # "uci" / "builtin"
     label: str        # 展示用名称
-    available: bool   # 是否为强力引擎（Pikafish）
+    available: bool   # 是否配置了用户提供的 UCI 引擎
 
 
 class BookMove(BaseModel):

@@ -112,9 +112,5 @@ class AdminLog(BaseModel):
     target: str
 
 
-class InstallRequest(BaseModel):
-    variant: str | None = None  # 留空=按本机 CPU 自动挑最快变体（自检失败自动回退）
-
-
-class JieqiEngineUpdate(BaseModel):
+class EnginePathUpdate(BaseModel):
     path: str = Field(default="", max_length=1000)

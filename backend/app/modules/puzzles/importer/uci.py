@@ -1,26 +1,26 @@
-"""Pikafish (UCI) 封装。
+"""用户提供的 UCI 引擎封装。
 
 第一版只用它做一件事：批量校验题库里的'正解'是否确为引擎认可的最优着法，
 从而过滤脏数据。不在用户交互路径上 —— 没装引擎也不影响刷题。
 
 用法:
-    eng = Pikafish("/path/to/pikafish")
+    eng = UciEngine("/path/to/engine")
     best = eng.bestmove(fen, movetime_ms=1000)
     eng.close()
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
-import shutil
 
 
-class Pikafish:
+class UciEngine:
     def __init__(self, path: str | None = None):
-        self.path = path or shutil.which("pikafish")
+        self.path = path or os.getenv("XIANGQI_ENGINE", "").strip()
         if not self.path:
             raise FileNotFoundError(
-                "找不到 pikafish 可执行文件，请安装后将其加入 PATH 或显式传入路径。"
+                "找不到 UCI 引擎，请通过 XIANGQI_ENGINE 或参数显式传入路径。"
             )
         self.proc = subprocess.Popen(
             [self.path],

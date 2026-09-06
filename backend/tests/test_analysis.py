@@ -12,7 +12,7 @@ from sqlalchemy import create_engine as sa_create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.models import Base, GameAnalysis, Game
-from app.engine.pikafish import get_engine
+from app.engine.uci import get_engine
 from app.modules.games.analysis_router import _trim_pv
 
 
@@ -85,7 +85,7 @@ def test_get_engine_returns_none_when_not_installed():
 
 def test_get_engine_none_for_default_when_not_installed(monkeypatch):
     """所有可发现位置均没有 pikafish 时，get_engine() 应返回 None。"""
-    monkeypatch.setattr("app.engine.pikafish.find_engine", lambda: None)
+    monkeypatch.setattr("app.engine.uci.find_engine", lambda: None)
     result = get_engine()
     assert result is None
 

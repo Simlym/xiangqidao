@@ -13,6 +13,14 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const { request } = e;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
+  if (new URL(request.url).pathname.startsWith("/__user-engines__/")) {
+    e.respondWith(
+      caches.open("xiangqidao-user-engines-v1")
+        .then((cache) => cache.match(request))
+        .then((response) => response || new Response("Not found", { status: 404 }))
+    );
+    return;
+  }
   // API 响应含账号/设备级进度，绝不能按 URL 跨身份缓存。
   if (new URL(request.url).pathname.startsWith("/api/")) return;
   e.respondWith(

@@ -4,17 +4,14 @@ import {
   adminCreatePuzzle,
   adminDeletePuzzle,
   adminDeleteUser,
-  adminGetEngine,
-  adminGetJieqiEngine,
+  adminGetVariantEngine,
   adminGetLlmSettings,
-  adminInstallEngine,
   adminLogs,
   adminOverview,
   adminPuzzles,
-  adminRemoveEngine,
   adminTestLlmSettings,
   adminUpdateLlmSettings,
-  adminUpdateJieqiEngine,
+  adminUpdateVariantEngine,
   adminUpdateMembership,
   adminUsers,
 } from "../../shared/api";
@@ -139,8 +136,8 @@ export default function Admin({ desktop = false, serviceUrl = "" }) {
       {/* 系统设置：对弈引擎 + AI 复盘 */}
       {tab === "settings" && (
         <>
-          <EnginePanel />
-          <JieqiEnginePanel />
+          <ServerEnginePanel variant="xiangqi" />
+          <ServerEnginePanel variant="jieqi" />
           <LlmSettingsPanel />
         </>
       )}
@@ -433,222 +430,73 @@ function PuzzlesPanel() {
 }
 
 const OS_LABEL = { windows: "Windows", macos: "macOS", linux: "Linux" };
-const BUSY_STATES = ["downloading", "extracting", "verifying"];
+const ENGINE_GUIDES = {
+  xiangqi: {
+    title: "标准象棋 UCI 引擎",
+    description: "象棋道不提供或代下载引擎。请先根据服务器平台前往上游项目自行下载，再将文件放到服务器的非公开目录。",
+    example: "例如 /opt/xiangqidao/engines/xiangqi/engine 或 D:\\engines\\xiangqi\\engine.exe",
+    url: "https://github.com/official-pikafish/Pikafish/releases",
+  },
+  jieqi: {
+    title: "揭棋 UCI 引擎",
+    description: "请选择明确支持揭棋扩展 FEN 的专用 UCI 引擎。标准象棋引擎不能直接用于揭棋。",
+    example: "例如 /opt/xiangqidao/engines/jieqi/engine 或 D:\\engines\\jieqi\\engine.exe",
+    url: "https://github.com/official-pikafish/Pikafish/branches",
+  },
+};
 
-function fmtMB(n) {
-  return `${(n / 1048576).toFixed(1)} MB`;
-}
-
-function EnginePanel() {
-  const [st, setSt] = React.useState(null);
-  const [variant, setVariant] = React.useState(""); // "" = 自动
-  const [err, setErr] = React.useState("");
-
-  const load = React.useCallback(() => {
-    adminGetEngine().then(setSt).catch(() => {});
-  }, []);
-
-  React.useEffect(() => {
-    load();
-  }, [load]);
-
-  // 安装进行中时轮询进度
-  const busy = st && BUSY_STATES.includes(st.state);
-  React.useEffect(() => {
-    if (!busy) return;
-    const t = setInterval(load, 1500);
-    return () => clearInterval(t);
-  }, [busy, load]);
-
-  if (!st) return null;
-
-  async function install() {
-    setErr("");
-    try {
-      const r = await adminInstallEngine(variant);
-      if (r.started === false) setErr(r.reason || "无法启动安装");
-      setSt(r);
-    } catch (e) {
-      setErr(e.message);
-    }
-  }
-
-  async function remove() {
-    if (!window.confirm("卸载已安装的 Pikafish？将回退到 PATH / 内置引擎。")) return;
-    setErr("");
-    try {
-      setSt(await adminRemoveEngine());
-    } catch (e) {
-      setErr(e.message);
-    }
-  }
-
-  const meta = st.meta;
-  const pct = st.total > 0 ? Math.round((st.downloaded / st.total) * 100) : null;
-
-  let current;
-  if (st.installed && meta) {
-    current = `已安装 Pikafish ${meta.version}（${meta.variant}）`;
-  } else if (st.on_path) {
-    current = "检测到 PATH 中的 Pikafish";
-  } else {
-    current = "未安装，当前使用内置搜索引擎";
-  }
-
-  return (
-    <div className="panel">
-      <h3>对弈引擎（Pikafish）</h3>
-      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        从官方 Release 一键下载安装强力引擎，提升人机对弈棋力、局面评分与复盘分析的准确度。
-        无需配置 PATH，安装后即时生效。
-      </p>
-
-      <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
-        <span className={"tag" + (st.installed || st.on_path ? "" : " muted")}>
-          {st.installed || st.on_path ? "● " : "○ "}
-          {current}
-        </span>
-        <span className="muted" style={{ fontSize: 13 }}>
-          本机：{OS_LABEL[st.os] || st.os} / {st.arch}
-        </span>
-      </div>
-
-      {busy && (
-        <div style={{ margin: "8px 0" }}>
-          <div className="eval-bar" style={{ height: 16 }}>
-            <div className="eval-bar-red" style={{ width: `${pct ?? 30}%`, background: "#2e7d32" }} />
-            <span className="eval-bar-value">
-              {st.state === "downloading"
-                ? pct != null
-                  ? `下载中 ${pct}%（${fmtMB(st.downloaded)}/${fmtMB(st.total)}）`
-                  : `下载中 ${fmtMB(st.downloaded)}`
-                : st.message}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {!busy && st.state === "done" && (
-        <div style={{ color: "#27ae60", fontSize: 13, margin: "4px 0" }}>{st.message}</div>
-      )}
-      {!busy && st.state === "error" && (
-        <div className="import-error">{st.error || st.message}</div>
-      )}
-
-      <div className="import-row" style={{ marginTop: 8, alignItems: "center" }}>
-        <select
-          className="import-input"
-          value={variant}
-          disabled={busy}
-          onChange={(e) => setVariant(e.target.value)}
-        >
-          <option value="">自动（最兼容）</option>
-          {(st.variants || []).map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
-        <button className="btn-import-submit" disabled={busy} onClick={install}>
-          {busy ? (
-            <>
-              <span className="btn-spinner" />
-              安装中
-            </>
-          ) : st.installed ? (
-            "更新到最新版"
-          ) : (
-            "下载并安装"
-          )}
-        </button>
-        {st.installed && (
-          <button
-            className="game-delete-btn"
-            style={{ width: "auto", padding: "0 12px" }}
-            disabled={busy}
-            onClick={remove}
-          >
-            卸载
-          </button>
-        )}
-      </div>
-
-      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-        若自检提示与 CPU 不兼容，请在上方下拉选择更兼容的变体（如含 <code>sse41</code> / <code>ssse3</code>）后重试。
-        变体列表在首次下载后出现。
-      </p>
-
-      {err && <div className="import-error">{err}</div>}
-    </div>
-  );
-}
-
-function JieqiEnginePanel() {
+function ServerEnginePanel({ variant }) {
+  const guide = ENGINE_GUIDES[variant];
   const [status, setStatus] = React.useState(null);
   const [path, setPath] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [msg, setMsg] = React.useState("");
-  const [err, setErr] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [error, setError] = React.useState("");
 
   React.useEffect(() => {
-    adminGetJieqiEngine().then((next) => {
+    adminGetVariantEngine(variant).then((next) => {
       setStatus(next);
       setPath(next.configured_path || next.effective_path || "");
-    }).catch((e) => setErr(e.message));
-  }, []);
+    }).catch((reason) => setError(reason.message));
+  }, [variant]);
 
   async function save(nextPath = path.trim()) {
     setBusy(true);
-    setMsg("");
-    setErr("");
+    setMessage("");
+    setError("");
     try {
-      const next = await adminUpdateJieqiEngine(nextPath);
+      const next = await adminUpdateVariantEngine(variant, nextPath);
       setStatus(next);
       setPath(next.configured_path || next.effective_path || "");
-      setMsg(next.available ? "配置已保存，引擎文件已找到" : "已清除配置，当前未发现揭棋引擎");
-    } catch (e) {
-      setErr(e.message);
+      setMessage(next.available ? "配置已保存，引擎文件已找到" : "配置已清除，当前使用内置能力");
+    } catch (reason) {
+      setError(reason.message);
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <div className="panel">
-      <h3>揭棋引擎（Pikafish）</h3>
-      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-        填写运行 Web 后端的服务器上的揭棋 Pikafish 可执行文件绝对路径。必须使用支持暗子局面和暗子池扩展 FEN 的揭棋专用构建，不能复用标准象棋官方版；配套 NNUE 请放在可执行文件同一目录。
-      </p>
-      {status && (
-        <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
-          <span className={"tag" + (status.available ? "" : " muted")}>
-            {status.available ? "● 已找到引擎文件（尚未验证揭棋协议）" : "○ 未配置揭棋引擎"}
-          </span>
-          {status.effective_path && <span className="muted" style={{ fontSize: 12 }}>{status.effective_path}</span>}
-        </div>
-      )}
-      <div className="import-row">
-        <input
-          className="import-input"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          placeholder="例如 /opt/jieqi/pikafish 或 D:\\engines\\jieqi\\pikafish.exe"
-          spellCheck={false}
-        />
-        <button className="btn-import-submit" disabled={busy || !path.trim()} onClick={() => save()}>
-          {busy ? "保存中…" : "保存配置"}
-        </button>
-        {status?.configured_path && (
-          <button className="game-delete-btn" style={{ width: "auto", padding: "0 12px" }} disabled={busy} onClick={() => save("")}>
-            清除
-          </button>
-        )}
-      </div>
-      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-        也可用环境变量 <code>JIEQI_ENGINE</code> 配置；后台保存的路径优先，并会立即生效，无需重启服务。
-      </p>
-      {err && <div className="import-error">{err}</div>}
-      {msg && <div className={status?.available ? "import-ok" : "muted"}>{msg}</div>}
+  return <div className="panel">
+    <h3>{guide.title}</h3>
+    <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>{guide.description}</p>
+    {status && <div className="import-row" style={{ alignItems: "center", marginBottom: 8 }}>
+      <span className={"tag" + (status.available ? "" : " muted")}>
+        {status.available ? "● 已找到用户引擎" : "○ 未配置用户引擎"}
+      </span>
+      <span className="muted" style={{ fontSize: 13 }}>服务器：{OS_LABEL[status.os] || status.os} / {status.arch}</span>
+    </div>}
+    <div className="import-row">
+      <input className="import-input" value={path} onChange={(event) => setPath(event.target.value)} placeholder={guide.example} spellCheck={false} />
+      <button className="btn-import-submit" disabled={busy || !path.trim()} onClick={() => save()}>{busy ? "检测中…" : "保存并检测"}</button>
+      {status?.configured_path && <button className="game-delete-btn" style={{ width: "auto", padding: "0 12px" }} disabled={busy} onClick={() => save("")}>清除</button>}
     </div>
-  );
+    <p className="muted" style={{ fontSize: 12 }}>
+      <a href={guide.url} target="_blank" rel="noreferrer">查看上游下载/源码页面</a>
+      。引擎程序和权重可能采用不同许可；商业使用前请自行确认。象棋道只保存路径并通过 UCI 协议调用。
+    </p>
+    {error && <div className="import-error">{error}</div>}
+    {message && <div className={status?.available ? "import-ok" : "muted"}>{message}</div>}
+  </div>;
 }
 
 const DEFAULT_LLM_SETTINGS = {

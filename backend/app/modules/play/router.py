@@ -60,7 +60,7 @@ def position_state(request: Request, req: StateRequest):
 @limiter.limit("60/minute")
 def eval_position(request: Request, req: EvalRequest):
     """评估给定局面的优劣势（红方视角），供对弈界面的评估条按需调用。"""
-    from app.engine.pikafish import get_shared_engine
+    from app.engine.uci import get_shared_engine
 
     engine = get_shared_engine()
     if engine is not None:
@@ -77,7 +77,7 @@ def eval_position(request: Request, req: EvalRequest):
 @router.post("/eval/stream")
 @limiter.limit("30/minute")
 def stream_eval_position(request: Request, req: EvalRequest):
-    from app.engine.pikafish import get_shared_engine
+    from app.engine.uci import get_shared_engine
 
     engine = get_shared_engine()
     if engine is None:
@@ -90,14 +90,14 @@ def stream_eval_position(request: Request, req: EvalRequest):
 @router.get("/engine", response_model=EngineResponse)
 def engine_info():
     """报告当前对弈/评分实际使用的引擎，供前端显示。"""
-    from app.engine.pikafish import get_shared_engine
+    from app.engine.uci import get_shared_engine
 
     eng = get_shared_engine()
     if eng is not None:
         import os
 
-        name = os.path.basename(eng.path) if getattr(eng, "path", None) else "Pikafish"
-        return EngineResponse(engine="pikafish", label=f"Pikafish（{name}）", available=True)
+        name = getattr(eng, "name", None) or (os.path.basename(eng.path) if getattr(eng, "path", None) else "UCI")
+        return EngineResponse(engine="uci", label=f"用户引擎（{name}）", available=True)
     return EngineResponse(engine="builtin", label="内置搜索引擎", available=False)
 
 

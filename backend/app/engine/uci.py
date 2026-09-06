@@ -1,23 +1,16 @@
-"""Pikafish UCI 引擎封装。"""
+"""通用 UCI 象棋引擎进程封装，不下载或发现特定品牌引擎。"""
 import os
 import re
 import subprocess
-import shutil
 import threading
 from dataclasses import dataclass
 
 
 def find_engine() -> str | None:
-    """定位 Pikafish 可执行文件：优先「管理后台一键安装」的受管目录，其次回退 PATH。"""
-    try:
-        from .install import binary_path
+    """定位管理员明确配置的标准象棋 UCI 引擎。"""
+    from .profiles import find_engine_path
 
-        p = binary_path()
-        if os.path.isfile(p):
-            return p
-    except Exception:
-        pass
-    return shutil.which("pikafish")
+    return find_engine_path("xiangqi")
 
 INITIAL_FEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
 
@@ -42,9 +35,9 @@ class Engine:
         self.path = path or find_engine()
         if not self.path:
             raise FileNotFoundError(
-                "找不到 pikafish 可执行文件，请在管理后台一键安装，或将其加入 PATH。"
+                "尚未配置标准象棋 UCI 引擎，请由管理员提供本机引擎路径。"
             )
-        # 以可执行文件所在目录为工作目录，便于默认加载同目录下的 pikafish.nnue
+        # 以可执行文件所在目录为工作目录，兼容需要同目录资源文件的 UCI 引擎。
         workdir = os.path.dirname(self.path) or None
         self.proc = subprocess.Popen(
             [self.path],
@@ -57,11 +50,24 @@ class Engine:
         # UCI 是有状态的串行协议；单例复用时需保证一次只有一个调用方在收发
         self._lock = threading.Lock()
         self._cmd("uci")
-        self._wait_for("uciok")
-        # 显式指定 NNUE 权重路径，避免工作目录差异导致评估网络加载失败
-        nnue = os.path.join(workdir, "pikafish.nnue") if workdir else None
-        if nnue and os.path.isfile(nnue):
-            self._cmd(f"setoption name EvalFile value {os.path.abspath(nnue)}")
+        uci_lines = self._wait_for("uciok")
+        self.name = next(
+            (line[8:].strip() for line in uci_lines if line.startswith("id name ")),
+            os.path.basename(self.path),
+        )
+        self.options = {
+            match.group(1).strip().lower()
+            for line in uci_lines
+            if (match := re.match(r"option name (.+?) type ", line, re.IGNORECASE))
+        }
+        networks = [
+            os.path.join(workdir or ".", name)
+            for name in os.listdir(workdir or ".")
+            if name.lower().endswith(".nnue")
+            and os.path.isfile(os.path.join(workdir or ".", name))
+        ]
+        if "evalfile" in self.options and len(networks) == 1:
+            self._cmd(f"setoption name EvalFile value {os.path.abspath(networks[0])}")
         self._cmd("isready")
         self._wait_for("readyok")
 
@@ -102,8 +108,9 @@ class Engine:
         """
         with self._lock:
             multipv = max(1, min(10, int(multipv)))
-            self._cmd(f"setoption name MultiPV value {multipv}")
-            if show_wdl:
+            if "multipv" in self.options:
+                self._cmd(f"setoption name MultiPV value {multipv}")
+            if show_wdl and "uci_showwdl" in self.options:
                 self._cmd("setoption name UCI_ShowWDL value true")
             self._cmd(f"position fen {fen}")
             if mode == "infinite":
@@ -221,11 +228,11 @@ def get_engine(path=None) -> Engine | None:
 
 
 # ── 进程级单例 ──────────────────────────────────────────────────
-# 每次对弈/分析都新起一个 Pikafish 进程要重做 uci 握手，开销极大。
+# 每次对弈/分析都新起一个 UCI 进程要重做握手，开销极大。
 # 这里维护一个可复用的共享实例；analyze() 内部已用锁串行化收发。
 
 _shared: Engine | None = None
-_no_engine = False           # 已确认未安装 Pikafish，避免反复探测
+_no_engine = False           # 已确认未配置引擎，避免反复探测
 _shared_lock = threading.Lock()
 
 
@@ -249,7 +256,7 @@ def get_shared_engine(path=None) -> Engine | None:
 def reset_shared_engine() -> None:
     """丢弃共享实例并清除「未安装」记忆，使下次调用重新探测引擎。
 
-    用于管理后台安装/卸载 Pikafish 后立即生效，无需重启进程。
+    用于管理后台修改用户引擎路径后立即生效，无需重启进程。
     """
     global _shared, _no_engine
     with _shared_lock:

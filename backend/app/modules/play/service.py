@@ -1,7 +1,7 @@
 """人机对弈引擎。
 
 合法着法生成 / 局面状态判定复用 shared.xiangqi.validation 的规则实现；
-走子选择优先用 Pikafish，未安装时回退到内置的 negamax + alpha-beta 搜索，
+走子选择优先用用户配置的 UCI 引擎，未配置时回退到内置 negamax + alpha-beta 搜索，
 保证对弈功能开箱即用。
 """
 
@@ -143,7 +143,7 @@ def _builtin_best_move(fen: str, depth: int) -> str | None:
 
 
 def builtin_evaluate(fen: str, depth: int = 3) -> tuple[str | None, int]:
-    """供棋局分析在未装 Pikafish 时兜底：返回 (最优着, 走子方视角 cp)。"""
+    """供棋局分析在未配置外部引擎时兜底：返回 (最优着, 走子方视角 cp)。"""
     return _builtin_search(fen, depth)
 
 
@@ -155,10 +155,10 @@ def evaluate_position(fen: str) -> dict:
     """评估局面，返回**红方视角**的优劣势：{"cp": int|None, "mate": int|None}。
 
     cp 正=红优、负=黑优；mate 正=红方可杀、负=黑方可杀。供人机对弈界面的
-    评估条使用。优先 Pikafish，未安装时回退浅层内置搜索（足够给出优劣势提示）。
+    评估条使用。优先用户 UCI 引擎，未配置时回退浅层内置搜索。
     引擎/内置搜索给的都是走子方视角，这里统一翻成红方视角。
     """
-    from app.engine.pikafish import get_shared_engine
+    from app.engine.uci import get_shared_engine
 
     sign = 1 if side_to_move(fen) == "w" else -1  # 走子方视角 → 红方视角
 
@@ -186,10 +186,10 @@ def choose_move(fen: str, level: str = "medium") -> str | None:
     """为当前走子方选择一着。
 
     开局阶段优先参考云库（秒回且着法质量高，省一次引擎搜索）；
-    其后优先 Pikafish（复用共享进程），未安装时回退内置搜索。
+    其后优先用户 UCI 引擎（复用共享进程），未配置时回退内置搜索。
     """
     from app.integrations import cloudbook
-    from app.engine.pikafish import get_shared_engine
+    from app.engine.uci import get_shared_engine
 
     book_move = cloudbook.best_book_move(fen, level)
     if book_move and book_move in legal_moves_uci(fen):

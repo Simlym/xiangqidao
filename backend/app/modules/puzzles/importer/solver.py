@@ -1,6 +1,6 @@
 """杀法求解与自动分类。
 
-复用 verify_mate 的纯 Python 规则引擎，无需 Pikafish：
+复用 verify_mate 的纯 Python 规则引擎，无需第三方引擎：
 
 - solve_mate(fen, max_moves)：在给定局面下搜索「强制将杀」，返回一条主变着法
   序列（UCI 坐标制，己方/对方交替）。用于给只有局面、没有题解的外部题库

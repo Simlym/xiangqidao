@@ -93,9 +93,13 @@ export class TauriEngineAdapter extends EngineAdapter {
     });
     await invoke("spawn_engine", { path: profile.path, args: profile.args || [] });
     await this.waitFor("uciok", () => invoke("send_to_engine", { command: "uci" }), INIT_TIMEOUT);
-    await invoke("send_to_engine", { command: `setoption name Threads value ${profile.threads}` });
-    await invoke("send_to_engine", { command: `setoption name Hash value ${profile.hashMb}` });
-    await invoke("send_to_engine", { command: "setoption name MultiPV value 1" });
+    const supports = (name) => this.diagnostics.some((line) => line.toLowerCase().startsWith(`option name ${name.toLowerCase()} type `));
+    if (supports("Threads")) await invoke("send_to_engine", { command: `setoption name Threads value ${profile.threads}` });
+    if (supports("Hash")) await invoke("send_to_engine", { command: `setoption name Hash value ${profile.hashMb}` });
+    if (supports("MultiPV")) await invoke("send_to_engine", { command: "setoption name MultiPV value 1" });
+    if (profile.nnuePath && supports("EvalFile")) {
+      await invoke("send_to_engine", { command: `setoption name EvalFile value ${profile.nnuePath}` });
+    }
     await invoke("send_to_engine", { command: "ucinewgame" });
     await this.waitFor("readyok", () => invoke("send_to_engine", { command: "isready" }), INIT_TIMEOUT);
     if (this.variant === "jieqi") {
@@ -193,7 +197,8 @@ export class TauriEngineAdapter extends EngineAdapter {
         this.listeners.add(onLine);
         signal?.addEventListener("abort", onAbort, { once: true });
         const multiPv = Math.max(1, Math.min(10, Number(options.multiPv) || 1));
-        send(`setoption name MultiPV value ${multiPv}`)
+        Promise.resolve(this.diagnostics.some((line) => line.toLowerCase().startsWith("option name multipv type "))
+          ? send(`setoption name MultiPV value ${multiPv}`) : null)
           .then(() => options.showWdl ? send("setoption name UCI_ShowWDL value true") : null)
           .then(() => send(`position fen ${fen}`))
           .then(() => send(goCommand(options)))

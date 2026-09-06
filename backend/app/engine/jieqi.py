@@ -1,37 +1,17 @@
-"""揭棋 Pikafish 独立实例，不与标准象棋引擎共享协议状态。"""
+"""揭棋 UCI 引擎独立实例，不与标准象棋引擎共享协议状态。"""
 
-import os
 import threading
 
-from .pikafish import Engine
+from .uci import Engine
 
 _shared: Engine | None = None
 _lock = threading.Lock()
 
 
 def find_jieqi_engine() -> str | None:
-    # 管理后台保存的路径优先；环境变量继续作为无 UI 部署的兼容方式。
-    configured = ""
-    try:
-        from app.core.models import SessionLocal
-        from app.core.settings import KEY_JIEQI_ENGINE_PATH, get_setting
+    from .profiles import find_engine_path
 
-        db = SessionLocal()
-        try:
-            configured = get_setting(db, KEY_JIEQI_ENGINE_PATH).strip()
-        finally:
-            db.close()
-    except Exception:
-        # 数据库尚未初始化等场景仍可通过环境变量或固定目录启动。
-        pass
-    candidates = [
-        configured,
-        os.getenv("JIEQI_ENGINE", "").strip(),
-        os.path.join("data", "engine", "jieqi", "PikaJieQi.exe"),
-        os.path.join("data", "engine", "jieqi", "pikafish.exe"),
-        os.path.join("data", "engine", "jieqi", "pikafish"),
-    ]
-    return next((path for path in candidates if path and os.path.isfile(path)), None)
+    return find_engine_path("jieqi")
 
 
 def get_shared_jieqi_engine() -> Engine | None:

@@ -50,14 +50,14 @@ Two independent apps: `backend/app` (FastAPI) and `frontend/src` (React 18, no r
 - **Xiangqi rules are implemented twice** and must stay consistent: backend `app/shared/xiangqi/` (including `validation.py`) and frontend `src/domain/xiangqi/`.
 - **User scoping**: `user_id` is a username *string*, with `'default'` for anonymous/guest data. Puzzles with `user_id='default'` are the public library; other values are private (e.g. auto-generated from a user's game blunders). Most queries must filter on this.
 - **Auth** (`app/modules/auth/service.py`) is stdlib-only: PBKDF2 password hashing + HMAC-signed tokens (no JWT library). First registered user becomes admin (or `ADMIN_USERNAME` env var). `SECRET_KEY` signs tokens.
-- **Engine fallback chain** for play/eval: cloud opening book (`app/integrations/cloudbook.py`) → Pikafish (`app/engine/pikafish.py`) → built-in negamax (`app/modules/play/service.py`). Browser WASM lives under `frontend/src/domain/xiangqi/engine/`.
+- **Engine fallback chain** for play/eval: cloud opening book (`app/integrations/cloudbook.py`) → user-provided UCI engine (`app/engine/uci.py`) → built-in negamax (`app/modules/play/service.py`). Browser WASM lives under `frontend/src/domain/xiangqi/engine/` and must be imported by the user.
 - **LLM features** live in `app/integrations/llm.py`; all are optional and the rule-based coach in `app/modules/coach/service.py` must work without a key.
 - **Router registration order matters** in `app/routes.py`: game analysis must be registered before the game `/{id}` route.
 - **Rate limiting** and security logging live under `app/core/`.
 
 ### Configuration
 
-Backend config uses generic, unprefixed env vars — `HOST`/`PORT`, `DATABASE_URL`, `SECRET_KEY`, `APP_ENV`, `CORS_ORIGINS`, `ADMIN_USERNAME`, `TZ`, `ENGINE_DIR`, `LLM_*`, … (see the README table) — read from the environment or a `backend/.env` file (template: `backend/.env.example`). `app/core/env.py` loads `.env` at package import (in `app/__init__.py`) before any module reads env vars; real environment variables take precedence, and loading is skipped under pytest. `APP_ENV=production` enforces a real secret and disables `/docs`.
+Backend config uses generic, unprefixed env vars — `HOST`/`PORT`, `DATABASE_URL`, `SECRET_KEY`, `APP_ENV`, `CORS_ORIGINS`, `ADMIN_USERNAME`, `TZ`, `XIANGQI_ENGINE`, `JIEQI_ENGINE`, `LLM_*`, … (see the README table) — read from the environment or a `backend/.env` file (template: `backend/.env.example`). `app/core/env.py` loads `.env` at package import (in `app/__init__.py`) before any module reads env vars; real environment variables take precedence, and loading is skipped under pytest. `APP_ENV=production` enforces a real secret and disables `/docs`.
 
 ### Frontend notes
 

@@ -3,3 +3,4 @@ dist
 dist-tauri
 .verify-dist
 .env.*.local
+public/engine

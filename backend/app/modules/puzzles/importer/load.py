@@ -1,6 +1,6 @@
 """题库导入。
 
-从 JSON 文件批量导入战术题，可选用 Pikafish 校验正解第一手是否为引擎最优着。
+从 JSON 文件批量导入战术题，可选用用户提供的 UCI 引擎校验正解第一手。
 
 运行（在 backend/ 目录下）:
     python -m app.modules.puzzles.importer.load app/modules/puzzles/importer/seed_puzzles.json
@@ -25,10 +25,10 @@ def load(path: str, verify: bool = False, movetime_ms: int = 1000, mate_check: b
 
     engine = None
     if verify:
-        from .pikafish import Pikafish
+        from .uci import UciEngine
 
-        engine = Pikafish()
-        print("Pikafish 已启动，将逐题校验正解…")
+        engine = UciEngine()
+        print("UCI 引擎已启动，将逐题校验正解…")
     if mate_check:
         from app.shared.xiangqi.validation import is_mate_in_one
 
@@ -97,8 +97,8 @@ def load(path: str, verify: bool = False, movetime_ms: int = 1000, mate_check: b
 def main() -> None:
     ap = argparse.ArgumentParser(description="导入战术题库")
     ap.add_argument("path", help="题库 JSON 文件路径")
-    ap.add_argument("--verify", action="store_true", help="用 Pikafish 校验正解")
-    ap.add_argument("--mate-check", action="store_true", help="用内置规则校验单步杀法题（无需 Pikafish）")
+    ap.add_argument("--verify", action="store_true", help="用 XIANGQI_ENGINE 指定的 UCI 引擎校验正解")
+    ap.add_argument("--mate-check", action="store_true", help="用内置规则校验单步杀法题（无需第三方引擎）")
     ap.add_argument("--movetime", type=int, default=1000, help="每题引擎思考毫秒数")
     args = ap.parse_args()
     load(args.path, verify=args.verify, movetime_ms=args.movetime, mate_check=args.mate_check)

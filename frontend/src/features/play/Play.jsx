@@ -94,7 +94,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // 启动时探测当前实际使用的引擎（Pikafish / 内置搜索），用于界面提示；
+  // 启动时探测当前实际使用的用户 UCI 引擎或内置搜索，用于界面提示；
   // 同时探测浏览器本地引擎（public/engine/ 下有产物即启用，评分不再占用服务器）
   React.useEffect(() => {
     getPlayEngine().then(setEngineInfo).catch(() => {});
@@ -480,7 +480,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             <>
               当前引擎：
               <strong>{engineInfo.label}</strong>
-              {engineInfo.available ? "（评分较准）" : "（未装 Pikafish，评分仅供参考）"}
+              {engineInfo.available ? "（用户引擎）" : "（未配置外部引擎，评分仅供参考）"}
             </>
           )}
         </p>
@@ -517,7 +517,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
             <strong>当前引擎</strong>
             <span>
               {localReady
-                ? localRuntime === "native" ? "PC 原生 Pikafish · 已就绪" : "Pikafish WASM · 已就绪"
+                ? localRuntime === "native" ? "PC 原生 UCI 引擎 · 已就绪" : "本地 WASM UCI 引擎 · 已就绪"
                 : engineInfo?.label ? `${engineInfo.label} · 自动降级可用` : "正在检测可用引擎…"}
             </span>
           </div>
@@ -551,7 +551,7 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
     ? "将军！轮到你"
     : "轮到你走";
   const engineDisplay = localReady
-    ? localRuntime === "native" ? "Pikafish · 本地" : "Pikafish WASM · 本地"
+    ? localRuntime === "native" ? "UCI 引擎 · 本地" : "WASM UCI 引擎 · 本地"
     : engineInfo?.available ? engineInfo.label : "内置引擎";
   const evalInfo = describeEval(evalData || {}, humanSide);
 
@@ -564,8 +564,8 @@ export default function Play({ onGoReview, user, onCreditsChanged, onRequireLogi
           <span className="tag">{LEVELS.find((l) => l.key === level)?.label}</span>
           <span className="tag">{humanSide === "w" ? "你执红" : "你执黑"}</span>
           {!localReady && engineInfo && (
-            <span className="tag" title={engineInfo.available ? "Pikafish 强力引擎" : "未装 Pikafish，使用内置搜索"}>
-              {engineInfo.available ? "♟ Pikafish" : "♟ 内置引擎"}
+            <span className="tag" title={engineInfo.available ? "用户提供的 UCI 引擎" : "未配置外部引擎，使用内置搜索"}>
+              {engineInfo.available ? "♟ UCI 引擎" : "♟ 内置引擎"}
             </span>
           )}
           {localReady && (
