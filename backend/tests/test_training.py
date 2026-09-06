@@ -297,7 +297,7 @@ def test_forecast_buckets_overdue_into_today():
 
 def test_daily_new_limit(monkeypatch):
     """达到每日新题上限后不再发新题，并置 new_limit_reached。"""
-    import app.modules.training.api as t
+    import app.modules.training.router as t
     monkeypatch.setattr(t, "NEW_PER_DAY", 1)
     client = _client_multi(2)
     try:

@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.modules.training import ratings
@@ -21,62 +20,18 @@ from app.core.models import Attempt, Review
 from app.modules.training.sessions import create_session, require_session
 from app.modules.puzzles.content import primary_line, solution_lines
 from app.modules.training.srs import SrsState, review as srs_review
+from .schemas import (
+    ChallengeSubmitRequest,
+    ChallengeSubmitResponse,
+    LevelDetail,
+    LevelOut,
+    LevelPuzzle,
+    RatingChange,
+)
 
 router = APIRouter(prefix="/api/challenge", tags=["challenge"])
 
 LEVEL_SIZE = 6  # 每关题数
-
-
-# ── 数据模型 ────────────────────────────────────────────────────
-
-class LevelPuzzle(BaseModel):
-    id: int
-    fen: str
-    side_to_move: str
-    category: str
-    difficulty: int
-    total_steps: int
-    solved: bool       # 本用户是否已做对过
-    session_id: str
-
-
-class LevelOut(BaseModel):
-    index: int
-    title: str
-    difficulty: int    # 本关代表难度（1-5）
-    total: int
-    solved: int        # 本关已做对题数
-    cleared: bool
-    unlocked: bool
-    stars: int         # 0-3
-
-
-class LevelDetail(BaseModel):
-    index: int
-    title: str
-    difficulty: int
-    unlocked: bool
-    puzzles: list[LevelPuzzle]
-
-
-class ChallengeSubmitRequest(BaseModel):
-    puzzle_id: int
-    session_id: str
-    correct: bool = True
-    had_retry: bool = False
-    time_spent_ms: int = 0
-
-
-class RatingChange(BaseModel):
-    old: int
-    new: int
-    delta: int
-
-
-class ChallengeSubmitResponse(BaseModel):
-    solution: list[str]
-    solved: bool        # 本题是否判为做对
-    rating: RatingChange | None = None
 
 
 # ── 关卡切分 ────────────────────────────────────────────────────

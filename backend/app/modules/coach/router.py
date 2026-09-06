@@ -1,13 +1,12 @@
 """AI 教练路由：读取/刷新个性化训练计划。"""
 
 import json
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.modules.auth.service import current_user, current_user_id
+from .schemas import PlanOut, PlanResponse, Rec
 from .service import generate_plan
 from app.core.dependencies import get_db
 from app.core.models import CoachPlan, User
@@ -15,28 +14,6 @@ from app.core.rate_limit import limiter
 from app.core.settings import get_llm_config
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
-
-
-class Rec(BaseModel):
-    type: str                  # review / category / play / train
-    category: str | None = None
-    count: int | None = None
-    reason: str = ""
-
-
-class PlanOut(BaseModel):
-    id: int
-    created_at: datetime
-    trigger: str               # manual / game:<id>
-    plan_text: str             # LLM 教练叙述（未启用大模型时为空）
-    recommendations: list[Rec]
-    profile: dict              # 生成计划时的画像快照（水平/弱点等）
-    progress: dict | None      # 与历史基线的进步对比（无历史时为 None）
-
-
-class PlanResponse(BaseModel):
-    plan: PlanOut | None
-    llm_enabled: bool
 
 
 def _to_out(plan: CoachPlan) -> PlanOut:

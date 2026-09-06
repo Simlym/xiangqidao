@@ -8,13 +8,13 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.auth.service import current_user_id
 from app.core.dependencies import get_db
 from app.core.models import Attempt, Game, GameAnalysis, LearningPack, Puzzle
+from .schemas import PackOut
 
 router = APIRouter(prefix="/api/learning", tags=["learning"])
 
@@ -111,15 +111,6 @@ def progress(days: int = 28, db: Session = Depends(get_db), user: str = Depends(
         "speed_delta_seconds": round(b["avg_seconds"] - a["avg_seconds"], 1),
         "enough_data": b["attempts"] >= 3 and a["attempts"] >= 3,
     }
-
-
-class PackOut(BaseModel):
-    id: str
-    type: str
-    title: str
-    puzzle_ids: list[int]
-    completed: bool
-    baseline: dict
 
 
 def _pack_out(pack: LearningPack) -> PackOut:

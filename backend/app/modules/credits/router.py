@@ -5,9 +5,9 @@
 """
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from .schemas import CheckinResult, CreditSummary
 from . import service as credits
 from app.modules.auth.service import current_user
 from app.core.dependencies import get_db
@@ -15,23 +15,6 @@ from app.core.models import User
 from app.core.rate_limit import limiter
 
 router = APIRouter(prefix="/api/credits", tags=["credits"])
-
-
-class CreditSummary(BaseModel):
-    balance: int
-    total_earned: int
-    checkin_today: bool
-    checkin_streak: int
-    costs: dict[str, int]      # 各大模型动作的消耗
-    earn_rates: dict[str, int] # 各正向行为的入账
-    is_member: bool
-
-
-class CheckinResult(BaseModel):
-    already: bool   # 今日是否已签到
-    awarded: int    # 本次入账积分
-    balance: int
-    streak: int
 
 
 @router.get("/me", response_model=CreditSummary)

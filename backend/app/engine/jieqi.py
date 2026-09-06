@@ -3,7 +3,7 @@
 import os
 import threading
 
-from .standard import Engine
+from .pikafish import Engine
 
 _shared: Engine | None = None
 _lock = threading.Lock()

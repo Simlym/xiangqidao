@@ -479,7 +479,7 @@ def _find_file(root: str, base: str) -> str | None:
 
 def _verify() -> bool:
     """启动一次握手自检，确认下载的可执行文件能在本机正常运行。"""
-    from .standard import Engine
+    from .pikafish import Engine
 
     try:
         eng = Engine(path=binary_path())
@@ -494,7 +494,7 @@ def _verify() -> bool:
 
 
 def _do_install(variant: str | None) -> None:
-    from .standard import reset_shared_engine
+    from .pikafish import reset_shared_engine
 
     try:
         _set(state="downloading", message="查询最新版本…", error="",
@@ -615,7 +615,7 @@ def start_install(variant: str | None) -> dict:
 
 def remove() -> None:
     """删除受管目录中的引擎与权重，回退到 PATH / 内置引擎。"""
-    from .standard import reset_shared_engine
+    from .pikafish import reset_shared_engine
 
     reset_shared_engine()
     for p in (binary_path(), nnue_path(), _meta_path()):

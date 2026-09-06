@@ -1,6 +1,6 @@
 """测试引擎安装的变体选择：按 CPU 自动挑最快、找不到信息时回退最兼容。"""
 
-from app.engine import install as ei
+from app.engine import installer as ei
 
 # 模拟官方发布包里 Windows 平台的全部变体可执行文件名
 WIN_NAMES = [

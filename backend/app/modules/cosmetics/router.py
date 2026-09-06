@@ -3,9 +3,9 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from .schemas import PurchaseIn
 from . import service as cosmetics
 from app.modules.credits import service as credits
 from app.modules.auth.service import current_user, current_user_id
@@ -14,10 +14,6 @@ from app.core.models import CosmeticPurchase, CreditLog, User
 from app.core.rate_limit import limiter
 
 router = APIRouter(prefix="/api/cosmetics", tags=["cosmetics"])
-
-
-class PurchaseIn(BaseModel):
-    asset_key: str
 
 
 @router.get("/catalog")

@@ -12,8 +12,9 @@ from sqlalchemy.orm import sessionmaker
 
 from app.modules.puzzles import repository as repo
 from app.core.models import Base, Puzzle
-from app.modules.games.api import ImportRequest, get_game, import_game, list_games
-from app.modules.training.api import get_training_puzzle
+from app.modules.games.schemas import ImportRequest
+from app.modules.games.router import get_game, import_game, list_games
+from app.modules.training.router import get_training_puzzle
 
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False)

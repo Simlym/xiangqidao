@@ -4,10 +4,10 @@ import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .schemas import AuthResponse, Credentials, UserOut
 from .service import current_user, guest_owner, hash_password, make_token, verify_password
 from app.core.dependencies import get_db
 from app.core.models import Attempt, CoachPlan, Game, LearningPack, Puzzle, PuzzleSession, Review, User, UserStat
@@ -19,23 +19,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # 管理员引导：仅当 ADMIN_USERNAME 显式设置时，匹配该用户名者注册即为管理员；
 # 未设置则只有「首个注册用户」成为管理员，避免公网上 'admin' 用户名被抢注提权。
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "").strip()
-
-
-class Credentials(BaseModel):
-    # 限长防超大请求体；下限在业务里校验以返回中文友好提示
-    username: str = Field(max_length=40)
-    password: str = Field(max_length=128)
-
-
-class AuthResponse(BaseModel):
-    token: str
-    username: str
-    role: str
-
-
-class UserOut(BaseModel):
-    username: str
-    role: str
 
 
 @router.post("/register", response_model=AuthResponse)

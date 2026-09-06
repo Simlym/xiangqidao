@@ -9,7 +9,7 @@ from app.modules.credits import service as credits
 from app.modules.auth.service import current_user, current_user_id
 from app.core.dependencies import get_db
 from app.core.rate_limit import limiter
-from app.engine.standard import get_shared_engine
+from app.engine.pikafish import get_shared_engine
 from app.engine.jieqi import get_shared_jieqi_engine
 from app.integrations.llm import explain_mistake, summarize_game
 from app.core.models import Game, GameAnalysis, Puzzle, User

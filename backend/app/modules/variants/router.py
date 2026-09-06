@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.engine.api import EngineEvalRequest, EngineEvalResponse, response_from_result, stream_engine
+from app.engine.contract import EngineEvalRequest, EngineEvalResponse, response_from_result, stream_engine
 from app.engine.jieqi import get_shared_jieqi_engine
 from app.core.rate_limit import limiter
 

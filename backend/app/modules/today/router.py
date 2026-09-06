@@ -3,7 +3,6 @@
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -13,28 +12,9 @@ from app.modules.auth.service import current_user_id
 from app.core.dependencies import get_db
 from app.core.models import Game, GameAnalysis
 from app.modules.training.config import NEW_PER_DAY
+from .schemas import TodayAction, TodayPlan
 
 router = APIRouter(prefix="/api/today", tags=["today"])
-
-
-class TodayAction(BaseModel):
-    type: str
-    label: str
-    detail: str
-    count: int = 0
-    category: str | None = None
-
-
-class TodayPlan(BaseModel):
-    due_reviews: int
-    new_remaining: int
-    pending_blunders: int
-    pending_games: int
-    streak_days: int
-    rating: int
-    title: str
-    first_try_accuracy: float
-    actions: list[TodayAction]
 
 
 @router.get("", response_model=TodayPlan)

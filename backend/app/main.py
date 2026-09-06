@@ -8,10 +8,10 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from .api import register_routes
+from .routes import register_routes
 from .core.database import init_db
 from .core.rate_limit import limiter
-from .engine import install as engine_install
+from .engine import installer as engine_install
 
 _IS_PROD = os.environ.get("APP_ENV", "").lower() in ("prod", "production")
 
@@ -51,7 +51,7 @@ def _startup() -> None:
 
 def _setup_logging() -> None:
     """据数据库设置安装日志缓冲与等级；读不到则用默认 INFO。"""
-    from .core import logging as log_buffer
+    from .core import log_config as log_buffer
     from .core.database import SessionLocal
     from .core.settings import get_setting
 

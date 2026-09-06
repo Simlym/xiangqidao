@@ -158,7 +158,7 @@ def evaluate_position(fen: str) -> dict:
     评估条使用。优先 Pikafish，未安装时回退浅层内置搜索（足够给出优劣势提示）。
     引擎/内置搜索给的都是走子方视角，这里统一翻成红方视角。
     """
-    from app.engine.standard import get_shared_engine
+    from app.engine.pikafish import get_shared_engine
 
     sign = 1 if side_to_move(fen) == "w" else -1  # 走子方视角 → 红方视角
 
@@ -189,7 +189,7 @@ def choose_move(fen: str, level: str = "medium") -> str | None:
     其后优先 Pikafish（复用共享进程），未安装时回退内置搜索。
     """
     from app.integrations import cloudbook
-    from app.engine.standard import get_shared_engine
+    from app.engine.pikafish import get_shared_engine
 
     book_move = cloudbook.best_book_move(fen, level)
     if book_move and book_move in legal_moves_uci(fen):

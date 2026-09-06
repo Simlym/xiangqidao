@@ -3,28 +3,20 @@
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.engine import install as engine_install
+from app.engine import installer as engine_install
 from app.modules.auth.service import require_admin
 from app.core.dependencies import get_db
 from app.engine.jieqi import find_jieqi_engine, reset_shared_jieqi_engine
 from app.core.models import User
 from app.core.security_log import admin_action
 from app.core.settings import KEY_JIEQI_ENGINE_PATH, get_setting, set_setting
+from .schemas import InstallRequest, JieqiEngineUpdate
 
 router = APIRouter(
     prefix="/api/admin/engine", tags=["admin"], dependencies=[Depends(require_admin)]
 )
-
-
-class InstallRequest(BaseModel):
-    variant: str | None = None  # 留空=按本机 CPU 自动挑最快变体（自检失败自动回退）
-
-
-class JieqiEngineUpdate(BaseModel):
-    path: str = Field(default="", max_length=1000)
 
 
 def _jieqi_status(db: Session) -> dict:

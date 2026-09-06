@@ -15,13 +15,13 @@ from app.modules.training import ratings
 from app.modules.puzzles import repository as repo
 from app.core.models import Base, Puzzle, PuzzleSession
 from app.modules.training.sessions import create_session
-from app.modules.challenge.api import (
-    ChallengeSubmitRequest,
+from app.modules.challenge.schemas import ChallengeSubmitRequest
+from app.modules.challenge.router import (
     get_level,
     list_levels,
     submit as challenge_submit,
 )
-from app.modules.stats.api import leaderboard, rating as rating_overview
+from app.modules.stats.router import leaderboard, rating as rating_overview
 
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False)

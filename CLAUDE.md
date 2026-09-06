@@ -40,7 +40,7 @@ Two independent apps: `backend/app` (FastAPI) and `frontend/src` (React 18, no r
 
 ### Backend layering
 
-`modules/*/api.py` (HTTP) → module services / `modules/puzzles/repository.py` → `core/models.py` → `core/database.py`. `engine/` owns engine processes and protocol, while `integrations/` owns external services. Keep business APIs decoupled from raw ORM where a repository helper exists.
+`modules/*/router.py` (HTTP) → module services / `modules/puzzles/repository.py` → `core/models.py` → `core/database.py`; routers are registered in order by `app/routes.py`, and Pydantic request/response models live in each module's `schemas.py` (never inline in routers). `engine/` owns engine processes and protocol, while `integrations/` owns external services. Keep business APIs decoupled from raw ORM where a repository helper exists.
 
 **Migrations use Alembic.** `backend/migrations/` (config in `backend/alembic.ini`) is the migration framework; app startup calls `migrations.upgrade_database()` via `database.init_db()`. Schema changes go in a new revision under `migrations/versions/` — do NOT add them to `database.py:_ensure_columns()`. That function (plus `_migrate_reviews_unique`) is legacy-only: it runs once from `_bootstrap_legacy_database()` when Alembic takes over a pre-Alembic database (existing tables but no `alembic_version` table), which is then stamped to baseline `202608310001`. Empty databases are built by the baseline revision.
 
@@ -50,9 +50,9 @@ Two independent apps: `backend/app` (FastAPI) and `frontend/src` (React 18, no r
 - **Xiangqi rules are implemented twice** and must stay consistent: backend `app/shared/xiangqi/` (including `validation.py`) and frontend `src/domain/xiangqi/`.
 - **User scoping**: `user_id` is a username *string*, with `'default'` for anonymous/guest data. Puzzles with `user_id='default'` are the public library; other values are private (e.g. auto-generated from a user's game blunders). Most queries must filter on this.
 - **Auth** (`app/modules/auth/service.py`) is stdlib-only: PBKDF2 password hashing + HMAC-signed tokens (no JWT library). First registered user becomes admin (or `ADMIN_USERNAME` env var). `SECRET_KEY` signs tokens.
-- **Engine fallback chain** for play/eval: cloud opening book (`app/integrations/cloudbook.py`) → Pikafish (`app/engine/standard.py`) → built-in negamax (`app/modules/play/service.py`). Browser WASM lives under `frontend/src/domain/xiangqi/engine/`.
+- **Engine fallback chain** for play/eval: cloud opening book (`app/integrations/cloudbook.py`) → Pikafish (`app/engine/pikafish.py`) → built-in negamax (`app/modules/play/service.py`). Browser WASM lives under `frontend/src/domain/xiangqi/engine/`.
 - **LLM features** live in `app/integrations/llm.py`; all are optional and the rule-based coach in `app/modules/coach/service.py` must work without a key.
-- **Router registration order matters** in `app/api.py`: game analysis must be registered before the game `/{id}` route.
+- **Router registration order matters** in `app/routes.py`: game analysis must be registered before the game `/{id}` route.
 - **Rate limiting** and security logging live under `app/core/`.
 
 ### Configuration

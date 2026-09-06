@@ -4,16 +4,32 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.integrations import cloudbook
 from app.modules.credits import service as credits
 from app.modules.auth.service import current_user
 from app.core.dependencies import get_db
-from app.engine.api import EngineEvalRequest, EngineEvalResponse, response_from_result, stream_engine
+from app.engine.contract import EngineEvalResponse, response_from_result, stream_engine
 from app.integrations.llm import coach_move
 from app.core.models import User
+from .schemas import (
+    FEN_MAX,
+    BookMove,
+    BookResponse,
+    CoachRequest,
+    CoachResponse,
+    EngineResponse,
+    EvalRequest,
+    HintRequest,
+    HintResponse,
+    MoveRequest,
+    MoveResponse,
+    NewGameRequest,
+    NewGameResponse,
+    StateRequest,
+    StateResponse,
+)
 from .service import (
     INITIAL_FEN,
     choose_move,
@@ -27,50 +43,6 @@ from app.core.settings import get_llm_config
 from app.shared.xiangqi import apply_move
 
 router = APIRouter(prefix="/api/play", tags=["play"])
-
-# 合法象棋 FEN 不会超过约 90 字符，限长防超大串拖垮引擎/解析
-_FEN_MAX = 120
-
-
-class NewGameRequest(BaseModel):
-    human_side: str = "w"   # w=红（先手） b=黑
-    level: str = "medium"   # easy / medium / hard
-
-
-class NewGameResponse(BaseModel):
-    fen: str
-    engine_move: str | None  # 人执黑时引擎（红）先走一步
-    status: str
-    legal_moves: list[str]
-
-
-class MoveRequest(BaseModel):
-    fen: str = Field(max_length=_FEN_MAX)
-    move: str = Field(max_length=5)
-    level: str = "medium"
-
-
-class MoveResponse(BaseModel):
-    fen: str               # 人走子（及引擎应着）后的最新局面
-    engine_move: str | None
-    status: str            # 轮到人时的局面状态
-    legal_moves: list[str]
-    your_turn: bool
-    game_over: bool
-    winner: str | None     # "human" / "engine" / "draw" / None
-
-
-class EvalRequest(EngineEvalRequest):
-    fen: str = Field(max_length=_FEN_MAX)
-
-
-class StateRequest(BaseModel):
-    fen: str = Field(max_length=_FEN_MAX)
-
-
-class StateResponse(BaseModel):
-    status: str
-    legal_moves: list[str]
 
 
 @router.post("/state", response_model=StateResponse)
@@ -88,7 +60,7 @@ def position_state(request: Request, req: StateRequest):
 @limiter.limit("60/minute")
 def eval_position(request: Request, req: EvalRequest):
     """评估给定局面的优劣势（红方视角），供对弈界面的评估条按需调用。"""
-    from app.engine.standard import get_shared_engine
+    from app.engine.pikafish import get_shared_engine
 
     engine = get_shared_engine()
     if engine is not None:
@@ -105,7 +77,7 @@ def eval_position(request: Request, req: EvalRequest):
 @router.post("/eval/stream")
 @limiter.limit("30/minute")
 def stream_eval_position(request: Request, req: EvalRequest):
-    from app.engine.standard import get_shared_engine
+    from app.engine.pikafish import get_shared_engine
 
     engine = get_shared_engine()
     if engine is None:
@@ -115,16 +87,10 @@ def stream_eval_position(request: Request, req: EvalRequest):
     return stream_engine(engine, req, 1 if side_to_move(req.fen) == "w" else -1)
 
 
-class EngineResponse(BaseModel):
-    engine: str       # "pikafish" / "builtin"
-    label: str        # 展示用名称
-    available: bool   # 是否为强力引擎（Pikafish）
-
-
 @router.get("/engine", response_model=EngineResponse)
 def engine_info():
     """报告当前对弈/评分实际使用的引擎，供前端显示。"""
-    from app.engine.standard import get_shared_engine
+    from app.engine.pikafish import get_shared_engine
 
     eng = get_shared_engine()
     if eng is not None:
@@ -135,22 +101,9 @@ def engine_info():
     return EngineResponse(engine="builtin", label="内置搜索引擎", available=False)
 
 
-class BookMove(BaseModel):
-    uci: str
-    score: int | None = None    # 走子方视角 centipawn
-    rank: int | None = None     # 云库推荐等级（越大越优）
-    winrate: float | None = None
-    note: str | None = None
-
-
-class BookResponse(BaseModel):
-    available: bool          # 云库是否可用（关闭/网络异常时 False）
-    moves: list[BookMove]
-
-
 @router.get("/book", response_model=BookResponse)
 @limiter.limit("60/minute")
-def query_book(request: Request, fen: str = Query(max_length=_FEN_MAX)):
+def query_book(request: Request, fen: str = Query(max_length=FEN_MAX)):
     """查询当前局面的云库着法（含评分/胜率），供前端开局参考面板使用。
 
     后端代理外部云库：统一缓存、规避浏览器跨域限制。
@@ -159,15 +112,6 @@ def query_book(request: Request, fen: str = Query(max_length=_FEN_MAX)):
     if moves is None:
         return BookResponse(available=False, moves=[])
     return BookResponse(available=True, moves=[BookMove(**m) for m in moves])
-
-
-class HintRequest(BaseModel):
-    fen: str = Field(max_length=_FEN_MAX)
-
-
-class HintResponse(BaseModel):
-    move: str | None
-    source: str  # "book" / "engine"
 
 
 @router.post("/hint", response_model=HintResponse)
@@ -184,16 +128,6 @@ def hint(request: Request, req: HintRequest):
     if book and book in legal:
         return HintResponse(move=book, source="book")
     return HintResponse(move=choose_move(req.fen, "hard"), source="engine")
-
-
-class CoachRequest(BaseModel):
-    fen: str = Field(max_length=_FEN_MAX)
-    move: str = Field(max_length=5)
-
-
-class CoachResponse(BaseModel):
-    enabled: bool   # AI 点评是否可用（未配置 key 时 False）
-    text: str
 
 
 @router.post("/coach", response_model=CoachResponse)

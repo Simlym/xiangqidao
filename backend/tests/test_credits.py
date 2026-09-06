@@ -183,7 +183,7 @@ def test_coach_plan_falls_back_when_no_credits(monkeypatch):
 def test_explain_charges_credits(monkeypatch):
     """已登录、有积分、大模型启用：题目讲解扣费并返回讲解；大模型函数被替身拦截。"""
     monkeypatch.delenv("LLM_API_KEY", raising=False)
-    monkeypatch.setattr("app.modules.training.api.explain_puzzle", lambda *a, **k: "测试讲解")
+    monkeypatch.setattr("app.modules.training.router.explain_puzzle", lambda *a, **k: "测试讲解")
     TestSession = _session_factory()
     with TestSession() as db:
         db.add(User(username="tester", password_hash=hash_password("password1")))

@@ -6,9 +6,9 @@ from sqlalchemy.orm import sessionmaker
 from fastapi import HTTPException
 
 from app.core.models import Base
-from app.modules.games.api import (
+from app.modules.games.schemas import ImportRequest
+from app.modules.games.router import (
     INITIAL_FEN,
-    ImportRequest,
     import_game,
     list_games,
     get_game,
